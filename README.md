@@ -40,7 +40,7 @@ disabled; no GitHub remote or public/private visibility has been assigned.
 ## Current scope and next work
 
 - Shared grammar parsing and editor-source generation are implemented.
-- Seventeen Rust tests cover grammar invariants, five numerical workload
+- Nineteen Rust tests cover grammar invariants, five numerical workload
   fixtures, tree structure, source spans, Unicode, errors and tooling.
 - Normalized abstract syntax tree (AST) construction and additional syntax-form
   checks are not implemented. Grammar acceptance alone is not full language

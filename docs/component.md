@@ -75,6 +75,14 @@ Tests also pin precedence, typed versus untyped patterns, scalar versus list
 binders, newline rules, byte spans, Unicode handling and diagnostic identity.
 The fixture copies are tests, not a second authoritative workload collection.
 
+Inside a body, `i, j := [10, 2]` and `[i, j] := [10, 2]` both parse as one
+`local` with two identifiers in its `pattern` field. Their CST kinds remain
+`bare_list_pattern` and `list_pattern`, respectively; no normalized AST currently
+establishes their equivalence. The grammar describes the bare form as the
+bracketed form's shorthand. At document scope, pattern bindings use `=`;
+both forms with `:=` report `Rule::PatternValue` at the colon.
+The [syntax tests](../tests/syntax.rs) verify these structures and byte spans.
+
 The generated Tree-sitter productions match the extracted source grammar's
 output apart from provenance comments. JavaScript syntax is checked with Node.
 Actual Tree-sitter parser generation and execution are untested because its CLI

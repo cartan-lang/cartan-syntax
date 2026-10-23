@@ -167,6 +167,75 @@ fn preserves_binding_pattern_and_postfix_distinctions() {
 }
 
 #[test]
+fn preserves_bare_and_bracketed_local_list_patterns() {
+    for (pattern, kind, pattern_end, names, value_start) in [
+        ("i, j", "bare_list_pattern", 6, [(2, 3), (5, 6)], 10),
+        ("[i, j]", "list_pattern", 8, [(3, 4), (6, 7)], 12),
+    ] {
+        let tree = valid_document(&format!("{{ {pattern} := [10, 2]\n i + j }}"));
+        let locals = nodes(&tree.root, "local");
+        assert_eq!(locals.len(), 1);
+        let binder = locals[0].child("pattern").unwrap();
+        assert_eq!(binder.kind, kind);
+        assert_eq!((binder.start, binder.end), (2, pattern_end));
+        assert_eq!(tree.text(binder), Some(pattern));
+        let identifiers: Vec<_> = binder.named_children().collect();
+        assert_eq!(identifiers.len(), 2);
+        for ((identifier, name), span) in identifiers.iter().zip(["i", "j"]).zip(names) {
+            assert_eq!(identifier.kind, "identifier");
+            assert_eq!(tree.text(identifier), Some(name));
+            assert_eq!((identifier.start, identifier.end), span);
+        }
+        let rhs = locals[0].child("value").unwrap();
+        assert_eq!(rhs.kind, "list");
+        assert_eq!(tree.text(rhs), Some("[10, 2]"));
+        assert_eq!((rhs.start, rhs.end), (value_start, value_start + 7));
+        assert_eq!(
+            rhs.named_children()
+                .map(|node| tree.text(node).unwrap())
+                .collect::<Vec<_>>(),
+            ["10", "2"]
+        );
+    }
+}
+
+#[test]
+fn local_list_patterns_require_a_body_for_colon_equals() {
+    for (source, colon, pattern_end) in [
+        ("i, j := [10, 2]", 5, 4),
+        ("[i, j] := [10, 2]", 7, 6),
+        ("[i, j] := [10, 1]", 7, 6),
+    ] {
+        let tree = parse_document(source);
+        assert!(tree.has_errors());
+        assert_spans(&tree);
+        assert_eq!(tree.diagnostics.len(), 1);
+        let diagnostic = &tree.diagnostics[0];
+        assert_eq!(
+            (diagnostic.span.start, diagnostic.span.end),
+            (colon, colon + 1)
+        );
+        assert_eq!(diagnostic.found.as_deref(), Some(":"));
+        assert!(!diagnostic.incomplete);
+        assert_eq!(
+            diagnostic.kind,
+            DiagnosticKind::Stated {
+                rule: Rule::PatternValue,
+                refused: false,
+                fields: vec![cartan_syntax::Field {
+                    name: "pattern".into(),
+                    span: cartan_syntax::Span {
+                        start: 0,
+                        end: pattern_end,
+                    },
+                }],
+            }
+        );
+        valid_document(&source.replace(":=", "="));
+    }
+}
+
+#[test]
 fn reports_typed_rule_identity_sites_and_captured_fields() {
     let tree = parse_document("while true { x = 1 }");
     assert!(tree.has_errors());
