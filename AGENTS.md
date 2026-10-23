@@ -24,6 +24,9 @@ buildable; the parent workspace's AGENTS.md coordinates component work.
   instruction. Use this repository's own target directory.
 - Work in this component's existing checkout. Creating or using a Git worktree
   requires explicit supervisor permission for that task.
+- Use this directory explicitly for commands, builds and Git operations, even
+  when the session starts at the workspace root. Initial cwd does not change
+  component ownership.
 
 ## Dependencies and branches
 
@@ -61,9 +64,14 @@ buildable; the parent workspace's AGENTS.md coordinates component work.
 - Follow docs/documentation.md: Markdown, small structured headers, current
   state only. Git records history; no completed-work diary or manual status index.
 - Maintain decisions, contracts and bounded tasks in structured docs/rulings,
-  docs/records and docs/work files. Resume through the generated inventory and
-  relevant tasks; do not create handoff or session-summary files. Coordinate
-  schema changes with the supervisor and synchronize conventions and validators.
+  docs/records and docs/work files. Coordinate schema changes with the supervisor
+  and synchronize conventions and validators.
+- Maintain local HANDOFF.md as an ignored resume aid; never commit it. On
+  "update HANDOFF", refresh it in place with owner/directory, revision/state,
+  active work or blockers, next actions, verification and authoritative docs
+  links. Replace stale information rather than appending a diary. Read it when
+  resuming, then confirm its state against Git, the inventory and task records.
+  Durable decisions and evidence remain in structured docs.
 - Keep one authoritative home per fact. Separate proposal, approval and actual
   implementation; list limitations and untested behavior explicitly.
 - Use mainstream technical terminology and define terms on introduction.

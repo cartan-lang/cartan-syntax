@@ -18,6 +18,7 @@ superseded behavior. Historical benchmark observations remain valid data.
 
 - `README.md`: purpose, public entry points, local checks, limitations and next work.
 - `AGENTS.md`: standing operational instructions.
+- `HANDOFF.md`: ignored local resume note for the directory's owning agent.
 - `docs/*.md`: current designs, reference material, explanations and how-to guides.
 - `docs/rulings/<id>.md`: one question or decision per file.
 - `docs/records/<id>.md`: one durable adopted contract per file.
@@ -28,8 +29,17 @@ superseded behavior. Historical benchmark observations remain valid data.
 Keep one authoritative home for each fact and link to it instead of copying it.
 The master workspace owns cross-component decisions, integration tasks and agent
 coordination. Components own local contracts, implementation tasks and evidence.
-Both levels maintain this structure. No separate handoff or session-summary file
-is maintained. Resume work through the inventory and the relevant task records.
+Both levels maintain this structure. Each directory's owning agent maintains
+an untracked `HANDOFF.md`, excluded by `/HANDOFF.md` in the repository's
+`.gitignore`. The workspace root carries the same ignore rule for future Git
+use even while it is not a repository. On "update HANDOFF", refresh that file
+in place with owner and working directory, current state and revision, active
+work or blockers, next actions, verification and links to authoritative docs.
+Read it when resuming; confirm its state against the checkout and task records.
+Keep it concise and replace stale information rather than appending a diary.
+It is a local resume aid, not a second status catalogue: durable decisions,
+contracts and task evidence remain in structured docs. The handoff is outside
+`docs/` and does not require document metadata or enter the generated inventory.
 The supervisor coordinates updates to this schema and the identical validator
 and tests carried by each repository; standalone clones need no adjacent checkout.
 Design documents may state approved behavior that is not yet implemented, but
