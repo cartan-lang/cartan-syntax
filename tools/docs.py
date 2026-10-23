@@ -2,16 +2,32 @@
 """Validate the small documentation header schema and emit a JSON inventory."""
 
 import argparse
+from datetime import date
 import json
 from pathlib import Path
 import re
 import sys
 
 
-FIELDS = {"id", "title", "kind", "status", "implementation", "topics"}
+BASE_FIELDS = {"id", "title", "kind", "status", "implementation", "topics"}
+EXTRA_FIELDS = {
+    "work": {"owner", "depends", "authority", "blocked_on", "evidence"},
+    "ruling": {"proposer", "decision_maker", "authority", "decided"},
+    "record": {"authority", "decided"},
+}
+FIELDS = BASE_FIELDS | set().union(*EXTRA_FIELDS.values())
+STATUSES = {
+    "design": {"draft", "accepted"},
+    "reference": {"draft", "accepted"},
+    "explanation": {"draft", "accepted"},
+    "howto": {"draft", "accepted"},
+    "record": {"draft", "accepted"},
+    "ruling": {"open", "approved", "declined", "withdrawn"},
+    "work": {"planned", "approved", "active", "blocked", "done", "dropped"},
+}
 CHOICES = {
-    "kind": {"design", "reference", "explanation", "howto"},
-    "status": {"draft", "accepted"},
+    "kind": set(STATUSES),
+    "status": set().union(*STATUSES.values()),
     "implementation": {"planned", "partial", "implemented", "not-applicable"},
 }
 IDENTIFIER = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*\Z")
@@ -49,7 +65,7 @@ def read_document(path, root):
             raise DocumentError(relative, "empty-field", key)
         record[key] = value
 
-    missing = FIELDS - record.keys()
+    missing = BASE_FIELDS - record.keys()
     if missing:
         raise DocumentError(relative, "missing-fields", ", ".join(sorted(missing)))
     if not IDENTIFIER.fullmatch(record["id"]):
@@ -57,6 +73,54 @@ def read_document(path, root):
     for field, choices in CHOICES.items():
         if record[field] not in choices:
             raise DocumentError(relative, "invalid-choice", f"{field}={record[field]}")
+    kind = record["kind"]
+    status = record["status"]
+    if status not in STATUSES[kind]:
+        raise DocumentError(relative, "invalid-choice", f"status={status} for {kind}")
+    extra = record.keys() - BASE_FIELDS - EXTRA_FIELDS.get(kind, set())
+    if extra:
+        raise DocumentError(relative, "unknown-field", ", ".join(sorted(extra)))
+    required = set()
+    if kind == "work":
+        required |= {"owner", "depends"}
+        if status in {"approved", "active", "blocked", "done"}:
+            required.add("authority")
+        if status == "blocked":
+            required.add("blocked_on")
+        if status == "done":
+            required.add("evidence")
+        if status != "blocked" and "blocked_on" in record:
+            raise DocumentError(relative, "stale-blocker", "blocked_on requires blocked status")
+    if kind == "ruling":
+        required |= {"proposer", "decision_maker"}
+        if status in {"approved", "declined"}:
+            required |= {"authority", "decided"}
+        elif "authority" in record or "decided" in record:
+            raise DocumentError(relative, "undecided-ruling", "decision metadata requires a decision")
+    if kind == "record" and status == "accepted":
+        required |= {"authority", "decided"}
+    missing = required - record.keys()
+    if missing:
+        raise DocumentError(relative, "missing-fields", ", ".join(sorted(missing)))
+    if "decided" in record:
+        try:
+            if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", record["decided"]):
+                raise ValueError("expected YYYY-MM-DD")
+            date.fromisoformat(record["decided"])
+        except ValueError:
+            raise DocumentError(relative, "invalid-date", record["decided"]) from None
+    if "depends" in record:
+        value = record["depends"]
+        if not value.startswith("[") or not value.endswith("]"):
+            raise DocumentError(relative, "invalid-dependencies", "expected [id, repository:id] or []")
+        dependencies = [] if value == "[]" else [item.strip() for item in value[1:-1].split(",")]
+        for dependency in dependencies:
+            parts = dependency.split(":")
+            if len(parts) not in {1, 2} or not all(IDENTIFIER.fullmatch(part) for part in parts):
+                raise DocumentError(relative, "invalid-dependencies", value)
+        if len(dependencies) != len(set(dependencies)):
+            raise DocumentError(relative, "invalid-dependencies", "duplicate dependency")
+        record["depends"] = dependencies
 
     value = record["topics"]
     if not value.startswith("[") or not value.endswith("]"):

@@ -17,10 +17,13 @@ buildable; the parent workspace's AGENTS.md coordinates component work.
 - Keep syntax tooling independent of builtin registries or semantic engines.
   Highlighting is not semantic analysis or a language server.
 - Do not depend on a legacy checkout, its evaluator, its diagnostic framework
-  or its conformance suite. Legacy source is bounded design reference material.
+  or its conformance suite. Only the top-level supervisor may consult legacy;
+  request findings rather than reading, searching or executing that checkout.
 - Preserve user changes, coordinate concurrent file ownership and commit explicit
   paths. No remote creation, visibility choice, push or publication without owner
   instruction. Use this repository's own target directory.
+- Work in this component's existing checkout. Creating or using a Git worktree
+  requires explicit supervisor permission for that task.
 
 ## Rust and verification
 
@@ -43,6 +46,10 @@ buildable; the parent workspace's AGENTS.md coordinates component work.
 
 - Follow docs/documentation.md: Markdown, small structured headers, current
   state only. Git records history; no completed-work diary or manual status index.
+- Maintain decisions, contracts and bounded tasks in structured docs/rulings,
+  docs/records and docs/work files. Resume through the generated inventory and
+  relevant tasks; do not create handoff or session-summary files. Coordinate
+  schema changes with the supervisor and synchronize conventions and validators.
 - Keep one authoritative home per fact. Separate proposal, approval and actual
   implementation; list limitations and untested behavior explicitly.
 - Use mainstream technical terminology and define terms on introduction.
