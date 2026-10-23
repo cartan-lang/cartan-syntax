@@ -80,6 +80,12 @@ def read_document(path, root):
     extra = record.keys() - BASE_FIELDS - EXTRA_FIELDS.get(kind, set())
     if extra:
         raise DocumentError(relative, "unknown-field", ", ".join(sorted(extra)))
+    for field in record.keys() - BASE_FIELDS - {"depends", "decided"}:
+        value = record[field]
+        if (value[0] in "'\"!&*{}[]>|%@`?#:," or ": " in value or " #" in value
+                or value.lower() in {"null", "true", "false", "~"}
+                or not any(c.isalpha() for c in value)):
+            raise DocumentError(relative, "invalid-scalar", f"{field} must be plain one-line text")
     required = set()
     if kind == "work":
         required |= {"owner", "depends"}

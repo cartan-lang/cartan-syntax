@@ -124,6 +124,7 @@ class DocumentationTests(unittest.TestCase):
              "--kind", "work", "--status", "planned"], capture_output=True, text=True, check=True)
         self.assertEqual(json.loads(result.stdout)[0]["depends"], [])
         for invalid, code in [
+            (work.replace("owner: supervisor", "owner: *supervisor"), "invalid-scalar"),
             (work.replace("depends: []", "depends: [x, x]"), "invalid-dependencies"),
             (work.replace("depends: []", "depends: [x, ]"), "invalid-dependencies"),
             (work.replace("topics:", "blocked_on: old blocker\ntopics:"), "stale-blocker"),
