@@ -1,0 +1,14 @@
+[package]
+name = "cartan-syntax"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Cartan concrete syntax parsing and shared grammar tooling"
+
+[workspace]
+members = ["support/treegram"]
+resolver = "2"
+
+[dependencies]
+treegram = { path = "support/treegram" }

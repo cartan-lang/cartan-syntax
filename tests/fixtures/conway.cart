@@ -1,0 +1,43 @@
+# Conway's Game of Life: eight neighbors, birth at three, survival at two.
+# pattern: 0 = deterministic dense field, 1 = block, 2 = blinker, 3 = glider.
+# The glider starts beside the lower/right seams and moves across both.
+
+param ni = 17
+param nj = 19
+param pattern = 3
+
+domain = [0..ni periodic, 0..nj periodic]
+
+initial_u = for [i, j] in domain {
+    if pattern == 0 then
+        if (i * 17 + j * 31 + i * j * 13) -
+            ((i * 17 + j * 31 + i * j * 13) // 101) * 101 < 45
+        then 1.0 else 0.0
+    else if pattern == 1 then
+        if i >= ni // 2 - 1 and i <= ni // 2
+            and j >= nj // 2 - 1 and j <= nj // 2
+        then 1.0 else 0.0
+    else if pattern == 2 then
+        if i == ni // 2 and j >= nj // 2 - 1 and j <= nj // 2 + 1
+        then 1.0 else 0.0
+    else
+        if (i == ni - 3 and j == nj - 2)
+            or (i == ni - 2 and j == nj - 1)
+            or (i == ni - 1 and j >= nj - 3)
+        then 1.0 else 0.0
+}
+
+state u = initial_u
+
+while true {
+    u <- for [i, j] in domain {
+        if (u[i - 1, j - 1] + u[i - 1, j] + u[i - 1, j + 1]
+            + u[i, j - 1] + u[i, j + 1]
+            + u[i + 1, j - 1] + u[i + 1, j] + u[i + 1, j + 1]) == 3.0
+            or (u[i, j] == 1.0
+                and (u[i - 1, j - 1] + u[i - 1, j] + u[i - 1, j + 1]
+                    + u[i, j - 1] + u[i, j + 1]
+                    + u[i + 1, j - 1] + u[i + 1, j] + u[i + 1, j + 1]) == 2.0)
+        then 1.0 else 0.0
+    }
+}

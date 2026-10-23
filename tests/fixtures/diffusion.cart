@@ -1,0 +1,22 @@
+# Experimental subset: direct array-state initialization, f32 arithmetic.
+# The host runner supplies the finite step count.
+
+param ni = 17
+param nj = 19
+
+domain = [0..ni periodic, 0..nj periodic]
+
+initial_u = for [i, j] in domain {
+    if i == ni // 2 and j == nj // 2 then 1.0 else 0.0
+}
+
+state u = initial_u
+
+while true {
+    u <- for [i, j] in domain {
+        u[i, j] + 0.125 * (
+            u[i - 1, j] + u[i + 1, j] +
+            u[i, j - 1] + u[i, j + 1] - 4 * u[i, j]
+        )
+    }
+}

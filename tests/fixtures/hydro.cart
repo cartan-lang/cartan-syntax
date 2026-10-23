@@ -1,0 +1,99 @@
+# One-dimensional reduction of the periodic Euler hydro reference.
+# One while iteration is one full PLM / HLLE / SSP-RK3 timestep.
+
+use std::*
+
+param n = 32
+param dt_factor = 0.13416407864998736
+param amplitude = 2.0
+
+fiber Conserved: Module = (rho: Real, mom: Real, nrg: Real)
+fiber Primitive: Module = (rho: Real, vel: Real, pre: Real)
+
+gamma = 5.0 / 3.0
+plm_theta = 1.5
+pulse_width = 0.08
+
+prim_to_cons((rho, vel, pre): Primitive) =
+    Conserved(rho, rho * vel, 0.5 * rho * (vel * vel) + pre / (gamma - 1.0))
+
+cons_to_prim((rho, mom, nrg): Conserved) = {
+    vel := mom / rho
+    Primitive(rho, vel, (nrg - 0.5 * rho * (vel * vel)) * (gamma - 1.0))
+}
+
+sound_speed((rho, _, pre): Primitive) = sqrt(gamma * pre / rho)
+
+flux((rho, vel, pre): Primitive) = {
+    nrg := 0.5 * rho * (vel * vel) + pre / (gamma - 1.0)
+    Conserved(rho * vel, rho * vel * vel + pre, vel * (nrg + pre))
+}
+
+riemann_hlle(pl: Primitive, pr: Primitive) = {
+    ul := prim_to_cons(pl)
+    ur := prim_to_cons(pr)
+    fl := flux(pl)
+    fr := flux(pr)
+    vl := vel of pl
+    vr := vel of pr
+    al := sound_speed(pl)
+    ar := sound_speed(pr)
+    am := min(vl - al, vr - ar, 0.0)
+    ap := max(vl + al, vr + ar, 0.0)
+    (fl * ap - fr * am - (ul - ur) * ap * am) / (ap - am)
+}
+
+minabs(a: Real, b: Real, c: Real) = min(abs(a), abs(b), abs(c))
+
+minmod(yl: Real, yc: Real, yr: Real) = {
+    a := (yc - yl) * plm_theta
+    b := (yr - yl) * 0.5
+    c := (yr - yc) * plm_theta
+    0.25 * abs(sign(a) + sign(b)) * (sign(a) + sign(c)) * minabs(a, b, c)
+}
+
+slope(pl: Primitive, pc: Primitive, pr: Primitive) = Primitive(
+    minmod(rho of pl, rho of pc, rho of pr),
+    minmod(vel of pl, vel of pc, vel of pr),
+    minmod(pre of pl, pre of pc, pre of pr)
+)
+
+box = [0..n periodic]
+dx = 1.0 / n
+dt = dt_factor / n
+xc = for [i] in box { (i + 0.5) * dx }
+
+slopes(p: Array<Primitive, 1>) =
+    for [i] in box { slope(p[i - 1], p[i], p[i + 1]) }
+
+fluxes(p: Array<Primitive, 1>, g: Array<Primitive, 1>) =
+    for [i] in box {
+        riemann_hlle(p[i - 1] + g[i - 1] * 0.5, p[i] - g[i] * 0.5)
+    }
+
+dudt(u: Array<Conserved, 1>) = {
+    p := cons_to_prim(u)
+    fx := fluxes(p, slopes(p))
+    for [i] in box { (fx[i] - fx[i + 1]) / dx }
+}
+
+tableau = [0.0, 0.75, 1.0 / 3.0]
+
+advance(u: Array<Conserved, 1>, dt: Real) =
+    reduce v := u for a in tableau {
+        a * u + (1.0 - a) * (v + dudt(v) * dt)
+    }
+
+initial_primitive(x: Real) = {
+    r2 := (x - 0.5)^2
+    Primitive(1.0, 0.0, 1.0 + amplitude * exp(-r2 / pulse_width^2))
+}
+
+initial_cons = prim_to_cons(for [x] in [xc] { initial_primitive(x) })
+state cons: Array<Conserved, 1> = initial_cons
+
+while true {
+    cons <- advance(cons, dt)
+}
+
+main = 0

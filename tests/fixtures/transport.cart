@@ -1,0 +1,19 @@
+# Move a unit pulse one row and two columns per step, without diffusion.
+# On this 17-by-19 domain, it returns to its initial position after 323 steps.
+
+param ni = 17
+param nj = 19
+
+domain = [0..ni periodic, 0..nj periodic]
+
+initial_u = for [i, j] in domain {
+    if i == ni // 2 and j == nj // 2 then 1.0 else 0.0
+}
+
+state u = initial_u
+
+while true {
+    u <- for [i, j] in domain {
+        u[i - 1, j - 2]
+    }
+}

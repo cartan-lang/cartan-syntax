@@ -1,0 +1,50 @@
+# Direct softened 3D gravity. Particle indices wrap; physical distances do not.
+# Symplectic Euler: kick velocities, then drift positions with new velocities.
+use std::*
+
+param n = 32
+param dt = 0.001
+param softening = 0.1
+
+fiber Particle: Module = (x: Real, y: Real, z: Real, vx: Real, vy: Real, vz: Real, mass: Real)
+fiber Acceleration: Module = (x: Real, y: Real, z: Real)
+
+gravitate(p: Particle, q: Particle) = {
+    dx := x of q - x of p
+    dy := y of q - y of p
+    dz := z of q - z of p
+    r2 := dx^2 + dy^2 + dz^2 + softening^2
+    factor := mass of q / (r2 * sqrt(r2))
+    Acceleration(dx * factor, dy * factor, dz * factor)
+}
+
+kick_drift(p: Particle, a: Acceleration) = {
+    vx := vx of p + dt * x of a
+    vy := vy of p + dt * y of a
+    vz := vz of p + dt * z of a
+    Particle(x of p + dt * vx, y of p + dt * vy, z of p + dt * vz,
+             vx, vy, vz, mass of p)
+}
+
+box = [0..n periodic]
+state particles: Array<Particle, 1> = for [i] in box {
+    pair := i // 2
+    orientation := if i - pair * 2 == 0 then 1.0 else -1.0
+    x := 0.5 + 0.05 * (pair - (pair // 7) * 7)
+    y := 0.05 * ((pair // 7) - (pair // 49) * 7 - 3)
+    z := 0.05 * (pair // 49)
+    Particle(orientation * x, orientation * y, orientation * z, 0.0, 0.0, 0.0, 1.0 / n)
+}
+
+advance(u: Array<Particle, 1>) =
+    for [i] in box {
+        acceleration := reduce a := Acceleration(0.0, 0.0, 0.0) for j in 0..n {
+            a + gravitate(u[i], u[j])
+        }
+        kick_drift(u[i], acceleration)
+    }
+
+while true {
+    particles <- advance(particles)
+}
+main = 0
