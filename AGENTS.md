@@ -25,6 +25,20 @@ buildable; the parent workspace's AGENTS.md coordinates component work.
 - Work in this component's existing checkout. Creating or using a Git worktree
   requires explicit supervisor permission for that task.
 
+## Dependencies and branches
+
+- Local consumers select committed syntax revisions using an absolute `file://`
+  Cargo Git dependency and a named branch. The owner permits these machine-local
+  URLs; they are not a public distribution arrangement. The current AST is on
+  `main`. Consumers own their adapters, dependency declarations and lockfiles.
+- This component owns requested interface changes and any specialized ordinary
+  Git branch. Agree the contract before implementation; do not edit a consumer's
+  checkout or Cargo-managed dependency cache. Consumers deliberately update their
+  lockfile after a tested commit is available.
+- Do not vendor sibling components or use their working-tree path dependencies
+  without an agreed reason. Follow the [dependency contract](docs/ast-interface.md#local-dependency-delivery);
+  no remote, publication or worktree authorization is implied.
+
 ## Rust and verification
 
 - Run default `cargo fmt` after edits and `cargo fmt --check` before committing.

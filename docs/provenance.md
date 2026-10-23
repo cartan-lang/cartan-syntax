@@ -37,3 +37,8 @@ AST contract, not equivalence with the full legacy parser. The
 [AST contract](ast-interface.md#adopted-source-contracts) records the supervisor's
 source findings for adopted form rules. See the
 [component limits](component.md#acceptance-limits).
+
+Consumer revision attribution follows the
+[local Git dependency contract](ast-interface.md#local-dependency-delivery).
+Consumers record their locked syntax commit and integration evidence separately
+from the extraction sources above.

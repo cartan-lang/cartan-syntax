@@ -91,7 +91,8 @@ is unavailable in this environment. There is no full editor-conformance claim.
 
 ## Consumer integration
 
-The codegen frontend owns its adapter and standalone syntax dependency snapshot.
+The codegen frontend owns its adapter and locked syntax Git dependency, following
+the [local dependency contract](ast-interface.md#local-dependency-delivery).
 Graph construction, type checking and source-to-computational-IR lowering remain
 outside syntax. The typed codegen library consumes explicit computational units
 without acquiring a dependency on this syntax crate. Integration and execution

@@ -54,7 +54,7 @@ disabled; no GitHub remote or public/private visibility has been assigned.
   Neither API performs semantic validation or verifies execution support.
 - The generated Tree-sitter JavaScript passes a syntax check. Building and
   executing the actual Tree-sitter parser remains untested here.
-- The codegen frontend owns its AST adapter and pinned dependency snapshot.
+- The codegen frontend owns its AST adapter and locked local Git dependency.
   Codegen's typed library remains parser-independent; consumer integration
   and device execution are verified by that component.
 

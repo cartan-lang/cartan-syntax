@@ -13,7 +13,8 @@ topics: [syntax, interface, frontend]
 numerical workloads. An abstract syntax tree (AST) represents written constructs
 independently of concrete grammar production names. The component agents agreed
 this interface under owner-authorized parser-transfer work; the supervisor
-confirmed the scoped form rules and standalone dependency delivery on 2026-10-23.
+confirmed the scoped form rules on 2026-10-23. The owner authorizes the local Git
+dependency delivery described below.
 The existing [CST interface](component.md) remains available for editor tooling
 and broader grammar inspection.
 
@@ -125,17 +126,32 @@ checking written grouping, and requiring one result without requiring it last.
 They do not import legacy evaluation, semantic analysis or full-language duties.
 The local normalizer is a new implementation over this component's CST.
 
-## Standalone dependency delivery
+## Local dependency delivery
 
-Codegen owns an explicit source snapshot of this package and `support/treegram`
-under its own repository, with
-relative path dependencies and the originating syntax commit recorded. Codegen
-owns the destination paths, Cargo integration and provenance. This does not
-require registry publication, a remote or an adjacent checkout. Syntax remains
-the authoritative editing location; subsequent fixes are committed here before
-refreshing the consumer snapshot. The agreed delivery method does not authorize
-edits in codegen's checkout by the syntax agent. A snapshot's actual commit and
-integration evidence are recorded by its consumer.
+The owner accepts absolute local Git URLs and named branches for this workspace,
+as recorded in the master's [dependency policy](../../docs/records/local-git-dependencies.md).
+The current agreed AST is supplied on syntax's existing `main` branch:
+
+```toml
+cartan-syntax = { git = "file:///Users/jzrake/Work/Codes/cartan-lang/cartan-syntax", branch = "main" }
+```
+
+Codegen owns this frontend dependency declaration and its `Cargo.lock`, which
+records the consumed commit. Cargo's cached committed source includes the local
+`support/treegram` package. Supplier working-tree edits and branch switches do
+not change a consumer's locked revision; updating that revision is a deliberate
+consumer operation after a tested supplier commit is available.
+
+Syntax owns interface changes, commits and any requested specialized ordinary
+Git branch. Consumer-specific changes come as requests to this component; the
+consumer selects the agreed branch and records its consumed revision and checks.
+Dependency caches are not editing locations. No manual vendoring, working-tree
+path dependency, agent worktree, remote or publication is needed for this setup.
+
+A fresh dependency cache needs access to the supplier Git repository at the
+configured location. The owner accepts this machine-specific address for local
+development; portable public distribution remains a separate decision. Syntax
+itself still builds from its repository without an adjacent checkout.
 
 ## Verification and ownership
 
@@ -146,4 +162,4 @@ Existing [CST tests](../tests/syntax.rs) retain the grammar/editor checks.
 Codegen verifies its adapter, parser removal and numerical behavior independently.
 
 The syntax component owns implementation here; codegen owns the adapter and
-consumer dependency snapshot in its repository.
+consumer dependency declaration and lockfile in its repository.

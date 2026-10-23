@@ -16,7 +16,7 @@ evidence: Implementation commit 17fba7259087489b973fb70265a9191beaf4ce86; tests/
 Deliver syntax-owned parsing, AST normalization, source spans and structured
 form diagnostics for the five existing numerical workloads. The
 [AST contract](../ast-interface.md) owns the supported source forms, adopted
-invariants, limitations and agreed standalone snapshot delivery. Semantic
+invariants, limitations and owner-authorized local Git dependency delivery. Semantic
 analysis, numerical lowering and the consuming adapter belong to codegen.
 
 ## Acceptance and evidence
@@ -40,7 +40,13 @@ analysis, numerical lowering and the consuming adapter belong to codegen.
   pass with this task recorded as done.
 
 The syntax task has no remaining interface questions. Codegen owns integration
-and its snapshot provenance; acceptance by syntax does not establish frontend
+and its locked Git revision evidence; acceptance by syntax does not establish frontend
 execution support. Actual Tree-sitter parser generation/execution and device
 execution were not run by this component. Legacy evidence was supplied by the
 supervisor; no legacy checkout was read or executed here.
+
+The agreed AST is available on `main`. The owner authorizes consumers to use the
+local Git URL and lock a committed revision, as described by the
+[dependency contract](../ast-interface.md#local-dependency-delivery). Specialized
+branches are unnecessary for this interface; future consumer-specific requests
+are implemented and committed by the syntax component.
