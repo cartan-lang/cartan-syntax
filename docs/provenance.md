@@ -32,6 +32,8 @@ Conway's subtraction is formatted with the operator at the end of the preceding
 line, as required by the established newline rule. The normalized fixture is
 also used by the extracted codegen repository; its computation is unchanged.
 
-Parser-library tests establish grammar/CST behavior, not equivalence with the
-legacy normalized AST or its additional form validation. See the
+Parser-library tests establish grammar/CST behavior and the bounded normalized
+AST contract, not equivalence with the full legacy parser. The
+[AST contract](ast-interface.md#adopted-source-contracts) records the supervisor's
+source findings for adopted form rules. See the
 [component limits](component.md#acceptance-limits).

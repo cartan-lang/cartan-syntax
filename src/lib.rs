@@ -3,14 +3,15 @@
 //! A CST retains grammar nodes, punctuation, field names, comments, and UTF-8
 //! byte spans. This bootstrap uses the established Cartan grammar directly;
 //! the same grammar generates editor tooling. It performs no name resolution,
-//! type checking, graph construction, evaluation, or normalized AST lowering.
+//! type checking, graph construction or evaluation. The [`ast`] module adds
+//! normalized source constructs for the numerical workload subset.
 //!
-//! Grammar acceptance is narrower evidence than acceptance by the language's
-//! complete parser: legacy AST lowering also validates forms such as comparison
-//! chains, range chains, and bodies requiring one result. Those additional form
-//! checks are not implemented here. A malformed document still returns a tree
-//! with error nodes and structured diagnostics for editor recovery.
+//! Grammar acceptance alone does not establish valid syntax forms. The AST
+//! layer checks comparison/range chains and bodies requiring one result, and
+//! explicitly rejects constructs outside its supported subset. The CST API
+//! remains available for broader grammar inspection and editor recovery.
 
+pub mod ast;
 pub mod diagnostic;
 pub mod grammar;
 mod lexer;

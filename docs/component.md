@@ -60,15 +60,16 @@ generators do not provide a language server or semantic completion features.
 
 ## Acceptance limits
 
-Grammar parsing is one layer of syntax processing. This bootstrap does not yet
-normalize an abstract syntax tree (AST), the representation of source constructs
-used for further analysis. Additional form checks belong to that syntax layer:
-for example, refusing comparison/range chains and requiring a body to have one
-result. Some such forms produce a grammar tree without a diagnostic today.
+Grammar parsing is one layer of syntax processing. The separate
+[`ast` interface](ast-interface.md) normalizes a supported subset into an
+abstract syntax tree (AST), the representation of source constructs used for
+further analysis. It refuses written comparison/range chains and requires
+value bodies to have exactly one result. The CST API still returns grammar
+trees for those forms without performing the AST checks.
 
 Consequently, `has_errors() == false` is not a claim of complete language
-validity. There is also no promise that the provisional codegen frontend accepts
-every construct recognized here. It supports a much smaller numerical subset.
+validity. There is also no promise that the codegen frontend can execute every
+construct recognized by either API. It supports a smaller numerical subset.
 
 The five fixture programs parse and retain their expected loops and fields.
 Tests also pin precedence, typed versus untyped patterns, scalar versus list
@@ -77,10 +78,10 @@ The fixture copies are tests, not a second authoritative workload collection.
 
 Inside a body, `i, j := [10, 2]` and `[i, j] := [10, 2]` both parse as one
 `local` with two identifiers in its `pattern` field. Their CST kinds remain
-`bare_list_pattern` and `list_pattern`, respectively; no normalized AST currently
-establishes their equivalence. The grammar describes the bare form as the
-bracketed form's shorthand. At document scope, pattern bindings use `=`;
-both forms with `:=` report `Rule::PatternValue` at the colon.
+`bare_list_pattern` and `list_pattern`, respectively; the AST normalizes both
+to `PatternKind::List` while preserving the original spans. At document scope,
+pattern bindings use `=`; both forms with `:=` report `Rule::PatternValue` at
+the colon.
 The [syntax tests](../tests/syntax.rs) verify these structures and byte spans.
 
 The generated Tree-sitter productions match the extracted source grammar's
@@ -88,9 +89,10 @@ output apart from provenance comments. JavaScript syntax is checked with Node.
 Actual Tree-sitter parser generation and execution are untested because its CLI
 is unavailable in this environment. There is no full editor-conformance claim.
 
-## Next integration
+## Consumer integration
 
-Provide a normalized syntax interface and the missing form validation here.
-Keep graph construction, type checking and source-to-computational-IR lowering
-in the frontend. A codegen client should consume the resulting typed unit,
-without acquiring a dependency on this syntax crate.
+The codegen frontend owns its adapter and standalone syntax dependency snapshot.
+Graph construction, type checking and source-to-computational-IR lowering remain
+outside syntax. The typed codegen library consumes explicit computational units
+without acquiring a dependency on this syntax crate. Integration and execution
+evidence belongs to the consuming component.

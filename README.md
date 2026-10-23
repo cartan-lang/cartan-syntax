@@ -16,6 +16,11 @@ assert!(!tree.has_errors());
 diagnostics. Errors retain rule identity, byte spans and incomplete-input facts.
 See the [component contract](docs/component.md) for API details and limitations.
 
+`ast::parse_document` and `ast::parse_expression` normalize the numerical
+workload subset into a source AST with full byte spans and structured errors.
+The [AST contract](docs/ast-interface.md) states its supported constructs,
+form checks and boundary with semantic analysis.
+
 ## Checks and tooling
 
 ```sh
@@ -39,16 +44,19 @@ disabled; no GitHub remote or public/private visibility has been assigned.
 
 ## Current scope and next work
 
-- Shared grammar parsing and editor-source generation are implemented.
-- Nineteen Rust tests cover grammar invariants, five numerical workload
+- Shared grammar parsing, workload AST normalization and editor-source
+  generation are implemented.
+- Tests cover grammar invariants, five numerical workload
   fixtures, tree structure, source spans, Unicode, errors and tooling.
-- Normalized abstract syntax tree (AST) construction and additional syntax-form
-  checks are not implemented. Grammar acceptance alone is not full language
-  validation or evidence that codegen supports a construct.
+- The AST covers the five workload fixtures, ordered body items, list/site
+  patterns and comparison/range-chain checks. Other constructs may parse into
+  a CST but return a structured unsupported-form error during normalization.
+  Neither API performs semantic validation or verifies execution support.
 - The generated Tree-sitter JavaScript passes a syntax check. Building and
   executing the actual Tree-sitter parser remains untested here.
-- The next integration is a normalized syntax/AST interface and an adapter in
-  the codegen frontend. Codegen's typed library must remain parser-independent.
+- The codegen frontend owns its AST adapter and pinned dependency snapshot.
+  Codegen's typed library remains parser-independent; consumer integration
+  and device execution are verified by that component.
 
 The [source provenance](docs/provenance.md) records the extraction inputs.
 The [documentation conventions](docs/documentation.md) define the queryable
