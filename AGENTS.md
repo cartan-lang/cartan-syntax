@@ -26,8 +26,32 @@ buildable; the parent workspace's AGENTS.md coordinates component work.
 - Agree exactly one active edit/build owner for this checkout and record the
   assignment in ignored `.agent-mail/ownership.json`. Obtain explicit handback
   before another agent edits, builds, stages, commits or switches branches.
-  Read-only review is allowed. Stale state, a timeout or a new message is not
+  Read-only review is allowed. Stale state, a timeout or an unaccepted request is not
   permission to take over; preserve builder leases and escalate conflicts.
+- The current writer maintains one ownership assignment with `directory`
+  (absolute), `active_writer` (registered address or null), `assignment` (bounded
+  scope), `paths` (relative source/build paths), `updated` (UTC), and `agreement`
+  (authority/handback reference). Replace it atomically using a temporary file
+  beside it. This is neither registration, an automatic lock nor an expiring
+  lease; send registration changes to the lead-maintained roster. Idle writers
+  may retain ownership; null or missing records do not permit self-claiming.
+- For transfer, agree recipient and scope, finish or stop edits/builds/helpers,
+  report Git state, user changes and constraints, and update HANDOFF. After the
+  recipient accepts that state, the outgoing writer atomically records the
+  successor, sends explicit handback and stops all checkout/record mutations.
+  The recipient waits for both notice and matching record, acknowledges receipt,
+  then becomes the writer. Reconcile delayed or mismatched notices. Dirty state
+  may be handed over explicitly. Release without a successor uses the same
+  quiescence steps, records null and notifies the lead.
+- Only the agreed writer updates the record. The lead may initialize or assign
+  an explicitly released/null record after checking existing owners and work;
+  recovery requires confirming the previous session, helpers and builds stopped
+  and agreeing retained state with the successor. Otherwise keep mutations
+  blocked and ask the user to resolve the conflict. This exception covers only
+  the runtime record. In standalone clones the user-designated coordinator acts
+  as lead; a sole assigned owner may initialize its record. Former writers must
+  reread and reconcile ownership on resume. See the shared
+  [handback procedure](../AGENTS.md#ownership-record-and-handback).
 - Any registered agent may communicate directly with any other. Prefer native
   thread messages within a harness; use the filesystem board across harnesses.
   An addressed message is the only exception permitting writes to another
