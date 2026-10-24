@@ -40,8 +40,11 @@ Keep it concise and replace stale information rather than appending a diary.
 It is a local resume aid, not a second status catalogue: durable decisions,
 contracts and task evidence remain in structured docs. The handoff is outside
 `docs/` and does not require document metadata or enter the generated inventory.
-The supervisor coordinates updates to this schema and the identical validator
-and tests carried by each repository; standalone clones need no adjacent checkout.
+The supervisor coordinates updates to this schema and equivalent validation
+behavior/tests in each repository; standalone clones need no adjacent checkout.
+The workspace validator is `cartan_dev.docs` with tests under `tests/`; components
+retain their independent `tools/docs.py` and tooling tests until locally migrated.
+Different entry-point locations must not change metadata semantics.
 Design documents may state approved behavior that is not yet implemented, but
 must identify the gap. Reference material describes implemented behavior.
 
@@ -160,6 +163,16 @@ and records source revision/path, rationale and current authority.
 - Remove documents that no longer have current purpose; Git retains them.
 
 ## Validation and inventory
+
+At the workspace root:
+
+```sh
+uv run cartdev docs check
+uv run cartdev docs inventory --kind work --status active
+uv run python -m unittest discover -s tests -p 'test_*.py'
+```
+
+In components retaining the standalone validator:
 
 ```sh
 python3 tools/docs.py check
