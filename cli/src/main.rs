@@ -24,6 +24,7 @@ fn output(value: impl std::fmt::Display) -> ExitCode {
 fn main() -> ExitCode {
     let args: Vec<_> = env::args_os().skip(1).collect();
     let path = match args.as_slice() {
+        [] => return output(HELP),
         [arg] if arg == "--help" || arg == "-h" => return output(HELP),
         [arg] if arg == "--version" => {
             return output(format_args!("cartan-syntax {}", env!("CARGO_PKG_VERSION")));

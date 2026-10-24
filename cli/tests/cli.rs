@@ -8,16 +8,15 @@ fn cli() -> Command {
 fn help_and_usage_have_distinct_exit_statuses_and_streams() {
     let help = cli().arg("--help").output().unwrap();
     assert!(help.status.success());
-    assert!(String::from_utf8(help.stdout)
+    assert!(String::from_utf8(help.stdout.clone())
         .unwrap()
         .contains("ast <source.cart>"));
     assert!(help.stderr.is_empty());
-    for args in [
-        vec![],
-        vec!["ast"],
-        vec!["unknown"],
-        vec!["ast", "one", "two"],
-    ] {
+    let no_args = cli().output().unwrap();
+    assert_eq!(no_args.status.code(), Some(0));
+    assert_eq!(no_args.stdout, help.stdout);
+    assert!(no_args.stderr.is_empty());
+    for args in [vec!["ast"], vec!["unknown"], vec!["ast", "one", "two"]] {
         let output = cli().args(args).output().unwrap();
         assert!(!output.status.success());
         assert!(output.stdout.is_empty());

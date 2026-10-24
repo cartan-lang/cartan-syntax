@@ -30,6 +30,7 @@ cargo run --offline -- ast tests/fixtures/diffusion.cart | less
 This prints Rust's indented debug representation of source items, not typed
 computational IR or generated target code. Errors go to stderr with a nonzero
 exit status. The inspection format is not a stable interchange format.
+With no arguments, `cargo run` prints help to stdout and exits successfully.
 
 ## Checks and tooling
 

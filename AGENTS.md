@@ -20,6 +20,8 @@ buildable; the parent workspace's AGENTS.md coordinates component work.
   the separate `cli/` package, `cartan-syntax-cli`, with binary `cartan-syntax`
   and workspace `default-members = ["cli"]`. Maintain `cargo run -- --help`;
   library examples require explicit `-p cartan-syntax` selection.
+- With no arguments, print useful help to stdout and exit 0. Invalid arguments
+  and actual parse or I/O failures still exit nonzero; test the process status.
 - Do not depend on a legacy checkout, its evaluator, its diagnostic framework
   or its conformance suite. Only the top-level supervisor may consult legacy;
   request findings rather than reading, searching or executing that checkout.

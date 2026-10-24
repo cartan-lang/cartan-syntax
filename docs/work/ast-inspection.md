@@ -7,7 +7,7 @@ implementation: implemented
 topics: [syntax, tooling]
 owner: cartan-syntax-agent
 depends: [normalized-ast]
-authority: Owner requested source inspection and the same Cargo binary arrangement as codegen
+authority: Owner requested source inspection, uniform Cargo CLI layout and successful no-argument help
 evidence: cli/tests/cli.rs; five-fixture smoke check; workspace and documentation checks below
 ---
 
@@ -25,7 +25,9 @@ the existing [AST interface](../ast-interface.md).
   The output is for inspection, not a stable interchange format.
 - Direct execution passed for all five workload fixtures. Output includes
   declarations, update blocks and source spans.
-- Missing arguments, extra arguments, missing files and incomplete syntax were
+- No arguments prints the same help as `--help` to stdout and exits 0, verified
+  by invoking the actual binary. Missing `ast` operands, extra arguments, unknown
+  commands, missing files and incomplete syntax were
   checked: nonzero exit status, diagnostics on stderr, no AST on stdout.
 - The [package contract](../component.md#syntax-tooling) uses a separate CLI
   workspace member selected by default. Library dependencies remain unchanged.
