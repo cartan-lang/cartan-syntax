@@ -11,6 +11,14 @@ buildable; the parent workspace's AGENTS.md coordinates component work.
   lead the ensemble as designated by the owner. Consult the workspace
   [roster](../docs/coordination.md) and [protocol](../AGENTS.md#cross-harness-filesystem-mailboxes)
   when available; never infer leadership or peer capabilities.
+- Lead-authorized work may cross harnesses through either workspace or component
+  counterparts. With Claude leading, both `Claude workspace -> Codex workspace
+  -> Codex component` and `Claude workspace -> Claude component -> Codex component`
+  are valid; mirror these routes when Codex leads. No second approval is needed
+  solely for crossing harnesses or bypassing the receiving agent's workspace
+  supervisor. Preserve the originating request and authority, inform affected
+  owners and deduplicate alternate routes. Routing neither changes the designated
+  lead nor expands scope; shared edit/build ownership and handback still apply.
 - Agree exactly one active edit/build owner for this checkout and record the
   assignment in ignored `.agent-mail/ownership.json`. Obtain explicit handback
   before another agent edits, builds, stages, commits or switches branches.
