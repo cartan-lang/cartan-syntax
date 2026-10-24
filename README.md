@@ -21,6 +21,16 @@ workload subset into a source AST with full byte spans and structured errors.
 The [AST contract](docs/ast-interface.md) states its supported constructs,
 form checks and boundary with semantic analysis.
 
+Inspect a `.cart` file's normalized AST, including source spans:
+
+```sh
+cargo run --offline --example ast -- tests/fixtures/diffusion.cart | less
+```
+
+This prints Rust's indented debug representation of source items, not typed
+computational IR or generated target code. Errors go to stderr with a nonzero
+exit status. The inspection format is not a stable interchange format.
+
 ## Checks and tooling
 
 ```sh
