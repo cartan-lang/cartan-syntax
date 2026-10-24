@@ -31,8 +31,7 @@ The master workspace owns cross-component decisions, integration tasks and agent
 coordination. Components own local contracts, implementation tasks and evidence.
 Both levels maintain this structure. Each directory's owning agent maintains
 an untracked `HANDOFF.md`, excluded by `/HANDOFF.md` in the repository's
-`.gitignore`. The workspace root carries the same ignore rule for future Git
-use even while it is not a repository. On "update HANDOFF", refresh that file
+`.gitignore`. The workspace root uses the same ignore rule as components. On "update HANDOFF", refresh that file
 in place with owner and working directory, current state and revision, active
 work or blockers, next actions, verification and links to authoritative docs.
 Read it when resuming; confirm its state against the checkout and task records.

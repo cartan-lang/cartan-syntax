@@ -139,6 +139,21 @@ buildable; the parent workspace's AGENTS.md coordinates component work.
   when the session starts at the workspace root. Initial cwd does not change
   component ownership.
 
+## Git commits
+
+- Use a sentence-case subject beginning with a present-tense imperative verb.
+  Aim for about 60 characters, with a maximum of 70. Omit trailing periods and
+  category or agent prefixes.
+- Normally use only a subject. Add a body only for useful rationale or context,
+  separated by a blank line; wrap prose at 72 characters without breaking literal
+  paths or identifiers.
+- Use the repository's configured Git author identity. Do not add agent
+  signatures, generated-by notices, agent attribution or co-author trailers,
+  or links to agent sessions or session transcripts.
+- Keep commits focused, preserve unrelated changes, stage explicit paths and
+  run appropriate checks. Commit locally; remote creation, pushing and
+  publication require owner authorization.
+
 ## Dependencies and branches
 
 - Local consumers select committed syntax revisions using an absolute `file://`
