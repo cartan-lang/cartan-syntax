@@ -204,8 +204,18 @@ buildable; the parent workspace's AGENTS.md coordinates component work.
   and task and any pending cross-harness handback. Review changed documentation
   at completion: retain authoritative contracts, consolidate task evidence and
   remove redundant proposals rather than accumulating an archive.
-- Python app changes use `uv run --locked pytest -q tests/python` and installed
-  entry-point checks. Keep imports/factories/docs free of implicit Rust builds,
+- Python app changes use installed entry-point checks and, from this component
+  directory inside the parent uv workspace,
+  `uv run --no-sync --package cartan-syntax-dev pytest -q tests/python` after
+  the workspace owner prepares the environment with
+  `uv sync --locked --all-packages` at the root. Independent clones use
+  `uv run --locked pytest -q tests/python` with their own lockfile/environment.
+  In the parent workspace uv uses the root lockfile and shared environment;
+  its owner coordinates uv sync/lock/run mutations with other active users.
+  Use `--no-sync` for component checks; `--locked` alone can mutate the environment.
+  Preserve the component manifest/lockfile for standalone use and verify it from
+  clean exported files outside the parent workspace, without creating a worktree.
+  Keep imports/factories/docs free of implicit Rust builds,
   process/server launches and SSH. Follow the [app contract](docs/component.md#development-application).
 - Keep one authoritative home per fact. Separate proposal, approval and actual
   implementation; list limitations and untested behavior explicitly.

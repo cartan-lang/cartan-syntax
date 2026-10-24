@@ -114,10 +114,21 @@ configured repository. Each app owns active operation tasks through its lifespan
 the aggregate must enter and exit each child's lifespan once. `serve` uses
 Uvicorn on loopback by default with an explicit port option.
 
-Python dependencies are locked with uv; an offline install requires cached
-artifacts. Set `UV_CACHE_DIR` to a writable cache when the default location is
-unavailable. No GPU, SSH, persistent server or browser execution is needed by
-the [in-process tests](../tests/python/test_application.py).
+When included in the parent uv workspace, Python packages share its `uv.lock` and `.venv`.
+After the workspace owner runs `uv sync --locked --all-packages` at the root,
+use `uv run --no-sync --package cartan-syntax-dev` from this component directory
+so test and fixture paths remain local. `--locked` alone can still mutate the
+shared environment; `--no-sync` uses the prepared environment without syncing.
+The component retains its own `pyproject.toml` and `uv.lock` for independent
+clones outside the parent workspace, where `uv sync --locked` creates a local
+environment. It has no dependency on the aggregate Python package. The parent
+owns workspace membership and shared environment changes; coordinate mutations
+there with its owner. See the [README](../README.md) for commands in both layouts.
+
+An offline install requires cached artifacts. Set `UV_CACHE_DIR` to a writable
+cache when the default location is unavailable. No GPU, SSH, persistent server
+or browser execution is needed by the
+[in-process tests](../tests/python/test_application.py).
 
 ## Acceptance limits
 

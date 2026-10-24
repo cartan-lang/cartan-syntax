@@ -41,6 +41,14 @@ the common registration/factory interface. No new analysis or Rust API is needed
   documentation-tool tests. Source and wheel builds pass offline. An independently
   installed wheel exposes the exact registry and packaged CSS, displays help
   outside a checkout and delegates real Rust inspection with matching AST output.
+- Standalone independence was rechecked from clean `git archive` files at
+  `1801202`, exported outside the parent workspace without a worktree. Its own
+  `uv sync --locked --offline` installed successfully without changing the
+  component manifest or lockfile. Python tests passed 19 cases with the real
+  Rust-binary case skipped because the clean export has no build outputs.
+  Installed no-argument/help commands and the single syntax registry entry pass.
+  Workspace commands use `--no-sync` after the workspace owner prepares the
+  shared environment, as described in the component contract.
 
 No persistent server, GPU, SSH, publication, remote cleanup or legacy access is
 part of this task. The installed HTTPX-based Starlette TestClient emits an
