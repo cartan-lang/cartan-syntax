@@ -291,7 +291,7 @@ def test_diagnostic_form_renders_escaped_output_and_json_api_is_unchanged(repo):
         assert 'text/html' in response.headers['content-type']
         assert '&lt;AST&gt;' in response.text and '&lt;error&gt;' in response.text
         assert 'value="x.cart"' in response.text
-        assert 'could not be inspected' in response.text
+        assert 'class="notice error" role="status"' in response.text
         payload = client.post('/api/inspect', json={'source': 'x.cart'}).json()
         assert payload['status'] == 'failed'
         assert payload['stdout'] == '<AST>\n'

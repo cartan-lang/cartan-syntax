@@ -40,9 +40,31 @@ and `DiagnosticKind`. A kind is an expected-token set, an unexpected token, or
 a stated grammar rule with its refusal flag and captured fields. A captured
 field has a name and span; it is not a rendered error sentence.
 
-The public `Rule` enumeration identifies grammar-specific failures. Display
-wording belongs to a client; callers need not parse diagnostic prose to decide
-which failure occurred.
+The owner requires diagnostics and errors to remain typed variants with payloads,
+source spans and underlying causes until one top-level formatter in a central
+location per standalone application. Lower layers must not generate diagnostic
+sentences, collapse causes into strings or classify errors by wording. The public
+`Rule` enumeration identifies grammar-specific failures; consumers inspect that
+identity rather than diagnostic prose. Wording assertions belong only to formatter
+tests. Other tests check structured identity, payload, location, cause and status.
+External process streams remain opaque output, not a source for string classification.
+
+The Rust CST/AST APIs already retain structured diagnostics. The standalone Rust
+CLI carries usage, file-read, parse and stdout failures as `CliError` variants;
+I/O variants retain the original `io::Error`, and parse failures retain their path
+and complete AST errors/spans. Only [the CLI formatter](../cli/src/diagnostic.rs)
+implements diagnostic presentation, called by the top-level CLI exit boundary.
+AST debug output remains an inspection format, not a diagnostic protocol.
+
+The Python development app is not yet fully migrated: its process service embeds
+launch/timeout messages in `stderr`, configuration failures use message-bearing
+`ValueError`, and HTTP validation/status presentation is spread through the
+application. Its version-one JSON envelope transports opaque child streams and
+cannot reconstruct typed Rust diagnostics. These are existing gaps, not exceptions
+to the rule; [the diagnostic work item](work/diagnostic-formatting.md) records their
+scope. Migrating them requires an explicit transport/formatter design that preserves
+current CLI/web behavior and underlying causes. No message matching is permitted
+as an adapter.
 
 ## Syntax tooling
 

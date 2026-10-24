@@ -1,4 +1,7 @@
-use std::{env, fs, io, io::Write, path::Path, process::ExitCode};
+mod diagnostic;
+
+use diagnostic::CliError;
+use std::{env, fs, io, io::Write, path::PathBuf, process::ExitCode};
 
 const HELP: &str = "Cartan syntax inspection
 
@@ -10,18 +13,15 @@ Usage:
 Print the normalized source AST and byte spans as indented Rust debug output.
 This is an inspection format, not typed computational IR or a stable interchange format.";
 
-fn output(value: impl std::fmt::Display) -> ExitCode {
+fn output(value: impl std::fmt::Display) -> Result<(), CliError> {
     match writeln!(io::stdout().lock(), "{value}") {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(error) if error.kind() == io::ErrorKind::BrokenPipe => ExitCode::SUCCESS,
-        Err(error) => {
-            eprintln!("stdout: {error}");
-            ExitCode::FAILURE
-        }
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::BrokenPipe => Ok(()),
+        Err(source) => Err(CliError::Output { source }),
     }
 }
 
-fn main() -> ExitCode {
+fn run() -> Result<(), CliError> {
     let args: Vec<_> = env::args_os().skip(1).collect();
     let path = match args.as_slice() {
         [] => return output(HELP),
@@ -29,23 +29,23 @@ fn main() -> ExitCode {
         [arg] if arg == "--version" => {
             return output(format_args!("cartan-syntax {}", env!("CARGO_PKG_VERSION")));
         }
-        [command, path] if command == "ast" => path,
-        _ => {
-            eprintln!("{HELP}");
-            return ExitCode::FAILURE;
-        }
+        [command, path] if command == "ast" => PathBuf::from(path),
+        _ => return Err(CliError::Usage),
     };
-    let source = match fs::read_to_string(path) {
-        Ok(source) => source,
+    let source = fs::read_to_string(&path).map_err(|source| CliError::Read {
+        path: path.clone(),
+        source,
+    })?;
+    let document = cartan_syntax::ast::parse_document(&source)
+        .map_err(|errors| CliError::Parse { path, errors })?;
+    output(format_args!("{:#?}", document.items))
+}
+
+fn main() -> ExitCode {
+    match run() {
+        Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("{}: {error}", Path::new(path).display());
-            return ExitCode::FAILURE;
-        }
-    };
-    match cartan_syntax::ast::parse_document(&source) {
-        Ok(document) => output(format_args!("{:#?}", document.items)),
-        Err(errors) => {
-            eprintln!("{errors:#?}");
+            eprintln!("{error}");
             ExitCode::FAILURE
         }
     }

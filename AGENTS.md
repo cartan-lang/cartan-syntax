@@ -174,8 +174,16 @@ buildable; the parent workspace's AGENTS.md coordinates component work.
   Use conventional Rust names and module organization.
 - One blank line separates functions and type declarations. Group related
   statements; avoid whitespace between every statement or multiple blank lines.
-- Represent parse failures as typed facts with source spans. Render diagnostics
-  at presentation boundaries. Tests assert structured identity and payload.
+- Diagnostics and errors retain typed variants, payload data, source spans and
+  underlying causes until presentation. Each standalone application has one
+  top-level diagnostic formatter in a central module; only that formatter owns
+  diagnostic wording. Do not generate messages in lower layers, classify failures
+  using strings, or replace structured facts/causes with rendered text. CLI/web
+  adapters route failures through their application's formatter. Tests outside
+  the formatter assert variants, payloads, spans, causes and status; wording tests
+  belong only to the formatter. Preserve external process output as opaque output,
+  never classify it by matching text. The [diagnostic contract](docs/component.md#diagnostics)
+  distinguishes implemented behavior from existing migration gaps.
 - Test syntax-tree structure and spans, malformed input and representative
   supported programs. Parser acceptance alone is not semantic validation.
 - Run `cargo check --workspace --offline`, `cargo test --workspace --offline`,
