@@ -9,8 +9,12 @@ buildable; the parent workspace's AGENTS.md coordinates component work.
   Each participating harness has one durable owner for this component. Reuse
   visible owner tasks; helpers are not replacement owners. Either harness may
   lead the ensemble as designated by the owner. Consult the workspace
-  [roster](../docs/coordination.md) and [protocol](../AGENTS.md#cross-harness-filesystem-mailboxes)
-  when available; never infer leadership or peer capabilities.
+  ignored [runtime roster](../.agent-mail/roster.json) and
+  [protocol](../AGENTS.md#cross-harness-filesystem-mailboxes) when available.
+  Standalone clones use their own ignored `.agent-mail/roster.json`. Reconcile
+  the roster with participants on startup; never infer leadership or peer
+  capabilities. Keep live thread references, session lead and monitor state out
+  of versioned guidance; preserve durable decisions and task evidence in docs.
 - Lead-authorized work may cross harnesses through either workspace or component
   counterparts. With Claude leading, both `Claude workspace -> Codex workspace
   -> Codex component` and `Claude workspace -> Claude component -> Codex component`
