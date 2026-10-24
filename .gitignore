@@ -3,3 +3,6 @@
 __pycache__/
 .DS_Store
 /HANDOFF.md
+/.venv/
+/.pytest_cache/
+/dist/

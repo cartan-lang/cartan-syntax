@@ -1,0 +1,1 @@
+"""Independent syntax development application."""

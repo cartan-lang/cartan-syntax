@@ -66,6 +66,59 @@ The generic `treegram` package interprets and prints this grammar. Tooling does
 not import a language builtin registry or require compiler execution. These
 generators do not provide a language server or semantic completion features.
 
+## Development application
+
+The installable `cartan-syntax-dev` distribution supplies `syntax_dev` and the
+unique `cartdev-syntax` executable. It composes with the workspace development
+app through the version-one `cartan.dev.components` entry point named `syntax`.
+The component owner maintains the implementation under the
+[Python app task](work/python-app.md) and the workspace's
+[application contract](../../docs/records/component-apps.md).
+
+`syntax_dev.application.component()` returns `api_version`, `id`, `title`,
+`create_cli` and `create_app`. The factories accept an explicit absolute
+`repo_root` and optional `rust_command` tuple. `create_app` additionally accepts
+the tuple of `(label, href)` navigation entries supplied by its composition owner.
+Returned Click groups and Starlette apps are independent of the aggregate
+package; imports and factories start no processes or servers.
+
+The standalone command locates the project from the invocation directory or
+`--repo PATH`. Its repeatable `--rust-command TOKEN` option supplies literal
+command-prefix arguments; use `--rust-command=-c` for an argument beginning with
+a hyphen. Factories and standalone commands read a component-local
+`[tool.cartdev]` `rust-command` array in `pyproject.toml` when no explicit command
+is supplied. The default is `target/debug/cartan-syntax` under the configured
+root. Missing binaries yield a build instruction, never an implicit build.
+
+`ir` resolves the input against the caller's invocation directory before running
+Rust's `ast` command with `cwd=repo_root`. Text output and child error streams
+are preserved. `--json` emits the version-one process-result envelope, retaining
+opaque Rust debug text and the actual child exit code when available. A missing
+executable has a null exit code; failed/timeout operations exit nonzero. The
+default timeout is 30 seconds. The asynchronous service kills its POSIX process
+group and reaps the child on timeout or cancellation; cancellation propagates
+after cleanup.
+
+The web app serves `/`, `/docs/`, `/diagnostics/` and packaged CSS. Documentation
+is restricted to resolved Markdown paths inside `docs/` and the root README;
+symlinks escaping those sources are refused. Metadata headers and raw HTML are
+not rendered as page content. Relative Markdown links are routed inside the
+viewer; relative non-document links and images are disabled rather than exposing
+other repository files. Local URLs honor deployment and named-mount prefixes;
+supplied aggregate navigation URLs are not rewritten.
+
+GET requests start no Rust process. An explicit diagnostic form or
+`POST /api/inspect` with `{"source": "path.cart"}` invokes the same bounded
+service and returns its result envelope. Web source paths are relative to the
+configured repository. Each app owns active operation tasks through its lifespan;
+the aggregate must enter and exit each child's lifespan once. `serve` uses
+Uvicorn on loopback by default with an explicit port option.
+
+Python dependencies are locked with uv; an offline install requires cached
+artifacts. Set `UV_CACHE_DIR` to a writable cache when the default location is
+unavailable. No GPU, SSH, persistent server or browser execution is needed by
+the [in-process tests](../tests/python/test_application.py).
+
 ## Acceptance limits
 
 Grammar parsing is one layer of syntax processing. The separate

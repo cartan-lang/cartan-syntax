@@ -32,6 +32,22 @@ computational IR or generated target code. Errors go to stderr with a nonzero
 exit status. The inspection format is not a stable interchange format.
 With no arguments, `cargo run` prints help to stdout and exits successfully.
 
+The Python development app provides the composable `cartdev-syntax` commands
+and a documentation/diagnostics web app:
+
+```sh
+uv sync --locked
+uv run cartdev-syntax
+uv run cartdev-syntax ir tests/fixtures/diffusion.cart
+uv run cartdev-syntax ir --json tests/fixtures/diffusion.cart
+uv run cartdev-syntax serve --port 8000
+```
+
+IR inspection invokes the existing debug binary; build it explicitly with
+`cargo build --offline` when needed. Help and documentation browsing do not need
+Rust. See the [development app contract](docs/component.md#development-application)
+for configuration, installed factories and mounted use.
+
 ## Checks and tooling
 
 ```sh
@@ -43,6 +59,7 @@ RUSTDOCFLAGS=-Dwarnings cargo doc --workspace --no-deps --offline
 python3 tools/docs.py check
 python3 tools/docs.py inventory
 python3 -m unittest discover -s tools -p 'test_*.py'
+uv run --locked pytest -q tests/python
 
 mkdir -p out
 cargo run -p cartan-syntax --offline --example grammar > out/grammar.js
@@ -54,6 +71,7 @@ member supplies the `cartan-syntax` binary and is the default member, so ordinar
 `cargo run` selects it. Use `-p cartan-syntax` for library examples or library-only
 checks; use `--workspace` to check all packages. All packages have publication
 disabled and require no registry downloads or adjacent repository.
+The separate Python app uses the dependency versions recorded in `uv.lock`.
 
 ## Current scope and next work
 
