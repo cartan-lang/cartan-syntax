@@ -82,7 +82,10 @@ def test_docs_mount_containment_lifespan(repo, tmp_path):
         assert app.state.started
         assert client.get('/').status_code == 200
         assert 'leak.md' not in client.get('/docs/').text
-        assert client.get('/docs/leak.md').status_code == 404
+        missing = client.get('/docs/leak.md')
+        assert missing.status_code == 404
+        assert 'role="alert"' in missing.text
+        assert 'SECRET' not in missing.text
         assert '&lt;script&gt;' in client.get('/docs/guide.md').text
         assert 'href="/docs/guide.md"' in client.get('/docs/README.md').text
         assert client.get('/diagnostics/').status_code == 200
@@ -241,6 +244,8 @@ def test_document_front_matter_is_not_rendered(repo):
         response = client.get('/docs/metadata.md')
         assert 'private-metadata' not in response.text
         assert '<h1>Visible title</h1>' in response.text
+        assert response.text.count('<h1>') == 1
+        assert '<h1>README.md</h1>' in client.get('/docs/README.md').text
 
 
 def test_import_is_pure_in_fresh_interpreter():
@@ -257,3 +262,38 @@ assert syntax_dev.application.component()["api_version"] == 1
 '''
     result = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
+
+
+def test_styled_shell_and_packaged_script_under_named_mount(repo):
+    app = create_app(repo_root=repo, navigation=(("Workspace", "/deployed/"), ("Syntax", "/deployed/syntax/")))
+    parent = Starlette(routes=[Mount('/syntax', app=app, name='syntax')])
+    with TestClient(parent, root_path='/deployed') as client:
+        page = client.get('/deployed/syntax/diagnostics/').text
+        assert '<html lang="en">' in page
+        assert 'name="viewport"' in page
+        assert 'href="#main"' in page and 'id="main"' in page
+        assert 'href="/deployed/syntax/" aria-current="page">Syntax</a>' in page
+        assert 'href="/deployed/syntax/diagnostics/" aria-current="page">Diagnostics</a>' in page
+        assert 'for="source"' in page and 'id="source"' in page
+        assert 'role="status"' in page
+        assert 'src="/deployed/syntax/static/diagnostics.js"' in page
+        script = client.get('/deployed/syntax/static/diagnostics.js')
+        assert script.status_code == 200
+        assert 'javascript' in script.headers['content-type']
+        assert 'data-inspect-form' in script.text
+
+
+def test_diagnostic_form_renders_escaped_output_and_json_api_is_unchanged(repo):
+    app = create_app(repo_root=repo, rust_command=fake('import sys; print("<AST>"); print("<error>", file=sys.stderr); sys.exit(2)'))
+    with TestClient(app) as client:
+        response = client.post('/api/inspect', data={'source': 'x.cart'})
+        assert response.status_code == 200
+        assert 'text/html' in response.headers['content-type']
+        assert '&lt;AST&gt;' in response.text and '&lt;error&gt;' in response.text
+        assert 'value="x.cart"' in response.text
+        assert 'could not be inspected' in response.text
+        payload = client.post('/api/inspect', json={'source': 'x.cart'}).json()
+        assert payload['status'] == 'failed'
+        assert payload['stdout'] == '<AST>\n'
+        assert payload['stderr'] == '<error>\n'
+        assert client.post('/api/inspect', data={'source': ''}).status_code == 400

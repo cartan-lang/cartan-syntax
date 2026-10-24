@@ -118,24 +118,60 @@ def create_app(*, repo_root: Path, rust_command: tuple[str, ...] | None = None,
         prefix = request.scope.get("root_path", "").rstrip("/")
         return prefix + str(app.url_path_for(name, **kwargs))
 
-    def page(request, title, body):
+    def page(request, title, body, *, section="overview", intro="", status_code=200, show_title=True):
         def url(name, **kwargs):
             return escape(route_url(request, name, **kwargs), quote=True)
-        nav = ' '.join(f'<a href="{escape(href, quote=True)}">{escape(label)}</a>' for label, href in navigation)
+        global_links = []
+        for label, href in navigation:
+            current = ' aria-current="page"' if href.rstrip("/") == route_url(request, "syntax_home").rstrip("/") else ""
+            global_links.append(f'<a href="{escape(href, quote=True)}"{current}>{escape(label)}</a>')
+        local_links = []
+        for key, label, href in (
+            ("overview", "Overview", url("syntax_home")),
+            ("docs", "Documentation", url("syntax_docs", path="")),
+            ("diagnostics", "Diagnostics", url("syntax_diagnostics")),
+        ):
+            current = ' aria-current="page"' if section == key else ""
+            local_links.append(f'<a href="{href}"{current}>{label}</a>')
+        heading = f'<h1>{escape(title)}</h1>' if show_title else f'<p class="subtle">{escape(title)}</p>'
+        description = f'<p class="subtle">{escape(intro)}</p>' if intro else ""
         html = (
-            '<!doctype html><html><head><meta charset="utf-8">'
-            f'<title>{escape(title)}</title>'
+            '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width, initial-scale=1">'
+            f'<title>{escape(title)} · Cartan Syntax</title>'
             f'<link rel="stylesheet" href="{url("syntax_style")}">'
-            f'</head><body><nav>{nav} '
-            f'<a href="{url("syntax_home")}">Syntax</a> '
-            f'<a href="{url("syntax_docs", path="")}">Docs</a> '
-            f'<a href="{url("syntax_diagnostics")}">Diagnostics</a>'
-            f'</nav><main><h1>{escape(title)}</h1>{body}</main></body></html>'
+            f'<script defer src="{url("syntax_script")}"></script>'
+            '</head><body><a class="skip-link" href="#main">Skip to content</a>'
+            '<header class="site-header"><div class="header-inner">'
+            f'<a class="brand" href="{url("syntax_home")}"><span class="brand-mark" aria-hidden="true">C</span>Cartan</a>'
+            f'<nav class="global-nav" aria-label="Workspace">{"".join(global_links)}</nav>'
+            '</div></header><div class="app-shell">'
+            f'<nav class="local-nav" aria-label="Syntax">{"".join(local_links)}</nav>'
+            '<main id="main" tabindex="-1"><div class="page-intro">'
+            f'<p class="eyebrow">Syntax</p>{heading}{description}</div>{body}</main>'
+            '</div></body></html>'
         )
-        return HTMLResponse(html)
+        return HTMLResponse(html, status_code=status_code)
 
     async def home(request):
-        return page(request, "Syntax", "<p>Source syntax inspection and maintained component documentation.</p>")
+        docs_url = escape(route_url(request, "syntax_docs", path=""), quote=True)
+        diagnostics_url = escape(route_url(request, "syntax_diagnostics"), quote=True)
+        body = (
+            '<div class="card-grid">'
+            f'<a class="card" href="{docs_url}"><p class="eyebrow">Explore</p>'
+            '<h2>Documentation</h2>'
+            '<p>Read the grammar, source AST interface and component guides.</p>'
+            '<span class="card-action">Open documentation <span aria-hidden="true">→</span></span></a>'
+            f'<a class="card" href="{diagnostics_url}"><p class="eyebrow">Inspect</p>'
+            '<h2>Diagnostics</h2>'
+            '<p>Inspect a source file’s syntax tree, source spans and parse diagnostics.</p>'
+            '<span class="card-action">Open diagnostics <span aria-hidden="true">→</span></span></a>'
+            '</div><section class="panel"><h2>From source to structure</h2>'
+            '<p>Explore concrete syntax trees and the supported source AST. Syntax inspection '
+            'describes written constructs; it does not resolve names or validate execution.</p></section>'
+        )
+        return page(request, "Source syntax, made visible", body,
+                    intro="Inspect Cartan source and explore the language’s written structure.")
 
     async def docs(request):
         name = request.path_params["path"]
@@ -150,13 +186,13 @@ def create_app(*, repo_root: Path, rust_command: tuple[str, ...] | None = None,
                         relative = path.relative_to(docs_root).as_posix()
                         href = escape(route_url(request, "syntax_docs", path=relative), quote=True)
                         links.append(f'<li><a href="{href}">{escape(relative)}</a></li>')
-            return page(request, "Documentation", '<ul>' + ''.join(links) + '</ul>')
+            return page(request, "Documentation", '<section class="panel"><ul class="doc-list">' + ''.join(links) + '</ul></section>', section="docs", intro="Guides, interface contracts and maintained component references.")
         base = root if name == "README.md" else root / "docs"
         path = (base / name).resolve()
         allowed = (path == root / "README.md" if name == "README.md" else
                    path.is_relative_to((root / "docs").resolve()) and (root / "docs").resolve().is_relative_to(root))
         if not allowed or path.suffix != ".md" or not path.is_file():
-            return Response("Document not found", status_code=404)
+            return page(request, "Document not found", '<p class="notice error" role="alert">This document is unavailable. Choose a document from the documentation index.</p>', section="docs", status_code=404)
         source = path.read_text(encoding="utf-8")
         if source.startswith("---\n") and "\n---\n" in source[4:]:
             source = source[4:].split("\n---\n", 1)[1]
@@ -180,41 +216,87 @@ def create_app(*, repo_root: Path, rust_command: tuple[str, ...] | None = None,
                     continue
                 href = route_url(request, "syntax_docs", path=destination)
                 child.attrSet(attribute, urlunsplit((*urlsplit(href)[:3], parts.query, parts.fragment)))
-        return page(request, name, markdown.renderer.render(tokens, markdown.options, {}))
+        has_title = any(token.type == "heading_open" and token.tag == "h1" for token in tokens)
+        return page(request, name, '<article class="panel prose">' + markdown.renderer.render(tokens, markdown.options, {}) + '</article>', section="docs", show_title=not has_title)
+
+    def inspection_page(request, *, source="", result=None, error=None, status_code=200):
+        action = escape(route_url(request, "syntax_inspect"), quote=True)
+        body = (
+            '<section class="panel"><h2>Inspect a source file</h2>'
+            '<p class="subtle" id="source-help">Use a path relative to this component repository.</p>'
+            f'<form method="post" action="{action}" data-inspect-form>'
+            '<label for="source">Source path<input id="source" name="source" required '
+            f'value="{escape(source, quote=True)}" aria-describedby="source-help" '
+            'placeholder="tests/fixtures/diffusion.cart" autocomplete="off" spellcheck="false"></label>'
+            '<button type="submit">Inspect source</button></form></section>'
+        )
+        if error:
+            body += f'<div class="notice error" role="alert">{escape(error)}</div>'
+        elif result is not None:
+            labels = {
+                "ok": "Inspection complete.",
+                "failed": "The source could not be inspected. Review the diagnostics below.",
+                "unavailable": "The syntax inspector is unavailable. Review the diagnostics below.",
+                "timeout": "The inspection timed out. Review the diagnostics below.",
+                "cancelled": "The inspection was cancelled.",
+            }
+            notice = "notice" if result.status == "ok" else "notice error"
+            body += f'<div class="{notice}" role="status">{escape(labels[result.status])}</div>'
+            body += '<section class="panel"><h2>Source AST</h2>'
+            body += f'<pre class="inspection-output" tabindex="0">{escape(result.stdout or "No AST output.")}</pre>'
+            if result.stderr:
+                body += f'<h2>Diagnostics</h2><pre class="inspection-output" tabindex="0">{escape(result.stderr)}</pre>'
+            body += '</section>'
+        else:
+            body += '<p class="notice" role="status">Choose a source file to begin.</p>'
+        body += '<p class="notice" role="status" data-inspect-pending hidden>Inspecting source…</p>'
+        return page(request, "Diagnostics", body, section="diagnostics", status_code=status_code,
+                    intro="Inspect the source AST and review parser diagnostics.")
 
     async def diagnostics(request):
-        action = escape(route_url(request, "syntax_inspect"), quote=True)
-        return page(request, "Diagnostics", f'<p>Run an explicit AST inspection. Paths are relative to the configured repository.</p><form method="post" action="{action}"><label>Source path <input name="source"></label><button>Inspect</button></form>')
+        return inspection_page(request)
 
     async def run_inspect(request):
-        if "application/json" in request.headers.get("content-type", ""):
+        wants_json = "application/json" in request.headers.get("content-type", "")
+
+        def invalid(message):
+            if wants_json:
+                return JSONResponse({"error": message}, status_code=400)
+            return inspection_page(request, error=message, status_code=400)
+
+        if wants_json:
             try:
                 data = await request.json()
                 source = data["source"]
             except (ValueError, KeyError, TypeError):
-                return JSONResponse({"error": "source is required"}, status_code=400)
+                return invalid("source is required")
         else:
             try:
                 data = parse_qs((await request.body()).decode("utf-8"))
             except UnicodeDecodeError:
-                return JSONResponse({"error": "form must be UTF-8"}, status_code=400)
+                return invalid("form must be UTF-8")
             source = data.get("source", [None])[0]
         if not isinstance(source, str) or not source:
-            return JSONResponse({"error": "source is required"}, status_code=400)
+            return invalid("source is required")
         try:
             source_path = (root / source).resolve()
         except (OSError, ValueError, RuntimeError):
-            return JSONResponse({"error": "invalid source path"}, status_code=400)
+            return invalid("invalid source path")
         task = asyncio.create_task(inspect(root, rust_command, source_path))
         request.app.state.operations.add(task)
         try:
             result = await task
         finally:
             request.app.state.operations.discard(task)
-        return JSONResponse(result.envelope())
+        if wants_json:
+            return JSONResponse(result.envelope())
+        return inspection_page(request, source=source, result=result)
 
     async def style(request):
         return Response(files("syntax_dev").joinpath("static/style.css").read_text(), media_type="text/css")
+
+    async def script(request):
+        return Response(files("syntax_dev").joinpath("static/diagnostics.js").read_text(), media_type="text/javascript")
 
     routes = [
         Route("/", home, name="syntax_home"),
@@ -222,6 +304,7 @@ def create_app(*, repo_root: Path, rust_command: tuple[str, ...] | None = None,
         Route("/diagnostics/", diagnostics, name="syntax_diagnostics"),
         Route("/api/inspect", run_inspect, methods=["POST"], name="syntax_inspect"),
         Route("/static/style.css", style, name="syntax_style"),
+        Route("/static/diagnostics.js", script, name="syntax_script"),
     ]
     app = Starlette(routes=routes, lifespan=lifespan)
     app.state.started = False

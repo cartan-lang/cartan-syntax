@@ -99,7 +99,11 @@ default timeout is 30 seconds. The asynchronous service kills its POSIX process
 group and reaps the child on timeout or cancellation; cancellation propagates
 after cleanup.
 
-The web app serves `/`, `/docs/`, `/diagnostics/` and packaged CSS. Documentation
+The web app serves `/`, `/docs/`, `/diagnostics/` and locally packaged CSS and
+JavaScript. It follows the [shared visual conventions](../../docs/records/component-apps.md)
+with global and component navigation, a keyboard skip link, visible focus,
+responsive panels and bounded code/table overflow. Styles and scripts are
+packaged independently; no aggregate or sibling import is required. Documentation
 is restricted to resolved Markdown paths inside `docs/` and the root README;
 symlinks escaping those sources are refused. Metadata headers and raw HTML are
 not rendered as page content. Relative Markdown links are routed inside the
@@ -108,8 +112,12 @@ other repository files. Local URLs honor deployment and named-mount prefixes;
 supplied aggregate navigation URLs are not rewritten.
 
 GET requests start no Rust process. An explicit diagnostic form or
-`POST /api/inspect` with `{"source": "path.cart"}` invokes the same bounded
-service and returns its result envelope. Web source paths are relative to the
+`POST /api/inspect` with JSON `{"source": "path.cart"}` invokes the same bounded
+service and returns its unchanged result envelope. Browser form submissions
+return an HTML result with escaped output and diagnostics, preserving the entered
+path. A small local script disables the submit button and announces pending work;
+inspection also works without JavaScript. Invalid form input renders a styled
+error with HTTP status 400, matching JSON validation status. Web source paths are relative to the
 configured repository. Each app owns active operation tasks through its lifespan;
 the aggregate must enter and exit each child's lifespan once. `serve` uses
 Uvicorn on loopback by default with an explicit port option.
