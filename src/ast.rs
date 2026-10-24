@@ -35,11 +35,47 @@ pub enum ItemKind {
     While(While),
 }
 
-/// A namespace import. File paths, aliases and hole arguments are unsupported.
+/// A written import, without path lookup, name binding or export resolution.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Use {
+    pub source: UseSource,
+    pub selection: Option<ImportSelection>,
+    pub alias: Option<Name>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum UseSource {
+    Namespace(Name),
+    File(PathLiteral),
+}
+
+/// A quoted file path; its span and raw spelling include both quotes.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PathLiteral {
+    pub raw: String,
+    pub decoded: String,
+    pub span: Span,
+}
+
+/// A selector's span includes `::` and its star, single name or braced list.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ImportSelection {
+    pub kind: Imports,
+    pub span: Span,
+}
+
+/// An explicit namespace followed by one or more member names.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct QualifiedName {
     pub namespace: Name,
-    pub imports: Imports,
+    pub members: Vec<Name>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum NameRef {
+    Local(Name),
+    Qualified(QualifiedName),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -153,6 +189,7 @@ pub enum ExprKind {
     Number(String),
     Bool(bool),
     Name(Name),
+    QualifiedName(QualifiedName),
     Unary {
         operator: UnaryOperator,
         operand: Box<Expr>,
@@ -168,7 +205,7 @@ pub enum ExprKind {
         alternative: Box<Expr>,
     },
     Call {
-        function: Name,
+        function: NameRef,
         arguments: Vec<Expr>,
     },
     Index {
@@ -280,6 +317,8 @@ pub enum FormDiagnosticKind {
     UnsupportedConstruct {
         kind: String,
     },
+    /// A use declaration cannot combine an alias with imported selectors.
+    UseAliasAndImports,
     ComparisonChain,
     RangeChain,
     BodyResultCount {

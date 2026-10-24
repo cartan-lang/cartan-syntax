@@ -165,7 +165,9 @@ or browser execution is needed by the
 Grammar parsing is one layer of syntax processing. The separate
 [`ast` interface](ast-interface.md) normalizes a supported subset into an
 abstract syntax tree (AST), the representation of source constructs used for
-further analysis. It refuses written comparison/range chains and requires
+further analysis. It includes file/namespace use heads, selectors, aliases and
+qualified value/call names without loading files or resolving names. It refuses
+alias-plus-selector combinations and written comparison/range chains, and requires
 value bodies to have exactly one result. The CST API still returns grammar
 trees for those forms without performing the AST checks.
 

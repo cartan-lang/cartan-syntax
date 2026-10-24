@@ -10,7 +10,7 @@ topics: [syntax, interface, frontend]
 # Workload source AST interface
 
 `cartan-syntax` owns parsing and syntax-form validation for the five current
-numerical workloads. An abstract syntax tree (AST) represents written constructs
+numerical workloads and the owner-authorized import/qualified-name source subset. An abstract syntax tree (AST) represents written constructs
 independently of concrete grammar production names. The component agents agreed
 this interface under owner-authorized parser-transfer work; the supervisor
 confirmed the scoped form rules on 2026-10-23. The owner authorizes the local Git
@@ -49,14 +49,14 @@ The [public Rust types](../src/ast.rs) are authoritative for fields and variants
 `Expr`, `Item` and `Pattern` carry `kind` and `span`; names carry text and a span.
 The source constructs are:
 
-| Area | Representation needed by the workloads |
+| Area | Supported source representation |
 | --- | --- |
 | Items | Imports, ordinary and `param` bindings, `state` declarations, fiber declarations, function equations, and guarded `while` update blocks. |
 | Functions | Name, ordered parameters with patterns and optional annotations, and expression body. |
 | Fibers | Name, written base annotation such as `Module`, and ordered named components with annotations. |
 | Annotations | Named types and generic applications, preserving names and numeric arguments such as `Array<Primitive, 1>` without interpreting rank. |
 | Patterns | Name, wildcard, recursive list pattern, and positional site pattern with its enclosing annotation retained. |
-| Expressions | Literal number/boolean, name, unary/binary operation, conditional, call, indexing, `of` projection, list, range, `periodic`, body, `for` comprehension and `reduce`. |
+| Expressions | Literal number/boolean, local/qualified name, unary/binary operation, conditional, local/qualified call, indexing, `of` projection, list, range, `periodic`, body, `for` comprehension and `reduce`. |
 | Body | Ordered `BodyItem::Local` and `BodyItem::Result` entries, with exactly one result. A result need not be last. |
 | Update block | Written guard and ordered writes, preserving target names, values and spans. |
 
@@ -65,7 +65,56 @@ Indexing retains its source expression and index expressions. A list of periodic
 ranges remains a list containing periodic range expressions; recognizing a
 domain belongs to analysis. Comprehensions retain their pattern, collection and
 body. Reductions retain accumulator, seed, driver pattern, collection and body.
-Support beyond the forms needed by the workload fixtures is not implied.
+Support beyond the listed forms and import interface below is not implied.
+
+## Imports and qualified names
+
+The owner-authorized [import AST work](work/use-source-ast.md) extends normalization
+without changing the grammar. `Use` contains `source: UseSource`, optional
+`selection: ImportSelection` and optional `alias: Name`. `UseSource::Namespace`
+carries a written bare `Name`; `UseSource::File` carries `PathLiteral` with the raw
+quoted spelling, decoded string and full quoted-literal span. `alias` records only
+an explicitly written alias, never a synthesized file-stem binding. The item span
+covers the complete declaration.
+
+A selection is absent for `use ns` or `use "file.cart"`, distinct from `::*`.
+`ImportSelection.span` covers `::` through the star, single name or braced list,
+including intervening whitespace. `Imports::All` also carries the star's span;
+`Imports::Names` carries each selected name and its span. `::name` and `::{name}`
+normalize to the same name-list shape; their selector spans preserve the written
+form. Explicit aliases retain their identifier spans. Syntax neither checks
+whether a namespace exists nor reads the referenced file.
+
+Quoted path decoding maps backslash followed by `n` to newline and by `t` to tab.
+For any other escaped character it removes the backslash and retains that
+character, including quote, backslash and Unicode characters. This is not JSON
+escaping: a written backslash followed by `u0041` yields `u0041`, not `A`.
+The raw quoted spelling and original byte span remain available alongside the
+decoded string. Only use-path literals gain this normalization; general string
+expressions remain unsupported. Path validity and filesystem behavior belong to
+consumers.
+
+`QualifiedName` retains its `namespace: Name`, ordered nonempty `members: Vec<Name>`
+and full name span. Every segment retains its own byte span; no dotted/joined
+string replaces that structure. Value references use `ExprKind::QualifiedName`;
+ordinary value references remain `ExprKind::Name`. Calls use `NameRef::Local(Name)`
+or `NameRef::Qualified(QualifiedName)` in `ExprKind::Call.function`. Declaration,
+pattern and annotation names are unchanged; qualified annotations and qualified
+function definitions remain outside this subset.
+
+An explicit alias combined with any selector produces
+`FormDiagnosticKind::UseAliasAndImports`, with the complete use-declaration span.
+The CST grammar permits the combination; this AST source-form check rejects it.
+`with`/hole clauses remain typed unsupported constructs rather than being dropped.
+Namespace declarations and functors are not added. File selectors retain the file
+head and absence of explicit alias so graph analysis can apply its adopted default
+namespace binding; this AST does not synthesize bindings, resolve names or decide
+exports, collisions, cycles or builtin availability.
+
+The revised `Use` fields and call head type require deliberate consumer adapter
+updates. Both graph and codegen owners accepted this exact seam before edits;
+they own their adapters and locked dependency revisions. Accepting a form in
+syntax does not promise execution support in either consumer.
 
 ## Normalization and diagnostics
 
@@ -85,7 +134,7 @@ whose semantic validity is the consumer's responsibility.
 Structured errors distinguish `Grammar(Diagnostic)` from
 `Form(FormDiagnostic)`. Form diagnostics carry a span and typed kind with
 relevant payloads: unsupported construct and its CST kind, comparison/range
-chain, and body result count. `Error::span()` returns the full byte range; errors
+chain, body result count, and a use alias combined with selectors. `Error::span()` returns the full byte range; errors
 derive `Clone`, `Debug`, `PartialEq` and `Eq`. Grammar diagnostics are preserved
 without rewriting. Normalization reports the first form error in each document
 item; it returns no partial AST if any error occurs. Unsupported syntax is
@@ -105,10 +154,10 @@ The adapter must explicitly reject orders it cannot represent, rather than
 misclassify them as invalid source syntax. Update bodies currently support
 ordered writes only; other update-body forms are outside this AST subset.
 
-Only named types and generic applications, named projections, namespace imports,
-and the listed expression forms are normalized. File imports, aliases, default
-arguments, configuration/lock clauses, sum fibers, qualified names, general
-`fold`, guard/configuration clauses on reductions and additional pattern forms
+Only named types and generic applications, named projections, the imports above,
+and the listed expression forms are normalized. Default arguments,
+configuration/lock clauses, sum fibers, qualified annotations,
+general `fold`, guard/configuration clauses on reductions and additional pattern forms
 return unsupported errors. Broader syntax restrictions such as periodic operands
 or annotation-placement rules are not comprehensively validated. Names, type
 existence, arity, domain/rank restrictions and numeric representability remain
@@ -125,6 +174,15 @@ the legacy checkout. These findings justify preserving pattern distinctions,
 checking written grouping, and requiring one result without requiring it last.
 They do not import legacy evaluation, semantic analysis or full-language duties.
 The local normalizer is a new implementation over this component's CST.
+
+For imports, the lead supplied and checked the same legacy revision's
+`crates/cartan/src/parser.rs` lines 552–596 and test at 2141 for alias-plus-selector
+refusal, and `crates/cartan/src/lexer.rs` lines 72–94 and test at 182 for exact
+string decoding. Specification section 2.1 states backslash escaping; the lexer
+provides the precise rule above. The owner-authorized import prerequisite adopts
+these source-form and decoding rules to avoid divergent syntax/loader behavior.
+It does not import legacy module execution, functors or a builtin catalogue.
+The syntax owner did not read or execute legacy material.
 
 ## Local dependency delivery
 

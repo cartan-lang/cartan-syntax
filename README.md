@@ -98,7 +98,9 @@ independent of the Python workspace.
 - Tests cover grammar invariants, five numerical workload
   fixtures, tree structure, source spans, Unicode, errors and tooling.
 - The AST covers the five workload fixtures, ordered body items, list/site
-  patterns and comparison/range-chain checks. Other constructs may parse into
+  patterns, file/namespace imports, qualified values/calls and source-form checks.
+  Import paths retain raw text, decoded strings and byte spans; syntax performs
+  no file loading or name resolution. Other constructs may parse into
   a CST but return a structured unsupported-form error during normalization.
   Neither API performs semantic validation or verifies execution support.
 - The generated Tree-sitter JavaScript passes a syntax check. Building and

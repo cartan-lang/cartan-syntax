@@ -130,6 +130,86 @@ impl Reader<'_> {
         })
     }
 
+    fn qualified_name(&self, node: &Node) -> Result<QualifiedName> {
+        shape(node, &["namespace", "name"], &[])?;
+        let namespace = self.name(field(node, "namespace")?)?;
+        let members: Vec<_> = node
+            .children_named("name")
+            .map(|member| self.name(member))
+            .collect::<Result<_>>()?;
+        if members.is_empty() {
+            return Err(unsupported(node));
+        }
+        Ok(QualifiedName {
+            namespace,
+            members,
+            span: span(node),
+        })
+    }
+
+    fn name_ref(&self, node: &Node) -> Result<NameRef> {
+        match node.kind.as_str() {
+            "identifier" => Ok(NameRef::Local(self.name(node)?)),
+            "qualified_identifier" => Ok(NameRef::Qualified(self.qualified_name(node)?)),
+            _ => Err(unsupported(node)),
+        }
+    }
+
+    fn path_literal(&self, node: &Node) -> Result<PathLiteral> {
+        if node.kind != "string" {
+            return Err(unsupported(node));
+        }
+        let raw = self.text(node);
+        let content = raw
+            .strip_prefix('"')
+            .and_then(|text| text.strip_suffix('"'))
+            .ok_or_else(|| unsupported(node))?;
+        let mut decoded = String::new();
+        let mut chars = content.chars();
+        while let Some(ch) = chars.next() {
+            decoded.push(if ch == '\\' {
+                match chars.next().ok_or_else(|| unsupported(node))? {
+                    'n' => '\n',
+                    't' => '\t',
+                    escaped => escaped,
+                }
+            } else {
+                ch
+            });
+        }
+        Ok(PathLiteral {
+            raw: raw.into(),
+            decoded,
+            span: span(node),
+        })
+    }
+
+    fn import_selection(&self, node: &Node, imports: &Node) -> Result<ImportSelection> {
+        shape(imports, &["name"], &[])?;
+        let kind = if let Some(star) = imports.children.iter().find(|child| child.kind == "*") {
+            Imports::All { span: span(star) }
+        } else {
+            Imports::Names(
+                imports
+                    .children_named("name")
+                    .map(|name| self.name(name))
+                    .collect::<Result<_>>()?,
+            )
+        };
+        let separator = node
+            .children
+            .iter()
+            .find(|child| child.kind == "::")
+            .ok_or_else(|| unsupported(imports))?;
+        Ok(ImportSelection {
+            kind,
+            span: Span {
+                start: separator.start,
+                end: imports.end,
+            },
+        })
+    }
+
     fn optional_annotation(&self, node: &Node) -> Result<Option<Annotation>> {
         node.child("type")
             .map(|child| self.annotation(child))
@@ -139,22 +219,28 @@ impl Reader<'_> {
     fn item(&self, node: &Node) -> Result<Item> {
         let kind = match node.kind.as_str() {
             "use_declaration" => {
-                shape(node, &["namespace", "imports"], &[])?;
-                let namespace = self.name(field(node, "namespace")?)?;
-                let imports = field(node, "imports")?;
-                shape(imports, &["name"], &[])?;
-                let imports =
-                    if let Some(star) = imports.children.iter().find(|child| child.kind == "*") {
-                        Imports::All { span: span(star) }
-                    } else {
-                        Imports::Names(
-                            imports
-                                .children_named("name")
-                                .map(|name| self.name(name))
-                                .collect::<Result<_>>()?,
-                        )
-                    };
-                ItemKind::Use(Use { namespace, imports })
+                shape(node, &["namespace", "path", "imports", "alias"], &[])?;
+                if node.child("alias").is_some() && node.child("imports").is_some() {
+                    return Err(form(node, FormDiagnosticKind::UseAliasAndImports));
+                }
+                let source = if let Some(path) = node.child("path") {
+                    UseSource::File(self.path_literal(path)?)
+                } else {
+                    UseSource::Namespace(self.name(field(node, "namespace")?)?)
+                };
+                let selection = node
+                    .child("imports")
+                    .map(|imports| self.import_selection(node, imports))
+                    .transpose()?;
+                let alias = node
+                    .child("alias")
+                    .map(|alias| self.name(alias))
+                    .transpose()?;
+                ItemKind::Use(Use {
+                    source,
+                    selection,
+                    alias,
+                })
             }
             "binding" | "pattern_binding" | "port_declaration" => {
                 shape(node, &["name", "pattern", "type", "kind", "value"], &[])?;
@@ -346,6 +432,7 @@ impl Reader<'_> {
             "number" => ExprKind::Number(self.text(node).into()),
             "boolean" => ExprKind::Bool(self.text(node) == "true"),
             "identifier" => ExprKind::Name(self.name(node)?),
+            "qualified_identifier" => ExprKind::QualifiedName(self.qualified_name(node)?),
             "parenthesized_expression" | "selector" => {
                 let mut expr = self.expr(single(node)?)?;
                 expr.span = span(node);
@@ -405,7 +492,7 @@ impl Reader<'_> {
             "call_expression" => {
                 shape(node, &["function", "arguments"], &[])?;
                 ExprKind::Call {
-                    function: self.name(field(node, "function")?)?,
+                    function: self.name_ref(field(node, "function")?)?,
                     arguments: children(field(node, "arguments")?)
                         .map(|node| self.expr(node))
                         .collect::<Result<_>>()?,
