@@ -49,6 +49,11 @@ the common registration/factory interface. No new analysis or Rust API is needed
   Installed no-argument/help commands and the single syntax registry entry pass.
   Workspace commands use `--no-sync` after the workspace owner prepares the
   shared environment, as described in the component contract.
+- After the parent workspace sync, all 20 Python tests passed from the component
+  directory with `uv run --no-sync --package cartan-syntax-dev`. No-argument/help
+  commands passed, JSON AST output matched the existing Rust binary exactly,
+  and the selected interpreter used the root `.venv`. Neither the component
+  manifest nor standalone lockfile changed; no Rust build was needed.
 
 No persistent server, GPU, SSH, publication, remote cleanup or legacy access is
 part of this task. The installed HTTPX-based Starlette TestClient emits an

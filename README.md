@@ -44,8 +44,8 @@ uv run cartdev-syntax ir --json tests/fixtures/diffusion.cart
 uv run cartdev-syntax serve --port 8000
 ```
 
-When this checkout is a member of the parent Python workspace, uv uses its shared `uv.lock` and
-`.venv`. After the workspace owner runs `uv sync --locked --all-packages` at
+In this parent Python workspace, uv uses the shared root `uv.lock` and `.venv`.
+After the workspace owner runs `uv sync --locked --all-packages` at
 the workspace root, run these from this component directory:
 
 ```sh

@@ -114,7 +114,7 @@ configured repository. Each app owns active operation tasks through its lifespan
 the aggregate must enter and exit each child's lifespan once. `serve` uses
 Uvicorn on loopback by default with an explicit port option.
 
-When included in the parent uv workspace, Python packages share its `uv.lock` and `.venv`.
+In this parent uv workspace, Python packages share its `uv.lock` and `.venv`.
 After the workspace owner runs `uv sync --locked --all-packages` at the root,
 use `uv run --no-sync --package cartan-syntax-dev` from this component directory
 so test and fixture paths remain local. `--locked` alone can still mutate the
