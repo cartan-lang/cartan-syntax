@@ -1,0 +1,15 @@
+[package]
+name = "cartan-syntax-cli"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Command-line inspection of Cartan source syntax"
+
+[[bin]]
+name = "cartan-syntax"
+path = "src/main.rs"
+doc = false
+
+[dependencies]
+cartan-syntax = { path = ".." }

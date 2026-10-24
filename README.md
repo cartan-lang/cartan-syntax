@@ -24,7 +24,7 @@ form checks and boundary with semantic analysis.
 Inspect a `.cart` file's normalized AST, including source spans:
 
 ```sh
-cargo run --offline --example ast -- tests/fixtures/diffusion.cart | less
+cargo run --offline -- ast tests/fixtures/diffusion.cart | less
 ```
 
 This prints Rust's indented debug representation of source items, not typed
@@ -44,13 +44,15 @@ python3 tools/docs.py inventory
 python3 -m unittest discover -s tools -p 'test_*.py'
 
 mkdir -p out
-cargo run --offline --example grammar > out/grammar.js
+cargo run -p cartan-syntax --offline --example grammar > out/grammar.js
 node --check out/grammar.js
 ```
 
-The root package uses the local `support/treegram` package. Neither package
-requires registry downloads or an adjacent repository. Both have publication
-disabled; no GitHub remote or public/private visibility has been assigned.
+The root library uses the local `support/treegram` package. The `cli` workspace
+member supplies the `cartan-syntax` binary and is the default member, so ordinary
+`cargo run` selects it. Use `-p cartan-syntax` for library examples or library-only
+checks; use `--workspace` to check all packages. All packages have publication
+disabled and require no registry downloads or adjacent repository.
 
 ## Current scope and next work
 

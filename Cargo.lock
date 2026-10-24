@@ -10,5 +10,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "cartan-syntax-cli"
+version = "0.1.0"
+dependencies = [
+ "cartan-syntax",
+]
+
+[[package]]
 name = "treegram"
 version = "0.1.0"

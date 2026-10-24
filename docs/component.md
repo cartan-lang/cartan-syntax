@@ -46,6 +46,14 @@ which failure occurred.
 
 ## Syntax tooling
 
+The `cartan-syntax-cli` workspace member supplies a `cartan-syntax` binary. Its
+dependency points to the root parser library; the library has no CLI dependency.
+The workspace sets `default-members = ["cli"]`, matching codegen's package
+arrangement. The selected package has one binary, so no `default-run` is needed.
+The binary disables rustdoc output to avoid colliding with the same-named
+library's documentation; CLI usage lives in its help and the README.
+See the [README](../README.md) for source inspection and library-example commands.
+
 `grammar::grammar()` returns the shared grammar value. The same value drives:
 
 - `grammar::print()`: Tree-sitter grammar JavaScript.
