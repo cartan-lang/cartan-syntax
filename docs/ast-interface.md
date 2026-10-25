@@ -10,7 +10,7 @@ topics: [syntax, interface, frontend]
 # Workload source AST interface
 
 `cartan-syntax` owns parsing and syntax-form validation for the five current
-numerical workloads and the owner-authorized import/qualified-name source subset. An abstract syntax tree (AST) represents written constructs
+numerical workloads and the owner-authorized import and configurable source subsets. An abstract syntax tree (AST) represents written constructs
 independently of concrete grammar production names. The component agents agreed
 this interface under owner-authorized parser-transfer work; the supervisor
 confirmed the scoped form rules on 2026-10-23. The owner authorizes the local Git
@@ -21,7 +21,8 @@ and broader grammar inspection.
 ## Boundary
 
 Syntax owns source parsing, normalization, source locations and syntax-form
-errors. The codegen frontend owns conversion to its analysis representation,
+errors. Graph owns configurable semantics and its source adapter. The existing
+codegen frontend owns conversion to its analysis representation,
 name resolution, type checking, constants, domain interpretation, array
 composition, and numerical lowering. The core codegen library remains independent
 of syntax. In particular, the syntax AST contains neither inferred types nor
@@ -56,7 +57,7 @@ The source constructs are:
 | Fibers | Name, written base annotation such as `Module`, and ordered named components with annotations. |
 | Annotations | Named types and generic applications, preserving names and numeric arguments such as `Array<Primitive, 1>` without interpreting rank. |
 | Patterns | Name, wildcard, recursive list pattern, and positional site pattern with its enclosing annotation retained. |
-| Expressions | Literal number/boolean, local/qualified name, unary/binary operation, conditional, local/qualified call, indexing, `of` projection, list, range, `periodic`, body, `for` comprehension and `reduce`. |
+| Expressions | Literal number/boolean, local/qualified name, unary/binary operation, conditional, local/qualified call, indexing, `of` projection, list, named map, map join, configurable constructor/application, range, `periodic`, body, `for` comprehension and `reduce`. |
 | Body | Ordered `BodyItem::Local` and `BodyItem::Result` entries, with exactly one result. A result need not be last. |
 | Update block | Written guard and ordered writes, preserving target names, values and spans. |
 
@@ -65,7 +66,7 @@ Indexing retains its source expression and index expressions. A list of periodic
 ranges remains a list containing periodic range expressions; recognizing a
 domain belongs to analysis. Comprehensions retain their pattern, collection and
 body. Reductions retain accumulator, seed, driver pattern, collection and body.
-Support beyond the listed forms and import interface below is not implied.
+Support beyond the listed forms and interfaces below is not implied.
 
 ## Imports and qualified names
 
@@ -116,6 +117,58 @@ updates. Both graph and codegen owners accepted this exact seam before edits;
 they own their adapters and locked dependency revisions. Accepting a form in
 syntax does not promise execution support in either consumer.
 
+## Maps and configurables
+
+The [configurable source work](work/configurable-source-ast.md) supplies the
+interface agreed with graph and the implementation coordinator. Ordinary named
+map literals use `ExprKind::Map(Vec<MapEntry>)`; `{}` is an empty map, while
+`{value}` remains a body. Each entry has `key: Name`, `value: Expr` and its full
+entry `span`. The outer expression span includes braces. Entry order, duplicate
+keys, individual key/value spans and nested supported expressions are preserved.
+Computed keys and map walks remain explicit unsupported forms in normalization;
+this is a bounded named-map subset, not all statically enumerable maps.
+
+`a <> b` uses `ExprKind::MapJoin { left, right, operator_span }`. It retains the
+existing additive precedence and left associativity: `a <> b <> c` means
+`(a <> b) <> c`, and `a <> b + c` means `(a <> b) + c`. Syntax does not validate
+operand types or implement strict joins, key compatibility or right bias.
+
+`:base :over {body}` uses `ExprKind::Configurable { settings, body }`.
+The nonempty ordered `Vec<SettingsAtom>` retains each atom's `value: Expr` and
+introducing colon `operator_span`, including the leading colon. The `Body`
+retains its own braces and ordered locals plus exactly one result, as for an
+ordinary body. Single-atom forms include `:{c: 1} {c}`, `:base {c}` and
+`:(base <> over) {c}`. Each atom uses the existing configuration-atom grammar:
+named map, bare/qualified name, named call, index or parenthesized expression.
+Joins inside atoms require parentheses. Each repeated atom has its own colon;
+there is no implicit synthetic join node or synthetic operator span.
+
+`value:settings` and `value.{key: expression}` use
+`ExprKind::Configure { kind, target, settings, operator_span }`, where `kind` is
+`ConfigureKind::Colon` or `ConfigureKind::Dot`. Both chain left at postfix
+precedence, above arithmetic. Calls and indices within a colon atom bind to that
+atom: `value:make(x):choices[i]` has two assignment links. A following literal-dot
+link applies to the configured target. Dot accepts only a literal map in this
+slice. Named-dot, parenthesized-dot and trailing-dot forms remain unsupported;
+no source spelling for named closing is inferred. The `operator_span` fields
+cover only the written `:`, `.` or `<>`, excluding continuation whitespace.
+Other expression spans retain the complete written form and grouping.
+
+These forms preserve source only. Graph owns setting/default scopes, type
+inference and fitting, duplicate/unknown-key diagnostics, joins, live substitution,
+interface closing, configurable consumption and the prohibition on configurable
+values nested inside settings. Syntax preserves such nested expressions when
+otherwise supported so graph can diagnose them. The retired function-header
+configuration `f(x):{c:1}=body` and positional parameter defaults remain
+unsupported normalized forms. No execution support follows from AST acceptance.
+
+The lead verified the accepted constructor chain and literal closing against
+legacy `docs/rulings/configurable-syntax.md` option 4 and
+`docs/records/config-map.md` at `a2916b3`, and recorded the bounded contract in
+[the governing workspace work item](../../docs/work/compile-language-integration.md).
+Syntax adopts the written forms and source provenance, not legacy evaluation or
+expansion machinery. The syntax owner did not consult or execute legacy.
+
 ## Normalization and diagnostics
 
 Bare `i, j` and bracketed `[i, j]` patterns normalize to the same list-pattern
@@ -156,7 +209,7 @@ ordered writes only; other update-body forms are outside this AST subset.
 
 Only named types and generic applications, named projections, the imports above,
 and the listed expression forms are normalized. Default arguments,
-configuration/lock clauses, sum fibers, qualified annotations,
+function-header configuration/lock clauses, sum fibers, qualified annotations,
 general `fold`, guard/configuration clauses on reductions and additional pattern forms
 return unsupported errors. Broader syntax restrictions such as periodic operands
 or annotation-placement rules are not comprehensively validated. Names, type

@@ -128,6 +128,48 @@ fn assert_expr_spans(source: &str, expr: &Expr) {
                 assert_expr_spans(source, expr);
             }
         }
+        ExprKind::Map(entries) => {
+            for entry in entries {
+                assert!(source.get(entry.span.start..entry.span.end).is_some());
+                assert_name_span(source, &entry.key);
+                assert_expr_spans(source, &entry.value);
+            }
+        }
+        ExprKind::MapJoin {
+            left,
+            right,
+            operator_span,
+        } => {
+            assert_eq!(&source[operator_span.start..operator_span.end], "<>");
+            assert_expr_spans(source, left);
+            assert_expr_spans(source, right);
+        }
+        ExprKind::Configurable { settings, body } => {
+            for atom in settings {
+                assert_eq!(
+                    &source[atom.operator_span.start..atom.operator_span.end],
+                    ":"
+                );
+                assert_expr_spans(source, &atom.value);
+            }
+            assert_body_spans(source, body);
+        }
+        ExprKind::Configure {
+            kind,
+            target,
+            settings,
+            operator_span,
+        } => {
+            assert_eq!(
+                &source[operator_span.start..operator_span.end],
+                match kind {
+                    ConfigureKind::Colon => ":",
+                    ConfigureKind::Dot => ".",
+                }
+            );
+            assert_expr_spans(source, target);
+            assert_expr_spans(source, settings);
+        }
         ExprKind::Body(body) => assert_body_spans(source, body),
         ExprKind::For(comprehension) => {
             assert_pattern_spans(source, &comprehension.binder);
@@ -738,6 +780,236 @@ fn import_extension_keeps_unsupported_clauses_and_grammar_failures_structured() 
                 .into_iter()
                 .map(Error::Grammar)
                 .collect::<Vec<_>>()
+        );
+    }
+}
+
+#[test]
+fn named_maps_preserve_empty_nested_duplicate_entries_and_utf8_spans() {
+    assert!(matches!(expression("{}").kind, ExprKind::Map(entries) if entries.is_empty()));
+    let source = "{# λ\n a: 1, a: {b: value}, other: xs[0]}";
+    let expr = expression(source);
+    assert_eq!(&source[expr.span.start..expr.span.end], source);
+    let ExprKind::Map(entries) = expr.kind else {
+        panic!()
+    };
+    assert_eq!(entries.len(), 3);
+    assert_eq!(entries[0].key.text, "a");
+    assert_eq!(entries[1].key.text, "a");
+    assert_ne!(entries[0].key.span, entries[1].key.span);
+    assert_eq!(
+        &source[entries[1].span.start..entries[1].span.end],
+        "a: {b: value}"
+    );
+    assert!(matches!(entries[1].value.kind, ExprKind::Map(_)));
+    assert!(matches!(entries[2].value.kind, ExprKind::Index { .. }));
+    assert!(matches!(expression("{value}").kind, ExprKind::Body(_)));
+}
+
+#[test]
+fn map_join_keeps_operand_order_additive_precedence_and_token_spans() {
+    let expr = expression("a <> b <> c + d * e");
+    let ExprKind::Binary {
+        operator: BinaryOperator::Add,
+        left,
+        right,
+    } = expr.kind
+    else {
+        panic!()
+    };
+    let ExprKind::MapJoin {
+        left: first,
+        right: third,
+        ..
+    } = left.kind
+    else {
+        panic!()
+    };
+    assert!(matches!(first.kind, ExprKind::MapJoin { .. }));
+    assert!(matches!(third.kind, ExprKind::Name(Name { text, .. }) if text == "c"));
+    assert!(matches!(
+        right.kind,
+        ExprKind::Binary {
+            operator: BinaryOperator::Multiply,
+            ..
+        }
+    ));
+    let source = "{a:1}\n  <> {b:2}";
+    let ExprKind::MapJoin { operator_span, .. } = expression(source).kind else {
+        panic!()
+    };
+    assert_eq!(operator_span.start, source.find("<>").unwrap());
+}
+
+#[test]
+fn configurable_constructor_preserves_atoms_body_order_and_braces() {
+    let source = ":base\n :{a: 1} :over {\n value := a + 1\n value\n tail := 2\n}";
+    let expr = expression(source);
+    assert_eq!(
+        expr.span,
+        Span {
+            start: 0,
+            end: source.len()
+        }
+    );
+    let ExprKind::Configurable { settings, body } = expr.kind else {
+        panic!()
+    };
+    assert_eq!(settings.len(), 3);
+    assert!(matches!(&settings[0].value.kind, ExprKind::Name(name) if name.text == "base"));
+    assert!(matches!(settings[1].value.kind, ExprKind::Map(_)));
+    assert!(matches!(&settings[2].value.kind, ExprKind::Name(name) if name.text == "over"));
+    assert_eq!(
+        &source[body.span.start..body.span.end],
+        "{\n value := a + 1\n value\n tail := 2\n}"
+    );
+    assert!(matches!(
+        &body.items[..],
+        [BodyItem::Local(_), BodyItem::Result(_), BodyItem::Local(_)]
+    ));
+    for source in [
+        ":{} {1}",
+        ":(base <> over) {c}",
+        ":ns::settings {c}",
+        ":choose(x) {c}",
+        ":settings[i] {c}",
+        ":{c:1} {:other {c}}",
+    ] {
+        assert!(
+            matches!(expression(source).kind, ExprKind::Configurable { .. }),
+            "{source}"
+        );
+    }
+    let source = "base = {c: 1}\nf(x) = :base :{d: 2} {local := x + c\n local + d}\nvalue = f(3):{c: 4}.{d: live}";
+    let document = ast::parse_document(source).unwrap();
+    assert_eq!(document.items.len(), 3);
+    let ItemKind::Function(function) = &document.items[1].kind else {
+        panic!()
+    };
+    assert!(matches!(function.body.kind, ExprKind::Configurable { .. }));
+    assert_expr_spans(source, &function.body);
+    let ItemKind::Binding(binding) = &document.items[2].kind else {
+        panic!()
+    };
+    assert!(matches!(
+        binding.value.kind,
+        ExprKind::Configure {
+            kind: ConfigureKind::Dot,
+            ..
+        }
+    ));
+    assert_expr_spans(source, &binding.value);
+}
+
+#[test]
+fn configuration_chains_bind_left_and_keep_atom_call_index_and_dot_literal() {
+    let source = "value :base :settings[i].{a: live} :next";
+    let ExprKind::Configure {
+        kind: ConfigureKind::Colon,
+        target,
+        settings,
+        ..
+    } = expression(source).kind
+    else {
+        panic!()
+    };
+    assert!(matches!(settings.kind, ExprKind::Name(name) if name.text == "next"));
+    let ExprKind::Configure {
+        kind: ConfigureKind::Dot,
+        target,
+        settings,
+        ..
+    } = target.kind
+    else {
+        panic!()
+    };
+    assert!(matches!(settings.kind, ExprKind::Map(_)));
+    let ExprKind::Configure {
+        kind: ConfigureKind::Colon,
+        target,
+        settings,
+        ..
+    } = target.kind
+    else {
+        panic!()
+    };
+    assert!(matches!(settings.kind, ExprKind::Index { .. }));
+    assert!(matches!(
+        target.kind,
+        ExprKind::Configure {
+            kind: ConfigureKind::Colon,
+            ..
+        }
+    ));
+    for source in [
+        "value:make(x)",
+        "value:ns::settings",
+        "value:(base<>over)",
+        "value.{}",
+        "(:{c:1}{c}):{c:2}.{c:live}",
+        "value\n .{a:1}\n :next",
+    ] {
+        assert!(
+            matches!(expression(source).kind, ExprKind::Configure { .. }),
+            "{source}"
+        );
+    }
+    let ExprKind::Binary {
+        operator: BinaryOperator::Add,
+        right,
+        ..
+    } = expression("a + value:settings").kind
+    else {
+        panic!()
+    };
+    assert!(matches!(right.kind, ExprKind::Configure { .. }));
+}
+
+#[test]
+fn configurable_forms_preserve_supported_values_and_reject_unhandled_map_forms() {
+    // Scope, types and configurable settings are graph decisions, not syntax checks.
+    expression(":{x: (:base {y}), y: if flag then a else b} {missing}");
+    for (source, kind) in [
+        ("{(key): 1}", "computed_key"),
+        ("{each k in keys {(k): 1}}", "map_walk"),
+    ] {
+        let errors = ast::parse_expression(source).unwrap_err();
+        assert!(
+            matches!(&errors[..], [Error::Form(FormDiagnostic { kind: FormDiagnosticKind::UnsupportedConstruct { kind: actual }, .. })] if actual == kind),
+            "{source}: {errors:?}"
+        );
+    }
+    for source in [":base {}", ":base {1,2}"] {
+        let errors = ast::parse_expression(source).unwrap_err();
+        assert!(
+            matches!(
+                &errors[..],
+                [Error::Form(FormDiagnostic {
+                    kind: FormDiagnosticKind::BodyResultCount { .. },
+                    ..
+                })]
+            ),
+            "{source}: {errors:?}"
+        );
+    }
+    for source in [
+        ":",
+        ":base",
+        "value.",
+        "value.(settings)",
+        "value.name",
+        ":base {x := 1",
+    ] {
+        let tree = cartan_syntax::parse_expression(source);
+        assert!(tree.has_errors(), "{source}");
+        let errors = ast::parse_expression(source).unwrap_err();
+        assert_eq!(
+            errors,
+            tree.diagnostics
+                .into_iter()
+                .map(Error::Grammar)
+                .collect::<Vec<_>>(),
+            "{source}"
         );
     }
 }

@@ -217,6 +217,23 @@ pub enum ExprKind {
         value: Box<Expr>,
     },
     List(Vec<Expr>),
+    Map(Vec<MapEntry>),
+    MapJoin {
+        left: Box<Expr>,
+        right: Box<Expr>,
+        operator_span: Span,
+    },
+    Configurable {
+        /// Nonempty, in source order; every atom has its own introducing colon.
+        settings: Vec<SettingsAtom>,
+        body: Body,
+    },
+    Configure {
+        kind: ConfigureKind,
+        target: Box<Expr>,
+        settings: Box<Expr>,
+        operator_span: Span,
+    },
     Range {
         start: Option<Box<Expr>>,
         end: Option<Box<Expr>>,
@@ -226,6 +243,27 @@ pub enum ExprKind {
     Body(Body),
     For(Box<Comprehension>),
     Reduce(Box<Reduction>),
+}
+
+/// An ordinary named-map entry, preserving order and duplicate keys.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MapEntry {
+    pub key: Name,
+    pub value: Expr,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SettingsAtom {
+    pub value: Expr,
+    /// The introducing colon alone, excluding continuation whitespace.
+    pub operator_span: Span,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ConfigureKind {
+    Colon,
+    Dot,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

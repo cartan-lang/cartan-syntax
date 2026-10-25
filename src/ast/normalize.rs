@@ -458,6 +458,19 @@ impl Reader<'_> {
                     return Err(form(node, FormDiagnosticKind::ComparisonChain));
                 }
                 let operator = field(node, "operator")?;
+                if self.text(operator).trim() == "<>" {
+                    return Ok(Expr {
+                        kind: ExprKind::MapJoin {
+                            left: Box::new(self.expr(left)?),
+                            right: Box::new(self.expr(field(node, "right")?)?),
+                            operator_span: Span {
+                                start: operator.end - 2,
+                                end: operator.end,
+                            },
+                        },
+                        span: span(node),
+                    });
+                }
                 let operator = match self.text(operator).trim() {
                     "+" => BinaryOperator::Add,
                     "-" => BinaryOperator::Subtract,
@@ -541,6 +554,63 @@ impl Reader<'_> {
             "periodic_expression" => {
                 shape(node, &["axis"], &[])?;
                 ExprKind::Periodic(Box::new(self.expr(field(node, "axis")?)?))
+            }
+            "map" => ExprKind::Map(
+                children(node)
+                    .map(|entry| {
+                        if entry.kind != "map_entry" {
+                            return Err(unsupported(entry));
+                        }
+                        shape(entry, &["key", "value"], &[])?;
+                        Ok(MapEntry {
+                            key: self.name(field(entry, "key")?)?,
+                            value: self.expr(field(entry, "value")?)?,
+                            span: span(entry),
+                        })
+                    })
+                    .collect::<Result<_>>()?,
+            ),
+            "configurable_expression" => {
+                shape(node, &["operator", "config", "body"], &[])?;
+                let values: Vec<_> = node.children_named("config").collect();
+                let operators: Vec<_> = node.children_named("operator").collect();
+                if values.is_empty() || values.len() != operators.len() {
+                    return Err(unsupported(node));
+                }
+                let settings = values
+                    .into_iter()
+                    .zip(operators)
+                    .map(|(value, operator)| {
+                        Ok(SettingsAtom {
+                            value: self.expr(value)?,
+                            operator_span: Span {
+                                start: operator.end - 1,
+                                end: operator.end,
+                            },
+                        })
+                    })
+                    .collect::<Result<_>>()?;
+                ExprKind::Configurable {
+                    settings,
+                    body: self.body(field(node, "body")?)?,
+                }
+            }
+            "config_expression" | "configure_dot_expression" => {
+                shape(node, &["target", "config", "operator"], &[])?;
+                let operator = field(node, "operator")?;
+                ExprKind::Configure {
+                    kind: if node.kind == "config_expression" {
+                        ConfigureKind::Colon
+                    } else {
+                        ConfigureKind::Dot
+                    },
+                    target: Box::new(self.expr(field(node, "target")?)?),
+                    settings: Box::new(self.expr(field(node, "config")?)?),
+                    operator_span: Span {
+                        start: operator.end - 1,
+                        end: operator.end,
+                    },
+                }
             }
             "body" => ExprKind::Body(self.body(node)?),
             "for_expression" => {

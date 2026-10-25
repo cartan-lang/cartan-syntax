@@ -297,7 +297,7 @@ fn closes() -> Rule {
 /// `_pattern`/`map_entry` conflicts below.
 fn config_link() -> Rule {
     seq(vec![
-        colon(),
+        field("operator", colon()),
         not_ahead("="),
         field("config", sym("_config_atom")),
     ])
@@ -1349,6 +1349,7 @@ fn build() -> Grammar {
                 "the expression, in one table: the primary forms, then every\n\
                  operator with its precedence — tightest last",
                 choice(vec![
+                    sym("configurable_expression"),
                     sym("texture_expression"),
                     sym("call_expression"),
                     sym("qualified_identifier"),
@@ -1469,6 +1470,13 @@ fn build() -> Grammar {
                         "target",
                         config_link(),
                     ),
+                    postfix(
+                        "configure_dot_expression",
+                        POSTFIX,
+                        "target",
+                        seq(vec![field("operator", cont(".")), field("config", sym("map"))]),
+                    )
+                    .doc("`value.{key: expression}` — literal settings closing; links chain left"),
                     postfix("payload_expression", POSTFIX, "target", field("body", sym("body")))
                         .doc("`head(…) { items }` — call sugar for a trailing List argument; a\nbrace whose first item is a `port <-` write is the writes a control\nhead takes, which legacy AST normalization decides"),
                     postfix("payload_expression", POSTFIX, "target", field("body", sym("list")))
@@ -1697,6 +1705,15 @@ fn build() -> Grammar {
                 // start ties the range there, and the conflict below
                 // leaves the two to the text that follows
                 open_range(&range_op, header_expr, |r| prec(2 * RANGE + 1, r)),
+            ),
+            def(
+                "configurable_expression",
+                "`:base :over { body }` — ordered settings atoms and a value body",
+                seq(vec![
+                    repeat1(config_link()),
+                    nl(),
+                    field("body", sym("body")),
+                ]),
             ),
             def(
                 "_config_atom",
