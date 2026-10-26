@@ -108,6 +108,45 @@ buildable; the parent workspace's AGENTS.md coordinates component work.
   or deliver file notifications must state the limitation rather than substitute
   another mechanism silently. No Claude capability is assumed without evidence.
 
+## Owner autonomy and complexity escalation
+
+- Work from an assigned outcome, constraints and acceptance evidence. Choose the
+  implementation and coordinate routine design, representation, interfaces,
+  testing and local commits directly with component peers; no supervisor approval
+  is needed within that scope. Existing checkout ownership, user restrictions,
+  scope limits and publication permissions still apply.
+- The supervisor handles user discussion, delegation, unresolved semantics,
+  cross-component conflicts, complexity escalations and final integration. Do
+  not require review of every step or create an extra coordinator. Report
+  meaningful milestones, blockers and completion. In a standalone clone, the
+  user-designated coordinator fills this role.
+- Before substantial implementation, record expected scope, principal unknowns
+  and a small reviewable checkpoint in the existing work item or HANDOFF. Aim
+  for a first checkpoint within 30–60 minutes, with several checkpoints for
+  larger tasks. Use concrete evidence: a tested interface, a working narrow path
+  or an experiment resolving an architectural uncertainty. Estimates are planning
+  assumptions, not promises or permission gates.
+- Treat proposed approaches and estimates, including the supervisor's, as
+  fallible. Escalate underestimated complexity or suspected design defects before
+  expanding the design. Signals include new cross-component protocols, growing
+  ownership/lifetime machinery, expansion blowup, repeated workarounds, widening
+  prerequisites or unexpectedly large compatibility layers. Do not wait for
+  proof of failure or sunk effort.
+- Reassess at checkpoints and material scope growth. Repeated checkpoint slips,
+  materially exceeding the estimate, or an hour without the expected reviewable
+  result requires a concise escalation; do not silently reset the estimate.
+  Known long-running checks may have an explicit longer checkpoint with a reason;
+  report unexpected stalls.
+- State the intended outcome, new evidence, affected assumption, added cost or
+  complexity, smallest alternatives and recommendation. Stop expanding the
+  implicated design during assessment; preserve reviewable work and continue
+  independent bounded tasks where useful. Clear local defect fixes need no
+  escalation. The supervisor discusses material endpoint, scope or cost changes
+  with the user.
+- Preserve unresolved complexity concerns and the next checkpoint in handoffs
+  and on resume. A context reset or replacement agent must not erase an
+  escalation or restart an already questionable approach.
+
 ## Scope
 
 - Own Cartan syntax: parsing, syntax trees, source spans, structured parse
@@ -161,7 +200,8 @@ buildable; the parent workspace's AGENTS.md coordinates component work.
   URLs; they are not a public distribution arrangement. The current AST is on
   `main`. Consumers own their adapters, dependency declarations and lockfiles.
 - This component owns requested interface changes and any specialized ordinary
-  Git branch. Agree the contract before implementation; do not edit a consumer's
+  Git branch. Agree routine contracts directly with the consuming component owner
+  before implementation, without supervisor approval; do not edit a consumer's
   checkout or Cargo-managed dependency cache. Consumers deliberately update their
   lockfile after a tested commit is available.
 - Do not vendor sibling components or use their working-tree path dependencies
