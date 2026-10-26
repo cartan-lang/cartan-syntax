@@ -21,7 +21,11 @@ and broader grammar inspection.
 ## Boundary
 
 Syntax owns source parsing, normalization, source locations and syntax-form
-errors. Graph owns configurable semantics and its source adapter. The existing
+errors. Graph owns configurable semantics and its source adapter; their semantic
+implementation is deferred under the workspace's
+[language scope](../../docs/records/language-scope.md). Retained configurable
+syntax does not imply runtime function values, returned functions or dynamic
+callees. Static function-argument implementation is also deferred. The existing
 codegen frontend owns conversion to its analysis representation,
 name resolution, type checking, constants, domain interpretation, array
 composition, and numerical lowering. The core codegen library remains independent
@@ -120,7 +124,7 @@ syntax does not promise execution support in either consumer.
 ## Maps and configurables
 
 The [configurable source work](work/configurable-source-ast.md) supplies the
-interface agreed with graph and the implementation coordinator. Ordinary named
+interface agreed with graph. Ordinary named
 map literals use `ExprKind::Map(Vec<MapEntry>)`; `{}` is an empty map, while
 `{value}` remains a body. Each entry has `key: Name`, `value: Expr` and its full
 entry `span`. The outer expression span includes braces. Entry order, duplicate

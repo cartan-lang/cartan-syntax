@@ -104,6 +104,8 @@ independent of the Python workspace.
   no file loading or name resolution. Other constructs may parse into
   a CST but return a structured unsupported-form error during normalization.
   Neither API performs semantic validation or verifies execution support.
+  Configurable semantic support and static function arguments remain deferred
+  under the [workspace language scope](../docs/records/language-scope.md).
 - The generated Tree-sitter JavaScript passes a syntax check. Building and
   executing the actual Tree-sitter parser remains untested here.
 - The codegen frontend owns its AST adapter and locked local Git dependency.
