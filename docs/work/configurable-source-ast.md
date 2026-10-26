@@ -60,7 +60,7 @@ documentation; existing operational guidance remains applicable.
   dependency updates. No execution, type-fitting, setting-scope or device claim
   is made by this supplier delivery.
 
-The [workspace language scope](../../docs/records/language-scope.md) retains this
+The [workspace language scope](../../../docs/records/language-scope.md) retains this
 syntax while deferring configurable semantics and static function arguments.
 Runtime function values, returned functions and dynamic callees are excluded;
 the syntax delivery grants no execution capability or implementation authority.
