@@ -21,8 +21,11 @@ superseded behavior. Historical benchmark observations remain valid data.
 - `HANDOFF.md`: ignored local resume note for the directory's owning agent.
 - `docs/*.md`: current designs, reference material, explanations and how-to guides.
 - `docs/rulings/<id>.md`: one question or decision per file.
-- `docs/records/<id>.md`: one durable adopted contract per file.
-- `docs/work/<id>.md`: one work item or bounded task per file.
+- `docs/records/<id>.md`: one agreed contract per file, whether planned, partially
+  implemented or implemented; the `implementation` field distinguishes these.
+- `docs/work/<id>.md`: one tracked, disposable delivery plan or bounded task per
+  file. Do not Git-ignore this directory: active scope, blockers and acceptance
+  criteria must survive sessions and remain reviewable.
 - Source documentation: public types, functions and invariants beside their code.
 - Tests: executable correctness evidence. Link to the tests relevant to a claim.
 
@@ -118,6 +121,13 @@ verification document. Status does not itself create authorization.
 
 The body states scope, acceptance criteria, dependencies and current evidence
 or remaining questions. Keep only current facts, not append-only activity logs.
+At completion, consolidate lasting requirements into records, usage into maintained
+documentation, and verification into the relevant contracts, tests or benchmark
+data. Then delete the completed work item by default and repair incoming links
+and dependency references. Retain a concise completed item only while its
+acceptance evidence serves a continuing purpose. Git preserves deleted plans;
+ignored HANDOFF files and mailboxes hold temporary session state. The work
+directory is not a permanent task archive.
 The `implementation` field still describes delivered capability: a completed
 investigation may be `not-applicable`, while an active task may be `partial`.
 Additional fields are plain one-line scalars except the `depends` list. Only

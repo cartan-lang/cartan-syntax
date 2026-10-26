@@ -202,6 +202,11 @@ buildable; the parent workspace's AGENTS.md coordinates component work.
   and synchronize conventions and equivalent validator behavior. The workspace
   uses `cartan_dev.docs`; this component retains independent `tools/docs.py` and
   tooling tests without a workspace Python dependency.
+- Records hold agreed contracts regardless of implementation; distinguish
+  delivery with `planned`, `partial` or `implemented`. Explicit owner instructions
+  establish a contract without a redundant ruling.
+- Keep `docs/work/` tracked but disposable, never Git-ignored: active scope,
+  blockers and acceptance criteria must remain reviewable across sessions.
 - Maintain local HANDOFF.md as an ignored resume aid; never commit it. On
   "update HANDOFF", refresh it in place with owner/directory, revision/state,
   active work or blockers, next actions, verification and authoritative docs
@@ -210,8 +215,14 @@ buildable; the parent workspace's AGENTS.md coordinates component work.
   Durable decisions and evidence remain in structured docs.
 - The current edit owner updates the shared ignored handoff, naming its harness
   and task and any pending cross-harness handback. Review changed documentation
-  at completion: retain authoritative contracts, consolidate task evidence and
-  remove redundant proposals rather than accumulating an archive.
+  at completion and on "update HANDOFF": move lasting requirements into records,
+  usage into maintained documentation, and verification into relevant contracts,
+  tests or benchmark data. Consolidate unresolved questions into work items or
+  rulings. Delete completed work items by default after consolidation; retain a
+  concise completed item only while its acceptance evidence serves a continuing
+  purpose. Delete redundant or superseded designs, repairing incoming links and
+  dependency references. Report what was retained, consolidated or removed.
+  Git preserves deleted plans; HANDOFF and mailboxes hold temporary session state.
 - Python app changes use installed entry-point checks and, from this component
   directory inside the parent uv workspace,
   `uv run --no-sync --package cartan-syntax-dev pytest -q tests/python` after
