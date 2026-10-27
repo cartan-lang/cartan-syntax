@@ -401,3 +401,35 @@ def test_web_service_uses_sole_ir_command(repo):
     result = asyncio.run(inspect(repo, command, repo / 'source.cart'))
     assert result.status == 'ok'
     assert json.loads(result.stdout) == ['ir', str(repo / 'source.cart')]
+
+
+def test_forwarding_waits_through_interrupts_and_maps_signals(repo, monkeypatch):
+    import os
+    import subprocess
+    # A signal-terminated child reports the conventional 128+signal status.
+    cli = create_cli(repo_root=repo, rust_command=fake('import os,signal; os.kill(os.getpid(), signal.SIGTERM)'))
+    assert CliRunner().invoke(cli, ['ir', 'x.cart']).exit_code == 128 + 15
+
+    class Interrupted:
+        returncode = None
+        calls = 0
+        def __init__(self, *args, **kwargs):
+            pass
+        def communicate(self):
+            Interrupted.calls += 1
+            if Interrupted.calls == 1:
+                raise KeyboardInterrupt
+            self.returncode = 5
+            return b'', b''
+    monkeypatch.setattr(subprocess, 'Popen', Interrupted)
+    result = CliRunner().invoke(create_cli(repo_root=repo, rust_command=('/rust',)), ['ir', 'x.cart'])
+    assert (result.exit_code, Interrupted.calls) == (5, 2)
+
+
+def test_forwarding_preserves_non_utf8_argument_bytes(repo):
+    import os
+    raw = os.fsdecode(b'nonutf8-\xff.cart')
+    command = fake('import os,sys; print(os.fsencode(sys.argv[-1]).hex())')
+    result = CliRunner().invoke(create_cli(repo_root=repo, rust_command=command), ['ir', '--', raw])
+    assert result.exit_code == 0
+    assert result.stdout.strip() == b'nonutf8-\xff.cart'.hex()

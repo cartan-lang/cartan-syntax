@@ -134,16 +134,25 @@ class RustGroup(click.Group):
                 capture = False
             except (AttributeError, OSError, ValueError):
                 capture = True
-            result = subprocess.run(
+            process = subprocess.Popen(
                 [*self.rust_command, *ctx.meta["rust_args"]],
-                capture_output=capture,
-                check=False,
+                stdout=subprocess.PIPE if capture else None,
+                stderr=subprocess.PIPE if capture else None,
             )
         except OSError as error:
             raise click.ClickException(
                 present(MetadataError("launch", self.rust_command, error))
             ) from error
+        # Ctrl-C reaches the child through the shared foreground process group.
+        # Keep waiting so its own handling and exit status decide the outcome.
+        while True:
+            try:
+                stdout, stderr = process.communicate()
+                break
+            except KeyboardInterrupt:
+                continue
         if capture:
-            click.echo(result.stdout, nl=False, color=True)
-            click.echo(result.stderr, nl=False, err=True, color=True)
-        ctx.exit(result.returncode if result.returncode >= 0 else 128 - result.returncode)
+            click.echo(stdout, nl=False, color=True)
+            click.echo(stderr, nl=False, err=True, color=True)
+        code = process.returncode
+        ctx.exit(code if code >= 0 else 128 - code)

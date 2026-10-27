@@ -184,6 +184,8 @@ of its own commands. Invoking-directory paths
 retain their meaning because CLI forwarding does not change the child cwd.
 Real stdin/stdout/stderr are inherited without buffering or decoration, preserving
 terminal detection and child exit codes (signals map to conventional 128+signal).
+Ctrl-C reaches the child through the shared process group; the forwarder keeps
+waiting and returns the child's own status rather than exiting early.
 In-process callers whose streams lack descriptors use captured byte streams.
 The standalone configuration prefix stops at the first Rust/Python command, so
 later `--repo` or `--rust-command` tokens remain literal Rust arguments.
