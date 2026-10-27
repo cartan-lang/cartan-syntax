@@ -115,8 +115,8 @@ independent of the Python workspace.
 - The AST covers the five workload fixtures, ordered body items, list/site
   patterns, file/namespace imports, qualified values/calls, named maps and joins,
   configurable constructors and colon/literal-dot application, strings, tagged
-  templates with structured format specs, struct declarations, and source-form
-  checks. Import paths retain raw text, decoded strings and byte spans; syntax
+  templates with structured format specs, struct declarations,
+  function-signature parameter annotations, and source-form checks. Import paths retain raw text, decoded strings and byte spans; syntax
   performs no file loading, name resolution or formatting. Other constructs may parse into
   a CST but return a structured unsupported-form error during normalization.
   Neither API performs semantic validation or verifies execution support.
@@ -124,9 +124,9 @@ independent of the Python workspace.
   under the [workspace language scope](../docs/records/language-scope.md).
 - The generated Tree-sitter JavaScript passes a syntax check. Building and
   executing the actual Tree-sitter parser remains untested here.
-- The codegen frontend owns its AST adapter and locked local Git dependency.
-  Codegen's typed library remains parser-independent; consumer integration
-  and device execution are verified by that component.
+- Graph is the only direct AST consumer and owns its adapter and locked local
+  Git dependency. Codegen consumes graph's typed representation without a
+  syntax dependency; integration and device execution are verified downstream.
 
 The [source provenance](docs/provenance.md) records the extraction inputs.
 The [documentation conventions](docs/documentation.md) define the queryable

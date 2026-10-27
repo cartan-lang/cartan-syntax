@@ -1241,17 +1241,43 @@ fn build() -> Grammar {
             ),
             def(
                 "type_annotation",
-                "",
+                "A type, or a function signature where a type stands. The\n\
+                 signature stands first, since a fiber description also opens\n\
+                 with a paren and takes `()`. A trailing `->` after a bare type\n\
+                 is read so that the missing parentheses are named rather than\n\
+                 left to the token after it; where a signature is admitted,\n\
+                 source normalization states.",
+                choice(vec![
+                    sym("signature_type"),
+                    seq(vec![
+                        sym("fiber_type"),
+                        optional(seq(vec![
+                            "|".into(),
+                            field("alternative", sym("fiber_type")),
+                            refusing(
+                                "|",
+                                Stated::AnnotationAlternative.label(),
+                            ),
+                        ])),
+                        optional(seq(vec![
+                            field("arrow", "->"),
+                            field("result", sym("type_annotation")),
+                        ])),
+                    ]),
+                ]),
+            ),
+            def(
+                "signature_type",
+                "`(Real, Real) -> Real` — the signature of a function a parameter\n\
+                 receives: its argument types in parens, any number of them, and\n\
+                 its result type. It describes a function named at the call, not\n\
+                 a function value.",
                 seq(vec![
-                    sym("fiber_type"),
-                    optional(seq(vec![
-                        "|".into(),
-                        field("alternative", sym("fiber_type")),
-                        refusing(
-                            "|",
-                            Stated::AnnotationAlternative.label(),
-                        ),
-                    ])),
+                    "(".into(),
+                    items(field("argument", sym("type_annotation"))),
+                    ")".into(),
+                    field("arrow", "->"),
+                    field("result", sym("type_annotation")),
                 ]),
             ),
             def(

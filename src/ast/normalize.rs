@@ -353,9 +353,13 @@ impl Reader<'_> {
         })
     }
 
-    fn optional_annotation(&self, node: &Node) -> Result<Option<Annotation>> {
+    fn optional_annotation(
+        &self,
+        node: &Node,
+        position: SignaturePosition,
+    ) -> Result<Option<Annotation>> {
         node.child("type")
-            .map(|child| self.annotation(child))
+            .map(|child| self.annotation(child, position))
             .transpose()
     }
 
@@ -401,7 +405,7 @@ impl Reader<'_> {
                 ItemKind::Binding(Binding {
                     kind,
                     pattern,
-                    annotation: self.optional_annotation(node)?,
+                    annotation: self.optional_annotation(node, SignaturePosition::Binding)?,
                     value: self.expr(field(node, "value")?)?,
                 })
             }
@@ -413,7 +417,7 @@ impl Reader<'_> {
                         shape(component, &["name", "type"], &[])?;
                         Ok(Component {
                             name: self.name(field(component, "name")?)?,
-                            annotation: self.annotation(field(component, "type")?)?,
+                            annotation: self.value_type(field(component, "type")?)?,
                             span: span(component),
                         })
                     })
@@ -437,7 +441,7 @@ impl Reader<'_> {
                         shape(entry, &["name", "type"], &[])?;
                         Ok(StructEntry {
                             name: self.name(field(entry, "name")?)?,
-                            annotation: self.annotation(field(entry, "type")?)?,
+                            annotation: self.value_type(field(entry, "type")?)?,
                             span: span(entry),
                         })
                     })
@@ -456,7 +460,10 @@ impl Reader<'_> {
                         shape(parameter, &["name", "type"], &[])?;
                         Ok(Parameter {
                             pattern: self.pattern(field(parameter, "name")?)?,
-                            annotation: self.optional_annotation(parameter)?,
+                            annotation: parameter
+                                .child("type")
+                                .map(|written| self.parameter_annotation(written))
+                                .transpose()?,
                             span: span(parameter),
                         })
                     })
@@ -501,11 +508,67 @@ impl Reader<'_> {
         })
     }
 
-    fn annotation(&self, node: &Node) -> Result<Annotation> {
-        if node.kind == "type_annotation" {
-            shape(node, &[], &["fiber_type"])?;
-            return self.annotation(single(node)?);
+    /// The written type inside a `type_annotation`: a fiber type or a signature.
+    fn written_type<'a>(&self, node: &'a Node) -> Result<&'a Node> {
+        if node.kind != "type_annotation" {
+            return Ok(node);
         }
+        if let Some(arrow) = node.child("arrow") {
+            return Err(form_at(
+                self.arrow_span(arrow),
+                FormDiagnosticKind::UnparenthesizedSignature,
+            ));
+        }
+        shape(node, &[], &["fiber_type", "signature_type"])?;
+        single(node)
+    }
+
+    /// Token nodes include leading whitespace; the arrow is the last two bytes.
+    fn arrow_span(&self, arrow: &Node) -> Span {
+        Span {
+            start: arrow.end - 2,
+            end: arrow.end,
+        }
+    }
+
+    /// A value type, refusing a signature written at `position`.
+    fn annotation(&self, node: &Node, position: SignaturePosition) -> Result<Annotation> {
+        let written = self.written_type(node)?;
+        if written.kind == "signature_type" {
+            return Err(form_at(
+                self.arrow_span(field(written, "arrow")?),
+                FormDiagnosticKind::SignatureOutsideParameter {
+                    position,
+                    signature_span: span(written),
+                },
+            ));
+        }
+        self.value_type(written)
+    }
+
+    fn parameter_annotation(&self, node: &Node) -> Result<ParameterAnnotation> {
+        let written = self.written_type(node)?;
+        if written.kind != "signature_type" {
+            return self.value_type(written).map(ParameterAnnotation::Value);
+        }
+        shape(written, &["argument", "arrow", "result"], &[])?;
+        Ok(ParameterAnnotation::Signature(Signature {
+            arguments: written
+                .children_named("argument")
+                .map(|argument| self.annotation(argument, SignaturePosition::SignatureArgument))
+                .collect::<Result<_>>()?,
+            result: self.annotation(
+                field(written, "result")?,
+                SignaturePosition::SignatureResult,
+            )?,
+            arrow_span: self.arrow_span(field(written, "arrow")?),
+            span: span(written),
+        }))
+    }
+
+    /// A named type or generic application; struct entries and fiber
+    /// components take this form directly.
+    fn value_type(&self, node: &Node) -> Result<Annotation> {
         if node.kind != "fiber_type" {
             return Err(unsupported(node));
         }
@@ -521,7 +584,8 @@ impl Reader<'_> {
                             span: span(argument),
                         })
                     } else {
-                        self.annotation(argument).map(TypeArgument::Type)
+                        self.annotation(argument, SignaturePosition::TypeArgument)
+                            .map(TypeArgument::Type)
                     }
                 })
                 .collect::<Result<_>>()?;
@@ -569,7 +633,7 @@ impl Reader<'_> {
                 shape(child, &["pattern", "type", "value"], &[])?;
                 items.push(BodyItem::Local(Local {
                     pattern: self.pattern(field(child, "pattern")?)?,
-                    annotation: self.optional_annotation(child)?,
+                    annotation: self.optional_annotation(child, SignaturePosition::Local)?,
                     value: self.expr(field(child, "value")?)?,
                     span: span(child),
                 }));

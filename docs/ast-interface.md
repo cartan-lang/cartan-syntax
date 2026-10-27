@@ -25,19 +25,18 @@ errors. Graph owns configurable semantics and its source adapter; their semantic
 implementation is deferred under the workspace's
 [language scope](../../docs/records/language-scope.md). Retained configurable
 syntax does not imply runtime function values, returned functions or dynamic
-callees. Static function-argument implementation is also deferred. The existing
-codegen frontend owns conversion to its analysis representation,
-name resolution, type checking, constants, domain interpretation, array
-composition, and numerical lowering. The core codegen library remains independent
-of syntax. In particular, the syntax AST contains neither inferred types nor
-the frontend's inserted `Wrap` expressions, selected update target, resource
-references or chosen computational units.
+callees. Syntax normalizes function-signature parameter annotations; overload
+resolution and static function-argument binding belong to graph.
 
-The codegen frontend's internal representation combines syntax and analysis
-conveniences. The source AST preserves declarations and imports instead of
-assuming a document has exactly one `while true` update
-and discarding `use std::*` or `main = 0`. Enforcing the supported execution
-shape remains the adapter's responsibility.
+Graph is the only direct consumer of this AST. It owns its source adapter, name
+resolution, type checking, overload selection, constants, domain interpretation
+and graph construction. Codegen consumes graph's typed computational
+representation, does not depend on this crate, and owns array composition and
+numerical lowering. The syntax AST therefore contains no inferred types,
+selected update target, resource references or chosen computational units. It
+preserves declarations and imports instead of assuming a document has exactly one
+`while true` update or discarding `use std::*` or `main = 0`. Enforcing a
+supported execution shape is the consumer's responsibility.
 
 ## Entry points and data
 
@@ -57,7 +56,7 @@ The source constructs are:
 | Area | Supported source representation |
 | --- | --- |
 | Items | Imports, ordinary and `param` bindings, `state` declarations, fiber declarations, struct declarations, function equations, and guarded `while` update blocks. |
-| Functions | Name, ordered parameters with patterns and optional annotations, and expression body. |
+| Functions | Name, ordered parameters with patterns and optional value or function-signature annotations, and expression body. |
 | Fibers | Name, written base annotation such as `Module`, and ordered named components with annotations. |
 | Annotations | Named types and generic applications, preserving names and numeric arguments such as `Array<Primitive, 1>` without interpreting rank. |
 | Patterns | Name, wildcard, recursive list pattern, and positional site pattern with its enclosing annotation retained. |
@@ -116,10 +115,11 @@ head and absence of explicit alias so graph analysis can apply its adopted defau
 namespace binding; this AST does not synthesize bindings, resolve names or decide
 exports, collisions, cycles or builtin availability.
 
-The revised `Use` fields and call head type require deliberate consumer adapter
-updates. Both graph and codegen owners accepted this exact seam before edits;
-they own their adapters and locked dependency revisions. Accepting a form in
-syntax does not promise execution support in either consumer.
+The revised `Use` fields and call head type required deliberate consumer
+adapter updates. When this seam was introduced, graph and codegen's provisional
+frontend both accepted it before edits. Graph is now the sole consumer and owns
+its adapter and locked revision. Accepting a form in syntax does not promise
+execution support.
 
 ## Strings, templates and structs
 
@@ -168,6 +168,42 @@ value remains `ExprKind::Map`. A struct declaration is a structural alias, not a
 nominal constructor or type identity; graph interprets an annotated brace value
 structurally through the alias, never from AST spelling alone. Inline nested struct entry types such as
 `{p: {x: Real}}` remain an `UnsupportedConstruct` of kind `struct_type`.
+
+## Function-signature parameters
+
+The [static signature work](work/static-signatures.md) supplies the interface
+agreed with graph; graph's [resolution table](../../cartan-graph/docs/work/static-dispatch.md)
+owns overload semantics. `Parameter.annotation` is
+`Option<ParameterAnnotation>`: `ParameterAnnotation::Value(Annotation)` for an
+ordinary type, or `ParameterAnnotation::Signature(Signature { arguments, result,
+arrow_span, span })` for `g: (T1, …, Tn) -> R`. Parentheses are required for any
+number of arguments, including `() -> R` and `(T) -> R`. Argument and result slots
+are ordinary `Annotation`s: named types and generic applications. Optional and sum
+annotations remain unsupported. `span` covers the parentheses through the result,
+`arrow_span` covers `->`, every slot keeps its own span, and the parameter span
+covers the whole `g: (…) -> R`. Unannotated and value-annotated parameters are
+unchanged.
+
+A signature describes a statically named function a parameter receives. It is not
+a function value. Syntax adds no overload marker, no result annotation on
+definitions, and no checks of whether a formal must be annotated; overload sets,
+matching, specificity, conformance and binding belong to graph.
+
+A signature written anywhere else yields
+`FormDiagnosticKind::SignatureOutsideParameter { position, signature_span }` with
+the diagnostic span on its arrow. `SignaturePosition` is `Binding` (including
+`param` and `state`), `Local`, `TypeArgument`, `SignatureArgument` or
+`SignatureResult`. The last two reject signatures nested in another signature's
+argument or result slot. `T -> R` without parentheses yields
+`UnparenthesizedSignature`, spanning the arrow. Struct entries and fiber
+components take a bare fiber type in the grammar, so an arrow there is a
+structured grammar error. Namespace declarations and `use` hole clauses keep
+their unsupported-construct rejections.
+
+The grammar tries a signature before the fiber-type reading inside a type
+annotation, because fiber descriptions also open with a parenthesis and accept
+`()`. The generated Tree-sitter grammar has not been generated or executed with
+this alternative.
 
 ## Maps and configurables
 
@@ -239,8 +275,8 @@ whose semantic validity is the consumer's responsibility.
 Structured errors distinguish `Grammar(Diagnostic)` from
 `Form(FormDiagnostic)`. Form diagnostics carry a span and typed kind with
 relevant payloads: unsupported construct and its CST kind, comparison/range
-chain, body result count, a use alias combined with selectors, and malformed
-format precision or notation. `Error::span()` returns the full byte range; errors
+chain, body result count, a use alias combined with selectors, malformed
+format precision or notation, and misplaced or unparenthesized signatures. `Error::span()` returns the full byte range; errors
 derive `Clone`, `Debug`, `PartialEq` and `Eq`. Grammar diagnostics are preserved
 without rewriting. Normalization reports the first form error in each document
 item; it returns no partial AST if any error occurs. Unsupported syntax is
@@ -249,11 +285,10 @@ dropped. This scoped AST does not imply complete
 language validation, and CST acceptance alone remains weaker evidence.
 
 The grammar's current precedence and newline rules are authoritative for this
-transfer. The old codegen parser erased newlines, accepted unary `+`, and used
-different power associativity. The adapter must not recreate those differences.
-The Conway fixture already documents moving its continued subtraction operator
-to the preceding line; codegen must account for that source difference when
-integrating the shared parser.
+transfer. The parser it replaced in codegen erased newlines, accepted unary `+`
+and used different power associativity; consumers must not recreate those
+differences. The Conway fixture moves its continued subtraction operator to the
+preceding line, as the newline rule requires.
 
 The value body preserves local/result order, including a local after the result.
 The adapter must explicitly reject orders it cannot represent, rather than
@@ -310,8 +345,8 @@ The current agreed AST is supplied on syntax's existing `main` branch:
 cartan-syntax = { git = "file:///Users/jzrake/Work/Codes/cartan-lang/cartan-syntax", branch = "main" }
 ```
 
-Codegen owns this frontend dependency declaration and its `Cargo.lock`, which
-records the consumed commit. Cargo's cached committed source includes the local
+Graph owns this dependency declaration and its `Cargo.lock`, which records the
+consumed commit. Cargo's cached committed source includes the local
 `support/treegram` package. Supplier working-tree edits and branch switches do
 not change a consumer's locked revision; updating that revision is a deliberate
 consumer operation after a tested supplier commit is available.
@@ -333,7 +368,7 @@ The [AST tests](../tests/ast.rs) normalize all five fixtures and check represent
 structure, spans, body order, pattern normalization, grouping, precedence,
 annotations, unsupported clauses and complete grammar-error preservation.
 Existing [CST tests](../tests/syntax.rs) retain the grammar/editor checks.
-Codegen verifies its adapter, parser removal and numerical behavior independently.
+Graph verifies its adapter and source-to-graph behavior independently.
 
-The syntax component owns implementation here; codegen owns the adapter and
+The syntax component owns implementation here; graph owns the adapter and
 consumer dependency declaration and lockfile in its repository.

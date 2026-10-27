@@ -216,8 +216,8 @@ value bodies to have exactly one result. The CST API still returns grammar
 trees for those forms without performing the AST checks.
 
 Consequently, `has_errors() == false` is not a claim of complete language
-validity. There is also no promise that the codegen frontend can execute every
-construct recognized by either API. It supports a smaller numerical subset.
+validity. There is also no promise that consumers can analyze or execute every
+construct recognized by either API.
 
 The five fixture programs parse and retain their expected loops and fields.
 Tests also pin precedence, typed versus untyped patterns, scalar versus list
@@ -239,9 +239,9 @@ is unavailable in this environment. There is no full editor-conformance claim.
 
 ## Consumer integration
 
-The codegen frontend owns its adapter and locked syntax Git dependency, following
-the [local dependency contract](ast-interface.md#local-dependency-delivery).
-Graph construction, type checking and source-to-computational-IR lowering remain
-outside syntax. The typed codegen library consumes explicit computational units
-without acquiring a dependency on this syntax crate. Integration and execution
-evidence belongs to the consuming component.
+Graph is the only direct consumer. It owns its adapter and locked syntax Git
+dependency, following the [local dependency contract](ast-interface.md#local-dependency-delivery).
+Name resolution, overload selection, type checking and graph construction remain
+outside syntax. Codegen consumes graph's typed representation without a
+dependency on this crate. Integration and execution evidence belongs to the
+consuming components.

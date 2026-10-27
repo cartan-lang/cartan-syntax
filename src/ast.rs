@@ -140,8 +140,40 @@ pub struct Function {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Parameter {
     pub pattern: Pattern,
-    pub annotation: Option<Annotation>,
+    pub annotation: Option<ParameterAnnotation>,
     pub span: Span,
+}
+
+/// A parameter's written type: an ordinary value type, or the signature of a
+/// statically named function the parameter receives.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ParameterAnnotation {
+    Value(Annotation),
+    Signature(Signature),
+}
+
+/// `(T1, …, Tn) -> R`; `span` covers the parentheses through the result.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Signature {
+    pub arguments: Vec<Annotation>,
+    pub result: Annotation,
+    pub arrow_span: Span,
+    pub span: Span,
+}
+
+/// Where a function signature was written outside a parameter annotation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SignaturePosition {
+    /// A document binding, including `param` and `state` declarations.
+    Binding,
+    /// A body local.
+    Local,
+    /// A generic type argument such as `List<(Real) -> Real>`.
+    TypeArgument,
+    /// An argument slot of another signature.
+    SignatureArgument,
+    /// The result slot of another signature.
+    SignatureResult,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -460,6 +492,14 @@ pub enum FormDiagnosticKind {
     FormatNotation {
         written: String,
     },
+    /// A function signature written where only a value type is admitted. The
+    /// diagnostic span is the offending arrow.
+    SignatureOutsideParameter {
+        position: SignaturePosition,
+        signature_span: Span,
+    },
+    /// `T -> R` without the parentheses a signature requires; spans the arrow.
+    UnparenthesizedSignature,
 }
 
 /// Parse and normalize the supported source subset. No partial AST is returned.

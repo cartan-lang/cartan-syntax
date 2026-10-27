@@ -439,7 +439,9 @@ fn preserves_annotations_site_patterns_and_source_spelling() {
     assert_eq!(parts.len(), 3);
     assert!(matches!(parts[1].kind, PatternKind::Wildcard));
     assert_eq!(&source[parts[1].span.start..parts[1].span.end], "_");
-    let annotation = function.parameters[1].annotation.as_ref().unwrap();
+    let Some(ParameterAnnotation::Value(annotation)) = &function.parameters[1].annotation else {
+        panic!()
+    };
     let AnnotationKind::Apply { name, arguments } = &annotation.kind else {
         panic!()
     };
@@ -1324,4 +1326,178 @@ fn raw_templates_keep_backslashes_and_quotes_beside_holes_and_closers() {
     assert_eq!(&source[after.span.start..after.span.end], after.raw);
     // The quoted form keeps its backslash escapes, including before a brace.
     assert_eq!(text(&template("f\"a\\{\\\"\"").pieces[0]), "a{\"");
+}
+
+fn function(source: &str) -> Function {
+    let document = ast::parse_document(source).unwrap_or_else(|errors| panic!("{errors:?}"));
+    let Some(ItemKind::Function(function)) =
+        document.items.into_iter().map(|item| item.kind).next_back()
+    else {
+        panic!("{source}");
+    };
+    function
+}
+
+fn signature(parameter: &Parameter) -> &Signature {
+    match &parameter.annotation {
+        Some(ParameterAnnotation::Signature(signature)) => signature,
+        other => panic!("expected a signature, found {other:?}"),
+    }
+}
+
+fn named(annotation: &Annotation) -> &str {
+    match &annotation.kind {
+        AnnotationKind::Named(name) => &name.text,
+        kind => panic!("expected a named type, found {kind:?}"),
+    }
+}
+
+#[test]
+fn signature_parameters_keep_ordered_slots_result_and_spans() {
+    let source = "call_something(g: (Real, Real) -> Real, x: Real) = { g(1.0, x) }\n";
+    let function_ = function(source);
+    let text = |span: Span| &source[span.start..span.end];
+    let g = &function_.parameters[0];
+    assert_eq!(text(g.span), "g: (Real, Real) -> Real");
+    let signature_ = signature(g);
+    assert_eq!(text(signature_.span), "(Real, Real) -> Real");
+    assert_eq!(text(signature_.arrow_span), "->");
+    let arguments: Vec<_> = signature_.arguments.iter().map(named).collect();
+    assert_eq!(arguments, ["Real", "Real"]);
+    assert_eq!(text(signature_.arguments[1].span), "Real");
+    assert!(signature_.arguments[1].span.start > signature_.arguments[0].span.end);
+    assert_eq!(named(&signature_.result), "Real");
+    assert!(signature_.result.span.start > signature_.arrow_span.end);
+    // Ordinary value and unannotated parameters are unchanged.
+    assert!(matches!(
+        &function_.parameters[1].annotation,
+        Some(ParameterAnnotation::Value(annotation)) if named(annotation) == "Real"
+    ));
+    assert!(function("f(x) = x").parameters[0].annotation.is_none());
+    // Zero and one argument slots keep their parentheses.
+    let zero = function("f(g: () -> Real) = g()");
+    assert!(signature(&zero.parameters[0]).arguments.is_empty());
+    let one = function("f(g: (Int) -> Real, h: (Real, Int, Real) -> Int) = 1");
+    assert_eq!(signature(&one.parameters[0]).arguments.len(), 1);
+    assert_eq!(signature(&one.parameters[1]).arguments.len(), 3);
+    assert_eq!(named(&signature(&one.parameters[1]).result), "Int");
+}
+
+#[test]
+fn signature_slots_take_generic_annotations_at_utf8_offsets() {
+    let source = "label = \"λ 🐈\"\nf(g: (Array<Real, 1>, Vector<Real, 2>) -> Mat<3, 3>) = 1\n";
+    let function_ = function(source);
+    let signature_ = signature(&function_.parameters[0]);
+    let text = |span: Span| &source[span.start..span.end];
+    assert_eq!(
+        text(signature_.span),
+        "(Array<Real, 1>, Vector<Real, 2>) -> Mat<3, 3>"
+    );
+    assert_eq!(text(signature_.arguments[0].span), "Array<Real, 1>");
+    assert_eq!(text(signature_.arguments[1].span), "Vector<Real, 2>");
+    assert_eq!(text(signature_.result.span), "Mat<3, 3>");
+    assert_eq!(text(signature_.arrow_span), "->");
+    assert!(matches!(
+        &signature_.arguments[0].kind,
+        AnnotationKind::Apply { name, arguments } if name.text == "Array" && arguments.len() == 2
+    ));
+}
+
+#[test]
+fn signatures_outside_parameters_are_typed_by_position_at_the_arrow() {
+    for (source, expected, written) in [
+        (
+            "x: (Real) -> Real = 1",
+            SignaturePosition::Binding,
+            "(Real) -> Real",
+        ),
+        (
+            "param p: () -> Real = 1",
+            SignaturePosition::Binding,
+            "() -> Real",
+        ),
+        (
+            "x = { c: (Real) -> Real := 2\n c }",
+            SignaturePosition::Local,
+            "(Real) -> Real",
+        ),
+        (
+            "x: List<(Real) -> Real> = 1",
+            SignaturePosition::TypeArgument,
+            "(Real) -> Real",
+        ),
+        (
+            "f(g: ((Real) -> Real, Real) -> Real) = 1",
+            SignaturePosition::SignatureArgument,
+            "(Real) -> Real",
+        ),
+        (
+            "f(g: (Real) -> (Int) -> Real) = 1",
+            SignaturePosition::SignatureResult,
+            "(Int) -> Real",
+        ),
+    ] {
+        let errors = ast::parse_document(source).unwrap_err();
+        let [Error::Form(FormDiagnostic {
+            kind:
+                FormDiagnosticKind::SignatureOutsideParameter {
+                    position,
+                    signature_span,
+                },
+            span,
+        })] = errors.as_slice()
+        else {
+            panic!("{source}: {errors:?}");
+        };
+        assert_eq!(*position, expected, "{source}");
+        assert_eq!(&source[span.start..span.end], "->", "{source}");
+        assert_eq!(
+            &source[signature_span.start..signature_span.end],
+            written,
+            "{source}"
+        );
+    }
+    // A bare arrow names the missing parentheses, wherever it stands.
+    for source in ["f(g: Real -> Real) = 1", "x: Real -> Real = 1"] {
+        let errors = ast::parse_document(source).unwrap_err();
+        let [Error::Form(FormDiagnostic {
+            kind: FormDiagnosticKind::UnparenthesizedSignature,
+            span,
+        })] = errors.as_slice()
+        else {
+            panic!("{source}: {errors:?}");
+        };
+        assert_eq!(&source[span.start..span.end], "->");
+    }
+    // Struct entries and fiber components take a bare fiber type, so an arrow
+    // there stays a structured grammar error.
+    for source in [
+        "struct S = {p: (Real) -> Real}",
+        "fiber F = (p: (Real) -> Real)",
+    ] {
+        let errors = ast::parse_document(source).unwrap_err();
+        assert!(
+            errors
+                .iter()
+                .all(|error| matches!(error, Error::Grammar(_))),
+            "{source}: {errors:?}"
+        );
+    }
+    // Optional annotations and namespace holes remain unsupported.
+    for source in [
+        "f(g: (Real|None) -> Real) = 1",
+        "namespace a() { f(g: (Real) -> Real) = 1 }",
+    ] {
+        let errors = ast::parse_document(source).unwrap_err();
+        assert!(
+            errors.iter().all(|error| matches!(
+                error,
+                Error::Form(FormDiagnostic {
+                    kind: FormDiagnosticKind::UnsupportedConstruct { .. },
+                    ..
+                })
+            )),
+            "{source}: {errors:?}"
+        );
+    }
 }
