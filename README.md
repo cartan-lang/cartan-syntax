@@ -30,10 +30,11 @@ cargo run --offline -- ir tests/fixtures/diffusion.cart | less
 This prints Rust's indented debug representation of source items, not typed
 computational IR or generated target code. Errors go to stderr with a nonzero
 exit status. The inspection format is not a stable interchange format.
-With no arguments, `cargo run` prints help to stdout and exits successfully.
-`ir` is the sole inspection command. Use `ir --help` or `help ir` for
-command help, `--version` for the version, and `--describe-cli` for version-one
-JSON discovery derived from the same Clap definitions. Usage errors exit 2;
+With no arguments, `cargo run` prints concise help to stdout and exits
+successfully. `ir` is the sole inspection command. At any command, `-h` prints
+concise help and `--help` adds the full command outline generated from the Clap
+tree; there is no `help` subcommand. `--version` prints the version and
+`--describe-cli` prints version-one JSON discovery derived from the same tree. Usage errors exit 2;
 execution failures exit 1. `--color auto|always|never` controls help/diagnostics;
 `NO_COLOR` disables automatic color unless an explicit option overrides it.
 Inspection and JSON output remain undecorated.
@@ -46,7 +47,8 @@ from this repository; uv uses its own `uv.lock` and `.venv`:
 uv sync --locked
 uv run cartdev-syntax
 uv run cartdev-syntax ir tests/fixtures/diffusion.cart
-uv run cartdev-syntax help ir
+uv run cartdev-syntax ir -h
+uv run cartdev-syntax --help
 uv run cartdev-syntax --describe-cli
 uv run cartdev-syntax serve --port 8000
 ```
@@ -66,9 +68,11 @@ dependencies inside the parent workspace. Coordinate shared environment changes
 with the workspace owner. Use `--no-sync` for checks and commands against the
 prepared environment; `--locked` alone can still change installed packages.
 
-Python forwards Rust command arguments unchanged, preserving the invocation
-directory, streams and exit status. Its local help and `serve` command need no
-Rust process; use `help` for Rust command discovery. The former Python-only
+Python derives its Rust commands, descriptions and `--help` outline from the
+configured binary's `--describe-cli` metadata, with no handwritten command
+registrations. Their arguments still reach Rust unchanged, preserving the
+invocation directory, streams and exit status. `serve` and its help need no Rust
+process; group help reports a missing or incompatible binary without building. The former Python-only
 `ir --json` and `--timeout` options are removed: Rust validates its own options.
 The web diagnostics API retains its bounded version-one result envelope.
 

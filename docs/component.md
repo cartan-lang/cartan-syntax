@@ -79,6 +79,12 @@ See the [README](../README.md) for source inspection and library-example command
 The [Clap builder tree](../cli/src/command.rs) is the sole command definition.
 `ir SOURCE` is the sole inspection command and prints the normalized AST.
 The former `ast` spelling is rejected with usage status 2.
+Every command takes `-h` for concise help and `--help` for help followed by a
+full command outline generated from the tree; there is no `help` subcommand. Help
+and version arguments are explicit tree entries, which lets the color probe edit
+the unbuilt tree (Clap does not refresh option lookup after a built command is
+edited). The outline omits help/version entries and globals inherited below the
+root, rules the Python outline shares.
 Bare groups and help exit 0 on stdout, usage errors exit 2 on stderr, and domain
 failures retain exit 1 and typed causes until the formatter. File operands use
 OS-native paths and `--` terminates option parsing. Color accepts auto/always/never;
@@ -89,8 +95,8 @@ terminal state. AST output and metadata JSON never contain presentation escapes.
 [version-one shared schema](../../docs/records/component-apps.md#rust-authority-and-python-exposure).
 Visible command/argument aliases, inherited globals, value arity, defaults and
 choices are derived through Clap introspection. Custom validation/relationships
-remain Rust responsibilities. The local exporter and raw Python adapter introduce
-no component dependency; peers agreed the schema and maintain their own adapters.
+remain Rust responsibilities. The local exporter and Python adapter introduce no
+component dependency; peers agreed the schema and maintain their own adapters.
 
 The CLI alone depends on Clap 4.6.6 with default features disabled and
 `std`, `help`, `usage`, `error-context`, `color` enabled, plus `serde_json`.
@@ -99,12 +105,15 @@ cache, the initial offline CLI dependency check completed in about 1.8 seconds
 and build in about 2.0 seconds; these are observed incremental build costs, not
 clean-build benchmarks or cross-machine estimates.
 
-CLI migration verification covers 47 Rust tests, 28 Python tests, strict offline
-check/Clippy/rustdoc, formatting, seven documentation-tool tests and metadata
-validation. [CLI process tests](../cli/tests/cli.rs) exercise sole-command enforcement, help,
-version, usage failures, OS path operands, termination, color and JSON discovery.
-[Python tests](../tests/python/test_application.py) cover nested/standalone
-forwarding, terminal color precedence and process-free local help. The installed
+[CLI process tests](../cli/tests/cli.rs) exercise sole-command enforcement,
+concise versus full help, the absent `help` subcommand, version, usage failures,
+OS path operands, termination, color (including options after a help flag) and
+JSON discovery. [Python tests](../tests/python/test_application.py) cover
+nested/standalone forwarding, terminal color precedence and process-free command
+help. [Metadata tests](../tests/python/test_metadata.py) show fixture commands
+added or removed in metadata appearing or disappearing without Python edits,
+typed discovery failures, single discovery, and the actual binary's commands and
+outline matching Rust's own `--help`. The installed
 entrypoint preserves statuses 0/1/2 outside the repository and matches Rust output
 for all five workload fixtures. The existing Starlette warning remains; actual
 Tree-sitter parser generation/execution is outside this CLI change's verification.
@@ -145,11 +154,18 @@ a hyphen. Factories and standalone commands read a component-local
 is supplied. The default is `target/debug/cartan-syntax` under the configured
 root. Missing binaries yield a build instruction, never an implicit build.
 
-The CLI factory retains only Python-owned commands such as `serve`. Its local
-help starts no Rust process. Other argument vectors are forwarded literally to
-the configured binary, including unknown command names and options; the Rust CLI
-owns validation and command help. `help` requests Rust discovery and
-`--describe-cli` forwards the versioned metadata query. Invoking-directory paths
+The CLI factory declares only Python-owned commands such as `serve`; its Rust
+commands come from the configured binary's [metadata](../src/syntax_dev/metadata.py).
+Discovery runs at most once per group, only for group help or listing, and
+validates every version-one key. Launch, status, JSON, schema and collision
+failures are typed `MetadataError` kinds, worded by one presentation function;
+group help then still lists Python commands. A Rust command may not share a
+Python command's name. `-h` on the group prints concise help; `--help` adds the
+command outline derived from metadata followed by the Python commands. Python
+command help starts no Rust process. Every other argument vector, including
+generated command names, unknown names, options and `--describe-cli`, is
+forwarded literally to the configured binary, which owns validation and the help
+of its own commands. Invoking-directory paths
 retain their meaning because CLI forwarding does not change the child cwd.
 Real stdin/stdout/stderr are inherited without buffering or decoration, preserving
 terminal detection and child exit codes (signals map to conventional 128+signal).

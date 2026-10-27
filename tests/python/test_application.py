@@ -179,7 +179,8 @@ def test_standalone_help_without_repository(tmp_path, monkeypatch):
     for args in ([], ['--help']):
         result = CliRunner().invoke(main, args)
         assert result.exit_code == 0
-        assert all(word in result.stdout for word in ('forwarded', 'serve', '--repo', '--rust-command'))
+        assert all(word in result.stdout for word in ('unchanged', 'serve', '--repo', '--rust-command'))
+        assert 'Rust commands unavailable' in result.stdout
 
 
 @pytest.mark.parametrize('command', [(), ('',), ('python', None), 'python'])
@@ -317,14 +318,25 @@ def test_forwarding_preserves_unknown_options_termination_and_help(repo, monkeyp
     assert json.loads(result.stdout) == [str(caller), args]
 
 
-def test_python_help_and_serve_help_do_not_probe_rust(repo, monkeypatch):
+def test_python_command_help_does_not_probe_rust(repo, monkeypatch):
     import subprocess
     def forbidden(*args, **kwargs):
         raise AssertionError('unexpected Rust discovery/process')
     monkeypatch.setattr(subprocess, 'run', forbidden)
     cli = create_cli(repo_root=repo, rust_command=('/missing-rust',))
-    for args in [[], ['--help'], ['serve', '--help']]:
-        assert CliRunner().invoke(cli, args).exit_code == 0
+    for args in [['serve', '-h'], ['serve', '--help']]:
+        result = CliRunner().invoke(cli, args)
+        assert result.exit_code == 0
+        assert 'Interface to bind.' in result.stdout
+
+
+def test_group_help_reports_unavailable_rust_without_building(repo):
+    cli = create_cli(repo_root=repo, rust_command=('/missing-rust',))
+    for args in [[], ['-h'], ['--help']]:
+        result = CliRunner().invoke(cli, args)
+        assert result.exit_code == 0
+        assert 'serve' in result.stdout
+        assert 'Rust commands unavailable: Cannot launch Rust CLI /missing-rust' in result.stdout
 
 
 def test_missing_forwarded_binary_fails_without_build(repo):

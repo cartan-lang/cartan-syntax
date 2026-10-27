@@ -6,17 +6,31 @@ fn cli() -> Command {
 
 #[test]
 fn help_and_usage_have_distinct_exit_statuses_and_streams() {
-    let help = cli().arg("--help").output().unwrap();
-    assert!(help.status.success());
-    assert!(String::from_utf8(help.stdout.clone())
-        .unwrap()
-        .contains("ir"));
-    assert!(help.stderr.is_empty());
+    let concise = cli().arg("-h").output().unwrap();
+    assert!(concise.status.success());
+    assert!(concise.stderr.is_empty());
+    let concise_text = String::from_utf8(concise.stdout.clone()).unwrap();
+    assert!(concise_text.contains("ir"));
+    assert!(!concise_text.contains("Command outline:"));
+    let full = cli().arg("--help").output().unwrap();
+    assert!(full.status.success());
+    assert!(full.stderr.is_empty());
+    let full_text = String::from_utf8(full.stdout).unwrap();
+    assert!(full_text.contains("Command outline:\n  cartan-syntax  Inspect Cartan source syntax"));
+    assert!(full_text.contains("  cartan-syntax ir  Print the normalized source AST"));
+    assert!(full_text.contains("<SOURCE>  Cartan source file"));
     let no_args = cli().output().unwrap();
     assert_eq!(no_args.status.code(), Some(0));
-    assert_eq!(no_args.stdout, help.stdout);
+    assert_eq!(no_args.stdout, concise.stdout);
     assert!(no_args.stderr.is_empty());
-    for args in [vec!["ir"], vec!["unknown"], vec!["ir", "one", "two"]] {
+    // Help is a flag at the selected command, never a subcommand.
+    for args in [
+        vec!["ir"],
+        vec!["unknown"],
+        vec!["ir", "one", "two"],
+        vec!["help"],
+        vec!["help", "ir"],
+    ] {
         let output = cli().args(args).output().unwrap();
         assert_eq!(output.status.code(), Some(2));
         assert!(output.stdout.is_empty());
@@ -92,11 +106,40 @@ fn discovery_agrees_with_options_and_nested_help() {
     assert_eq!(source["position"], 1);
     assert_eq!(source["required"], true);
     assert_eq!(source["arity"], serde_json::json!({"min":1,"max":1}));
-    for args in [["ir", "--help"], ["help", "ir"]] {
+    assert!(root["commands"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|cmd| cmd["name"] != "help"));
+    for command in [root, ir] {
+        let arguments = command["arguments"].as_array().unwrap();
+        let action = |id: &str| {
+            let arg = arguments.iter().find(|arg| arg["id"] == id).unwrap();
+            (
+                arg["short"].clone(),
+                arg["long"].clone(),
+                arg["action"].clone(),
+            )
+        };
+        assert_eq!(
+            action("help-short"),
+            ("h".into(), serde_json::Value::Null, "help_short".into())
+        );
+        assert_eq!(
+            action("help-full"),
+            (serde_json::Value::Null, "help".into(), "help_long".into())
+        );
+    }
+    for (args, outline) in [(["ir", "-h"], false), (["ir", "--help"], true)] {
         let result = cli().args(args).output().unwrap();
         assert!(result.status.success());
         assert!(result.stderr.is_empty());
-        assert!(String::from_utf8_lossy(&result.stdout).contains("SOURCE"));
+        let text = String::from_utf8_lossy(&result.stdout);
+        assert!(text.contains("SOURCE"));
+        assert_eq!(
+            text.contains("Command outline:\n  cartan-syntax ir"),
+            outline
+        );
     }
     let version = cli().arg("--version").output().unwrap();
     assert!(version.status.success());
@@ -108,7 +151,10 @@ fn color_respects_choice_environment_and_machine_output() {
     for args in [
         vec!["--color", "always", "--help"],
         vec!["ir", "--help", "--color=always"],
-        vec!["--color=always", "help", "ir"],
+        vec!["--color=always", "ir", "-h"],
+        // The color probe still reads an option written after a help flag.
+        vec!["ir", "-h", "--color=always"],
+        vec!["ir", "--help", "--color", "always"],
     ] {
         let result = cli().args(args).env("NO_COLOR", "1").output().unwrap();
         assert!(result.status.success());

@@ -63,18 +63,18 @@ def create_cli(*, repo_root: Path, rust_command: tuple[str, ...] | None = None) 
     @click.group(
         name="syntax", cls=RustGroup, invoke_without_command=True,
         rust_command=rust_command or (str(root / "target/debug/cartan-syntax"),),
-        context_settings={"help_option_names": ["-h", "--help"]},
-        epilog="Other arguments are forwarded unchanged to Rust. Use 'help' for Rust command help or '--describe-cli' for JSON discovery. Rust must be built explicitly.",
+        context_settings={"help_option_names": []},
+        epilog="Rust commands come from the configured CLI's --describe-cli metadata and receive their arguments unchanged; use -h or --help after a command for its Rust help. -h is concise; --help adds the full command outline. Rust must be built explicitly.",
     )
     @click.pass_context
     def cli(ctx):
         """Inspect syntax and browse component documentation."""
         if ctx.invoked_subcommand is None:
-            click.echo(ctx.get_help())
+            click.echo(ctx.command.help_text(ctx, full=False))
 
-    @cli.command()
-    @click.option("--host", default="127.0.0.1", show_default=True)
-    @click.option("--port", type=click.IntRange(1, 65535), default=8000, show_default=True)
+    @cli.command(context_settings={"help_option_names": ["-h", "--help"]})
+    @click.option("--host", default="127.0.0.1", show_default=True, help="Interface to bind.")
+    @click.option("--port", type=click.IntRange(1, 65535), default=8000, show_default=True, help="Port to bind.")
     def serve(host, port):
         """Serve documentation and explicit local diagnostics."""
         import uvicorn
@@ -317,10 +317,15 @@ def main(ctx, repo, rust_command):
         repo = next((p for p in (Path.cwd(), *Path.cwd().parents)
                      if (p / "pyproject.toml").is_file() and
                      tomllib.loads((p / "pyproject.toml").read_text()).get("project", {}).get("name") == "cartan-syntax-dev"), None)
-    if repo is None and (not ctx.args or ctx.args == ["--help"]):
-        cli = create_cli(repo_root=Path.cwd())
-        click.echo(cli.get_help(click.Context(cli, info_name=ctx.info_name)))
+    def show_help(cli):
+        full = ctx.args[:1] == ["--help"]
+        context = click.Context(cli, info_name=ctx.info_name, **cli.context_settings)
+        click.echo(cli.help_text(context, full=full))
         click.echo("\nStandalone options:\n  --repo PATH  Component repository.\n  --rust-command TEXT  Executable/prefix token (repeatable).")
+
+    wants_help = not ctx.args or ctx.args[0] in ("-h", "--help")
+    if repo is None and wants_help:
+        show_help(create_cli(repo_root=Path.cwd()))
         return
     if repo is None:
         raise click.ClickException("No syntax repository found; supply --repo PATH")
@@ -329,9 +334,8 @@ def main(ctx, repo, rust_command):
         cli = create_cli(repo_root=repo, rust_command=tuple(rust_command) or None)
     except ValueError as error:
         raise click.ClickException(str(error)) from error
-    if not ctx.args or ctx.args == ["--help"]:
-        click.echo(cli.get_help(click.Context(cli, info_name=ctx.info_name)))
-        click.echo("\nStandalone options:\n  --repo PATH  Component repository.\n  --rust-command TEXT  Executable/prefix token (repeatable).")
+    if wants_help:
+        show_help(cli)
         return
     status = cli.main(args=ctx.args, prog_name=ctx.info_name, standalone_mode=False)
     if isinstance(status, int):

@@ -4,12 +4,27 @@ use clap::{builder::PathBufValueParser, Arg, ArgAction, ColorChoice, Command};
 use std::ffi::OsString;
 
 pub(crate) fn command() -> Command {
+    // Help and version are explicit so the color probe can edit them unbuilt.
+    with_help(tree(), &[])
+        .disable_help_subcommand(true)
+        .disable_version_flag(true)
+        .arg(
+            Arg::new("version")
+                .short('V')
+                .long("version")
+                .action(ArgAction::Version)
+                .help("Print version"),
+        )
+}
+
+fn tree() -> Command {
     Command::new("cartan-syntax")
         .version(env!("CARGO_PKG_VERSION"))
         .about("Inspect Cartan source syntax")
         .arg(
             Arg::new("color")
                 .long("color")
+                .value_name("WHEN")
                 .global(true)
                 .value_parser(["auto", "always", "never"])
                 .default_value("auto")
@@ -35,10 +50,108 @@ pub(crate) fn command() -> Command {
         )
 }
 
+/// Give every command `-h` for concise help and `--help` for its full outline.
+fn with_help(command: Command, parents: &[&str]) -> Command {
+    let mut outline = String::from("Command outline:\n");
+    write_outline(&command, parents, &mut outline);
+    let mut path = parents.to_vec();
+    path.push(command.get_name());
+    let path: Vec<String> = path.into_iter().map(str::to_owned).collect();
+    let mut command = command
+        .disable_help_flag(true)
+        .arg(
+            Arg::new("help-short")
+                .short('h')
+                .action(ArgAction::HelpShort)
+                .help("Print concise help"),
+        )
+        .arg(
+            Arg::new("help-full")
+                .long("help")
+                .action(ArgAction::HelpLong)
+                .help("Print help with the full command outline"),
+        )
+        .after_long_help(outline.trim_end().to_owned());
+    let path: Vec<&str> = path.iter().map(String::as_str).collect();
+    for child in command.get_subcommands_mut() {
+        *child = with_help(child.clone(), &path);
+    }
+    command
+}
+
+/// One line per command path, then its visible arguments, depth first.
+fn write_outline(command: &Command, parents: &[&str], out: &mut String) {
+    let mut path = parents.to_vec();
+    path.push(command.get_name());
+    let about = command
+        .get_about()
+        .map(|about| format!("  {about}"))
+        .unwrap_or_default();
+    out.push_str(&format!("  {}{about}\n", path.join(" ")));
+    // Help/version entries and globals inherited below the root are omitted;
+    // the Python outline derived from metadata applies the same rules.
+    let shown = |arg: &&Arg| {
+        !arg.is_hide_set()
+            && !matches!(
+                arg.get_action(),
+                ArgAction::Help | ArgAction::HelpShort | ArgAction::HelpLong | ArgAction::Version
+            )
+            && (parents.is_empty() || !arg.is_global_set())
+    };
+    for arg in command.get_arguments().filter(shown) {
+        let name = arg
+            .get_value_names()
+            .and_then(|names| names.first())
+            .map(|name| name.to_string())
+            .unwrap_or_else(|| arg.get_id().as_str().to_uppercase());
+        let takes_value = matches!(arg.get_action(), ArgAction::Set | ArgAction::Append);
+        let spelling = match (arg.get_long(), arg.get_short()) {
+            _ if arg.is_positional() => format!("<{name}>"),
+            (Some(long), _) if takes_value => format!("--{long} <{name}>"),
+            (Some(long), _) => format!("--{long}"),
+            (None, Some(short)) if takes_value => format!("-{short} <{name}>"),
+            (None, Some(short)) => format!("-{short}"),
+            (None, None) => name,
+        };
+        let mut notes = Vec::new();
+        let defaults: Vec<_> = arg
+            .get_default_values()
+            .iter()
+            .map(|value| value.to_string_lossy())
+            .collect();
+        if takes_value && !defaults.is_empty() {
+            notes.push(format!("default: {}", defaults.join(", ")));
+        }
+        let choices: Vec<_> = arg
+            .get_possible_values()
+            .into_iter()
+            .filter(|value| !value.is_hide_set())
+            .map(|value| value.get_name().to_owned())
+            .collect();
+        if takes_value && !choices.is_empty() {
+            notes.push(format!("choices: {}", choices.join(", ")));
+        }
+        let help = arg.get_help().map(ToString::to_string).unwrap_or_default();
+        let notes = if notes.is_empty() {
+            String::new()
+        } else {
+            format!(" [{}]", notes.join("; "))
+        };
+        out.push_str(&format!("      {spelling}  {help}{notes}\n"));
+    }
+    for child in command
+        .get_subcommands()
+        .filter(|child| !child.is_hide_set())
+    {
+        write_outline(child, &path, out);
+    }
+}
+
 // Disable only eager presentation actions in a clone of the authoritative tree.
 // Clap still determines which tokens are options, values and terminated operands.
+// Every eager argument is explicit, so the probe edits the unbuilt tree: editing
+// a built Clap command does not refresh its option lookup.
 fn presentation_probe(mut command: Command) -> Command {
-    command.build();
     let eager: Vec<_> = command
         .get_arguments()
         .filter(|arg| {
@@ -51,6 +164,15 @@ fn presentation_probe(mut command: Command) -> Command {
         .collect();
     for id in eager {
         command = command.mut_arg(id, |arg| arg.action(ArgAction::SetTrue));
+    }
+    // A help flag must not lose earlier matches to a missing required operand.
+    let required: Vec<_> = command
+        .get_arguments()
+        .filter(|arg| arg.is_required_set())
+        .map(|arg| arg.get_id().clone())
+        .collect();
+    for id in required {
+        command = command.mut_arg(id, |arg| arg.required(false));
     }
     for child in command.get_subcommands_mut() {
         *child = presentation_probe(child.clone());
