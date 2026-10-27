@@ -5,7 +5,7 @@ import sys
 
 import click
 
-from .metadata import MetadataError, RustCommand, discover, outline
+from .metadata import MetadataError, discover, outline, rust_command
 
 HELP_SHORT, HELP_FULL = "-h", "--help"
 
@@ -61,8 +61,8 @@ class RustGroup(click.Group):
             raise self._metadata
         return self._metadata
 
-    def rust_commands(self) -> dict[str, RustCommand]:
-        return {node["name"]: RustCommand(node) for node in self.metadata()["command"]["commands"]}
+    def rust_commands(self) -> dict[str, click.Command]:
+        return {node["name"]: rust_command(node) for node in self.metadata()["command"]["commands"]}
 
     def list_commands(self, ctx):
         try:

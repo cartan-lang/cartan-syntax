@@ -80,10 +80,15 @@ def validate(root: object, command: tuple[str, ...]) -> None:
         if position is not None and (type(position) is not int or position < 1):
             fail(f"{path}.position")
         arity = field(value, "arity", path)
-        if (not isinstance(arity, dict) or type(arity.get("min")) is not int or arity["min"] < 0
-                or not (arity.get("max") is None or (type(arity["max"]) is int and arity["max"] >= 0))):
+        if not isinstance(arity, dict):
             fail(f"{path}.arity")
-        if field(value, "action", path) not in ACTIONS:
+        minimum = field(arity, "min", f"{path}.arity")
+        maximum = field(arity, "max", f"{path}.arity")
+        if (type(minimum) is not int or minimum < 0
+                or not (maximum is None or (type(maximum) is int and maximum >= minimum))):
+            fail(f"{path}.arity")
+        action = field(value, "action", path)
+        if not isinstance(action, str) or action not in ACTIONS:
             fail(f"{path}.action")
         for key in ("repeatable", "required", "global"):
             if type(field(value, key, path)) is not bool:
@@ -102,7 +107,9 @@ def validate(root: object, command: tuple[str, ...]) -> None:
             for index, item in enumerate(items):
                 check(item, f"{path}.{key}[{index}]")
 
-    if not isinstance(root, dict) or root.get("schema_version") != SCHEMA_VERSION:
+    # `True == 1` in Python, so the version must be exactly the integer 1.
+    if (not isinstance(root, dict) or type(root.get("schema_version")) is not int
+            or root["schema_version"] != SCHEMA_VERSION):
         fail("schema_version")
     strings(field(root, "program", ""), "program")
     strings(field(root, "version", ""), "version", nullable=True)
@@ -142,13 +149,31 @@ def outline(node: dict, path: tuple[str, ...], *, root: bool = True) -> list[str
     return lines
 
 
+DISPLAY_ONLY = {"ignore_unknown_options": True, "allow_extra_args": True,
+                "allow_interspersed_args": False}
+
+
 class RustCommand(click.Command):
-    """A command derived from metadata. Its arguments reach Rust unparsed."""
+    """A leaf command derived from metadata. Its arguments reach Rust unparsed."""
 
     def __init__(self, node: dict):
-        super().__init__(
-            name=node["name"], help=node["description"], add_help_option=False,
-            context_settings={"ignore_unknown_options": True, "allow_extra_args": True,
-                              "allow_interspersed_args": False},
-        )
+        super().__init__(name=node["name"], help=node["description"], add_help_option=False,
+                         context_settings=DISPLAY_ONLY)
         self.node = node
+
+
+class RustCommandGroup(click.Group):
+    """A metadata command with children, traversable like any Click group."""
+
+    def __init__(self, node: dict):
+        super().__init__(name=node["name"], help=node["description"], add_help_option=False,
+                         context_settings=DISPLAY_ONLY)
+        self.node = node
+        for child in node["commands"]:
+            self.add_command(rust_command(child))
+
+
+def rust_command(node: dict) -> click.Command:
+    """The Click object for a metadata node. Invocation still happens at the
+    root group, which forwards the original argv; these objects never parse."""
+    return RustCommandGroup(node) if node["commands"] else RustCommand(node)

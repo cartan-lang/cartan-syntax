@@ -164,8 +164,11 @@ root. Missing binaries yield a build instruction, never an implicit build.
 
 The CLI factory declares only Python-owned commands such as `serve`; its Rust
 commands come from the configured binary's [metadata](../src/syntax_dev/metadata.py).
-Discovery runs at most once per group, only for group help or listing, and
-validates every version-one key. Launch, status, JSON, schema and collision
+Every metadata node becomes a display-only Click object: a group for a node with
+children, otherwise a command, so the generated hierarchy is traversable. These
+objects never parse; the root group forwards the original argv. Discovery runs at
+most once per group, only for group help or listing, and validates every
+version-one key with its exact type, including an integer `schema_version`. Launch, status, JSON, schema and collision
 failures are typed `MetadataError` kinds, worded by one presentation function;
 group help then still lists Python commands. A Rust command may not share a
 Python command's name. `-h` on the group prints concise help; `--help` adds the

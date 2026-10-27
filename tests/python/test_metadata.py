@@ -193,3 +193,43 @@ def test_hidden_python_commands_dispatch_without_listing(tmp_path):
     assert runner.invoke(cli, ['worker']).stdout == 'worker ran\n'
     for flag in ('-h', '--help'):
         assert 'worker' not in runner.invoke(cli, [flag]).stdout
+
+
+def test_malformed_shapes_are_schema_errors_and_keep_python_help(tmp_path):
+    def mutate(change):
+        value = json.loads(json.dumps(tree(IR)))
+        change(value)
+        return value
+    source = lambda value: value['command']['commands'][0]['arguments'][0]
+    cases = {
+        'command.commands[0].arguments[0].action': mutate(lambda v: source(v).update(action=[])),
+        'command.commands[0].arguments[0].arity.max': mutate(lambda v: source(v)['arity'].pop('max')),
+        'command.commands[0].arguments[0].arity': mutate(lambda v: source(v).update(arity=[])),
+        'schema_version': mutate(lambda v: v.update(schema_version=True)),
+        'command.commands[0].name': mutate(lambda v: v['command']['commands'][0].update(name=None)),
+    }
+    for path, metadata in cases.items():
+        command = fake(tmp_path, metadata)
+        with pytest.raises(MetadataError) as raised:
+            discover(command)
+        assert (raised.value.kind, raised.value.detail) == ('schema', path)
+        for flag in ('-h', '--help'):
+            result = CliRunner().invoke(create_cli(repo_root=tmp_path, rust_command=command), [flag])
+            assert result.exit_code == 0
+            assert 'serve' in result.stdout
+            assert f'incompatible at {path}' in result.stdout
+
+
+def test_nested_metadata_commands_are_traversable_click_groups(tmp_path):
+    import click
+    cli = create_cli(repo_root=tmp_path, rust_command=fake(tmp_path, tree(IR, LINT)))
+    ctx = click.Context(cli, info_name='syntax')
+    lint = cli.get_command(ctx, 'lint')
+    assert isinstance(lint, click.Group)
+    assert lint.help == 'Check source style'
+    deep = lint.get_command(ctx, 'deep')
+    assert deep.help == 'Check nested forms' and not isinstance(deep, click.Group)
+    assert not isinstance(cli.get_command(ctx, 'ir'), click.Group)
+    # Traversal never changes invocation: the root still forwards raw argv.
+    args = ['lint', 'deep', '--unknown']
+    assert json.loads(CliRunner().invoke(cli, args).stdout) == args
