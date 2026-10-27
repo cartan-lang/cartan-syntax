@@ -41,25 +41,27 @@ normalization in this component; "graph" means a static check analysis owns.
 | Name and `_` patterns | AST | None |
 | Bracket and bare-run patterns (two or more) | AST: `PatternKind::List`; a single bare name stays a name | None |
 | Positional tuple `(p, …): F` | AST: `PatternKind::Site`; grammar refuses it untyped, at top level and in headers | None |
-| Constructor `Head(p, …)`, including an inline description head | Grammar parses; AST unsupported | Normalize (next checkpoint) |
-| Named components `(k: p, …)` with name or integer keys | Grammar parses; AST unsupported | Normalize (next checkpoint) |
-| Braces `{ k, k2: p }` | Grammar parses; AST unsupported | Normalize (next checkpoint) |
-| Nesting of all forms | AST for existing forms | Extend to new forms |
-| Positions: local, header binder, reduction driver, parameter, top-level `=` | AST for existing forms | Extend to new forms |
+| Constructor `Head(p, …)` | AST: `PatternKind::Constructor` | Done |
+| Constructor with an inline description head | AST: typed unsupported (`described_head`) | Inline product descriptions are outside this slice |
+| Named components `(k: p, …)` with name or integer keys | AST: `PatternKind::Components` | Done |
+| Braces `{ k, k2: p }` | AST: `PatternKind::Entries` | Done |
+| Nesting of all forms | AST | Done |
+| Positions: local, header binder, reduction driver, parameter, top-level `=` | AST for every form | Done |
 | `state` takes a single name; reduction seed and accumulator take a single name | Grammar | None |
 | Parameter default on a bare name only | Defaults are unsupported in this AST | None in this slice |
-| Stated type on a pattern other than a name or positional tuple | AST keeps the annotation (e.g. `[a, b]: T := m`) | Proposed: typed syntax rejection |
+| Stated type on a pattern other than a name or positional tuple, `_` included | AST: `PatternTypeAnnotation` (lead ruling) | Done |
 | Arity, unknown head/component/key, duplicate keys, name bound twice, named components over a struct | Not syntax | Graph |
 | `p := e?` | Outside this slice | None |
 
-Open for the lead: a top-level constructor pattern `P(a, b) = m` is
-indistinguishable from the function equation `P(a, b) = m` in the grammar, so
-it currently normalizes as a function definition. The patterns record admits
-patterns at top-level items without excluding constructors.
+Held for the owner: a top-level constructor pattern `P(a, b) = m` is
+indistinguishable from the function equation `P(a, b) = m` in the grammar and
+keeps the function-definition reading until the owner rules; the recommendation
+is not to admit constructor patterns at top level.
 
 ## Checkpoints and verification
 
-First checkpoint: `of` keys, partial products, `but` and the removed spatial
-form, with tests for `of` precedence and a partial-product update. Next:
-constructor, named-component and brace patterns with spans in every admitted
-position, and the stated-type rejection once accepted.
+Checkpoint 1 (accepted): `of` keys, partial products, `but` and the removed
+spatial form, with tests for `of` precedence and a partial-product update.
+Checkpoint 2: constructor, named-component and brace patterns with spans in
+every admitted position, and the stated-type rejection. Graph adopts the
+breaking AST changes at its own pin.

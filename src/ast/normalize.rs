@@ -432,10 +432,11 @@ impl Reader<'_> {
             }
             "binding" | "pattern_binding" | "port_declaration" => {
                 shape(node, &["name", "pattern", "type", "kind", "value"], &[])?;
-                let pattern = self.pattern(
+                let pattern = self.typed_pattern(
                     node.child("pattern")
                         .or_else(|| node.child("name"))
                         .ok_or_else(|| unsupported(node))?,
+                    node.child("type"),
                 )?;
                 let kind = match node.child("kind").map(|kind| self.text(kind)) {
                     None => BindingKind::Ordinary,
@@ -488,7 +489,10 @@ impl Reader<'_> {
                     .map(|parameter| {
                         shape(parameter, &["name", "type"], &[])?;
                         Ok(Parameter {
-                            pattern: self.pattern(field(parameter, "name")?)?,
+                            pattern: self.typed_pattern(
+                                field(parameter, "name")?,
+                                parameter.child("type"),
+                            )?,
                             annotation: parameter
                                 .child("type")
                                 .map(|written| self.parameter_annotation(written))
@@ -666,6 +670,21 @@ impl Reader<'_> {
         })
     }
 
+    /// A pattern with an optional stated type, which only a name or a
+    /// positional tuple may carry.
+    fn typed_pattern(&self, node: &Node, written_type: Option<&Node>) -> Result<Pattern> {
+        let pattern = self.pattern(node)?;
+        match (&pattern.kind, written_type) {
+            (PatternKind::Name(_) | PatternKind::Site(_), _) | (_, None) => Ok(pattern),
+            (_, Some(written_type)) => Err(form(
+                written_type,
+                FormDiagnosticKind::PatternTypeAnnotation {
+                    pattern_span: pattern.span,
+                },
+            )),
+        }
+    }
+
     fn pattern(&self, node: &Node) -> Result<Pattern> {
         let kind = match node.kind.as_str() {
             "binder_list" => return self.pattern(single(node)?),
@@ -679,6 +698,52 @@ impl Reader<'_> {
             "site_pattern" => PatternKind::Site(
                 children(node)
                     .map(|node| self.pattern(node))
+                    .collect::<Result<_>>()?,
+            ),
+            "constructor_pattern" => {
+                // An inline product description as the head stays unsupported.
+                if let Some(described) = node.child("described") {
+                    return Err(unsupported(described));
+                }
+                PatternKind::Constructor {
+                    head: self.name(field(node, "head")?)?,
+                    items: children(node)
+                        .filter(|child| child.field.is_none())
+                        .map(|item| self.pattern(item))
+                        .collect::<Result<_>>()?,
+                }
+            }
+            "named_pattern" => PatternKind::Components(
+                children(node)
+                    .map(|component| {
+                        if component.kind != "named_sub_pattern" {
+                            return Err(unsupported(component));
+                        }
+                        shape(component, &["name", "pattern"], &[])?;
+                        Ok(ComponentPattern {
+                            key: self.component_key(field(component, "name")?)?,
+                            pattern: self.pattern(field(component, "pattern")?)?,
+                            span: span(component),
+                        })
+                    })
+                    .collect::<Result<_>>()?,
+            ),
+            "map_pattern" => PatternKind::Entries(
+                children(node)
+                    .map(|entry| {
+                        if entry.kind != "map_sub_pattern" {
+                            return Err(unsupported(entry));
+                        }
+                        shape(entry, &["key", "pattern"], &[])?;
+                        Ok(EntryPattern {
+                            key: self.name(field(entry, "key")?)?,
+                            pattern: entry
+                                .child("pattern")
+                                .map(|pattern| self.pattern(pattern))
+                                .transpose()?,
+                            span: span(entry),
+                        })
+                    })
                     .collect::<Result<_>>()?,
             ),
             _ => return Err(unsupported(node)),
@@ -699,7 +764,7 @@ impl Reader<'_> {
             if child.kind == "local" {
                 shape(child, &["pattern", "type", "value"], &[])?;
                 items.push(BodyItem::Local(Local {
-                    pattern: self.pattern(field(child, "pattern")?)?,
+                    pattern: self.typed_pattern(field(child, "pattern")?, child.child("type"))?,
                     annotation: self.optional_annotation(child, SignaturePosition::Local)?,
                     value: self.expr(field(child, "value")?)?,
                     span: span(child),

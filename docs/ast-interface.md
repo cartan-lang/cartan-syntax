@@ -59,7 +59,7 @@ The source constructs are:
 | Functions | Name, ordered parameters with patterns and optional value or function-signature annotations, and expression body. |
 | Fibers | Name, written base annotation such as `Module`, and ordered named components with annotations. |
 | Annotations | Named types, generic applications and inline struct types, preserving names and numeric arguments such as `Array<Primitive, 1>` without interpreting rank. |
-| Patterns | Name, wildcard, recursive list pattern, and positional site pattern with its enclosing annotation retained. |
+| Patterns | Name, wildcard, list, positional site pattern with its enclosing annotation retained, constructor, named components and brace entries, all nesting. |
 | Expressions | Literal number/boolean/string, tagged template, local/qualified name, unary/binary operation, conditional, local/qualified call, indexing, `of` component read, product value, `but` update, list, named map, map join, configurable constructor/application, range, `periodic`, body, `for` comprehension and `reduce`. |
 | Body | Ordered `BodyItem::Local` and `BodyItem::Result` entries, with exactly one result. A result need not be last. |
 | Update block | Written guard and ordered writes, preserving target names, values and spans. |
@@ -305,6 +305,19 @@ spans remain different, matching the source. A scalar binder `i` stays a name;
 it must not normalize to the singleton pattern `[i]`. Site patterns such as
 `(rho, _, pre): Primitive` remain distinct from list patterns.
 
+Under the workspace [patterns](../../docs/records/patterns.md) record,
+`Head(p, …)` is `PatternKind::Constructor { head, items }`, `(k: p, …)` is
+`PatternKind::Components(Vec<ComponentPattern { key, pattern, span }>)` with a
+name or position `ComponentKey`, and `{ k, k2: p }` is
+`PatternKind::Entries(Vec<EntryPattern { key, pattern, span }>)`, where a bare
+key has no sub-pattern and binds its own name. All forms nest and stand wherever
+a pattern is admitted. A constructor headed by an inline product description is
+an `UnsupportedConstruct` of kind `described_head`. Written at top level,
+`P(a, b) = m` is read as a function equation. Only a name or a positional tuple
+may carry a stated type; any other pattern with one, `_` included, yields
+`FormDiagnosticKind::PatternTypeAnnotation { pattern_span }` spanning the type.
+Arity, heads, keys, duplicates and names bound twice are analysis checks.
+
 Grouping parentheses normalize away after form validation, with the outer
 expression span covering the grouping. A comparison refuses an immediately
 nested ungrouped comparison on its left; a range refuses an ungrouped range
@@ -317,7 +330,8 @@ Structured errors distinguish `Grammar(Diagnostic)` from
 relevant payloads: unsupported construct and its CST kind, comparison/range
 chain, body result count, a use alias combined with selectors, malformed
 format precision or notation, misplaced signatures, component keys of the
-wrong length and the removed spatial update. `Error::span()` returns the full byte range; errors
+wrong length, the removed spatial update and stated types on patterns other than
+names and positional tuples. `Error::span()` returns the full byte range; errors
 derive `Clone`, `Debug`, `PartialEq` and `Eq`. Grammar diagnostics are preserved
 without rewriting. Normalization reports the first form error in each document
 item; it returns no partial AST if any error occurs. Unsupported syntax is
@@ -339,7 +353,7 @@ ordered writes only; other update-body forms are outside this AST subset.
 Only named types, generic applications and inline structs, the imports above,
 and the listed expression forms are normalized. Default arguments,
 function-header configuration/lock clauses, sum fibers, qualified annotations,
-general `fold`, guard/configuration clauses on reductions and additional pattern forms
+general `fold`, guard/configuration clauses on reductions and inline-description pattern heads
 return unsupported errors. Broader syntax restrictions such as periodic operands
 or annotation-placement rules are not comprehensively validated. Names, type
 existence, arity, domain/rank restrictions and numeric representability remain

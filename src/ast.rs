@@ -229,6 +229,32 @@ pub enum PatternKind {
     List(Vec<Pattern>),
     /// Positional product destructuring, distinct from a list pattern.
     Site(Vec<Pattern>),
+    /// `Head(p, …)`: a named product's components in declared order.
+    Constructor {
+        head: Name,
+        items: Vec<Pattern>,
+    },
+    /// `(k: p, …)`: components by name or position, in any order.
+    Components(Vec<ComponentPattern>),
+    /// `{ k, k2: p }`: struct fields or Map entries by key.
+    Entries(Vec<EntryPattern>),
+}
+
+/// One `k: p` of a named-components pattern; `k` is a name or position.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ComponentPattern {
+    pub key: ComponentKey,
+    pub pattern: Pattern,
+    pub span: Span,
+}
+
+/// One entry of a brace pattern. A bare key (`pattern: None`) binds the
+/// key's own name; `k: p` reads key `k` into `p`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EntryPattern {
+    pub key: Name,
+    pub pattern: Option<Pattern>,
+    pub span: Span,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -552,6 +578,11 @@ pub enum FormDiagnosticKind {
     /// A parenthesized component key with other than two positions.
     ComponentKeyPositions {
         found: usize,
+    },
+    /// A stated type on a pattern other than a name or positional tuple. The
+    /// diagnostic span is the type; `pattern_span` covers the pattern.
+    PatternTypeAnnotation {
+        pattern_span: Span,
     },
 }
 

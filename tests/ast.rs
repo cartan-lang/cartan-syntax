@@ -73,6 +73,27 @@ fn assert_pattern_spans(source: &str, pattern: &Pattern) {
                 assert_pattern_spans(source, pattern);
             }
         }
+        PatternKind::Constructor { head, items } => {
+            assert_name_span(source, head);
+            assert!(text.starts_with(&head.text));
+            for pattern in items {
+                assert_pattern_spans(source, pattern);
+            }
+        }
+        PatternKind::Components(components) => {
+            for component in components {
+                assert_key_spans(source, &component.key);
+                assert_pattern_spans(source, &component.pattern);
+            }
+        }
+        PatternKind::Entries(entries) => {
+            for entry in entries {
+                assert_name_span(source, &entry.key);
+                if let Some(pattern) = &entry.pattern {
+                    assert_pattern_spans(source, pattern);
+                }
+            }
+        }
     }
 }
 
@@ -1807,5 +1828,100 @@ fn the_removed_spatial_update_is_a_typed_error_at_its_colon() {
         };
         assert_eq!(&source[span.start..span.end], ":", "{source}");
         assert_eq!(&source[key_span.start..key_span.end], key, "{source}");
+    }
+}
+
+fn local_pattern(source: &str) -> Pattern {
+    let ExprKind::Body(body) = expression(source).kind else {
+        panic!("{source}");
+    };
+    let BodyItem::Local(local) = &body.items[0] else {
+        panic!("{source}");
+    };
+    assert_pattern_spans(source, &local.pattern);
+    local.pattern.clone()
+}
+
+#[test]
+fn constructor_component_and_brace_patterns_nest_with_spans() {
+    let source = "{ P(_, (k: a, 0: [b, c]), { rho, vel: (x: v) }) := m\n a }";
+    let pattern = local_pattern(source);
+    let text = |span: Span| &source[span.start..span.end];
+    let PatternKind::Constructor { head, items } = &pattern.kind else {
+        panic!("{pattern:?}");
+    };
+    assert_eq!(head.text, "P");
+    assert_eq!(items.len(), 3);
+    assert!(matches!(items[0].kind, PatternKind::Wildcard));
+    let PatternKind::Components(components) = &items[1].kind else {
+        panic!();
+    };
+    assert_eq!(text(items[1].span), "(k: a, 0: [b, c])");
+    assert!(matches!(&components[0].key, ComponentKey::Name(name) if name.text == "k"));
+    assert!(matches!(&components[1].key, ComponentKey::Position(number) if number.text == "0"));
+    assert!(matches!(components[1].pattern.kind, PatternKind::List(_)));
+    assert_eq!(text(components[1].span), "0: [b, c]");
+    let PatternKind::Entries(entries) = &items[2].kind else {
+        panic!();
+    };
+    assert_eq!(text(items[2].span), "{ rho, vel: (x: v) }");
+    assert!(entries[0].pattern.is_none());
+    assert_eq!(entries[0].key.text, "rho");
+    assert!(matches!(
+        entries[1].pattern.as_ref().map(|pattern| &pattern.kind),
+        Some(PatternKind::Components(_))
+    ));
+    // Every admitted position takes the new forms.
+    for source in [
+        "{ rho } = m",
+        "(k: a) = m",
+        "f(P(a, b), { rho }, (k: c)) = a",
+        "x = for { rho } in d { rho }",
+        "x = for P(a, b) in d { a }",
+        "x = reduce s := 0 for (k: a) in d { s + a }",
+        "f((a, P(b, c)): F) = a",
+    ] {
+        assert!(ast::parse_document(source).is_ok(), "{source}");
+    }
+    // An inline description head is outside this subset.
+    let errors = ast::parse_document("x = { (D: Real, E: Real)(d, e) := m\n d }").unwrap_err();
+    assert!(matches!(
+        errors.as_slice(),
+        [Error::Form(FormDiagnostic { kind: FormDiagnosticKind::UnsupportedConstruct { kind }, .. })]
+            if kind == "described_head"
+    ));
+}
+
+#[test]
+fn only_names_and_positional_tuples_take_a_stated_type() {
+    for (source, pattern, written) in [
+        ("x = { [a, b]: T := m\n a }", "[a, b]", "T"),
+        ("x = { { rho }: S := m\n rho }", "{ rho }", "S"),
+        ("x = { P(a): Q := m\n a }", "P(a)", "Q"),
+        ("f([a, b]: T) = a", "[a, b]", "T"),
+        ("f(_: Real) = 1", "_", "Real"),
+    ] {
+        let errors = ast::parse_document(source).unwrap_err();
+        let [Error::Form(FormDiagnostic {
+            kind: FormDiagnosticKind::PatternTypeAnnotation { pattern_span },
+            span,
+        })] = errors.as_slice()
+        else {
+            panic!("{source}: {errors:?}");
+        };
+        assert_eq!(
+            &source[pattern_span.start..pattern_span.end],
+            pattern,
+            "{source}"
+        );
+        assert_eq!(&source[span.start..span.end], written, "{source}");
+    }
+    for source in [
+        "x = { a: Real := m\n a }",
+        "f((a, b): F) = a",
+        "x: Real = 1",
+        "f(g: (Real) -> Real) = 1",
+    ] {
+        assert!(ast::parse_document(source).is_ok(), "{source}");
     }
 }
