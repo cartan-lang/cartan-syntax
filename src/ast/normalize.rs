@@ -1313,9 +1313,50 @@ impl Reader<'_> {
         })
     }
 
-    /// An arm's result expression. The newline `else` rule, once adopted,
-    /// applies here.
+    /// An arm's result expression, refusing a line-leading `else` on a
+    /// conditional outside brackets: it could equally open the `else` arm.
     fn arm_body(&self, node: &Node) -> Result<Expr> {
+        self.line_leading_else(node)?;
         self.expr(node)
+    }
+
+    /// Search the conditionals not enclosed in brackets; a child that follows
+    /// an unclosed opening bracket of its parent is enclosed.
+    fn line_leading_else(&self, node: &Node) -> Result<()> {
+        if node.kind == "conditional_expression" {
+            let keyword = node
+                .children
+                .iter()
+                .find(|child| child.kind == "else" && !child.named);
+            // A line-leading `else` is one token carrying its newlines.
+            if let Some(keyword) = keyword.filter(|keyword| self.text(keyword).contains('\n')) {
+                let start = keyword.start
+                    + self
+                        .text(keyword)
+                        .find("else")
+                        .ok_or_else(|| unsupported(keyword))?;
+                let else_span = Span {
+                    start,
+                    end: start + 4,
+                };
+                return Err(form_at(
+                    else_span,
+                    FormDiagnosticKind::LineLeadingArmElse {
+                        else_span,
+                        conditional_span: span(node),
+                    },
+                ));
+            }
+        }
+        let mut depth = 0usize;
+        for child in node.children.iter().filter(|child| !child.extra) {
+            match child.kind.as_str() {
+                "(" | "[" | "{" if !child.named => depth += 1,
+                ")" | "]" | "}" if !child.named => depth = depth.saturating_sub(1),
+                _ if depth == 0 => self.line_leading_else(child)?,
+                _ => {}
+            }
+        }
+        Ok(())
     }
 }

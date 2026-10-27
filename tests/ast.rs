@@ -2502,3 +2502,127 @@ fn else_arms_stand_once_and_last() {
         assert_eq!(&source[earlier.start..earlier.end], first, "{source}");
     }
 }
+
+#[test]
+fn a_line_leading_else_after_an_unbracketed_arm_conditional_is_refused() {
+    for (source, conditional) in [
+        (
+            "x = match s {\n  A(x) then if x > 0 then 1\n  else 0\n}",
+            "if x > 0 then 1\n  else 0",
+        ),
+        // Wherever the conditional stands in the body, outside brackets.
+        (
+            "x = match s {\n  A(x) then 1 + if x > 0 then 1\n  else 0\n}",
+            "if x > 0 then 1\n  else 0",
+        ),
+        // The inner conditional takes the `else`.
+        (
+            "x = match s {\n  A(x) then if a then if b then 1\n  else 2\n}",
+            "if b then 1\n  else 2",
+        ),
+        // The `else` arm's body is an arm body too.
+        (
+            "x = match s {\n  A then 1\n  else if c then 2\n  else 3\n}",
+            "if c then 2\n  else 3",
+        ),
+        // A nested match's own arm is checked against its own list.
+        (
+            "x = match s {\n  A then match t {\n    P then if c then 1\n    else 2\n  }\n}",
+            "if c then 1\n    else 2",
+        ),
+    ] {
+        assert!(
+            !cartan_syntax::parse_document(source).has_errors(),
+            "{source}"
+        );
+        let errors = ast::parse_document(source).unwrap_err();
+        let [Error::Form(FormDiagnostic {
+            kind:
+                FormDiagnosticKind::LineLeadingArmElse {
+                    else_span,
+                    conditional_span,
+                },
+            span,
+        })] = errors.as_slice()
+        else {
+            panic!("{source}: {errors:?}");
+        };
+        assert_eq!(span, else_span);
+        assert_eq!(&source[span.start..span.end], "else", "{source}");
+        assert!(source[..span.start].ends_with(' '), "{source}");
+        assert_eq!(
+            &source[conditional_span.start..conditional_span.end],
+            conditional,
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn arm_conditionals_take_a_same_line_bracketed_or_comma_ended_else() {
+    let alternative = |arm: &MatchArm| match &arm.body.kind {
+        ExprKind::If { alternative, .. } => alternative.is_some(),
+        ExprKind::Body(body) => matches!(
+            body.items.as_slice(),
+            [BodyItem::Result(Expr {
+                kind: ExprKind::If {
+                    alternative: Some(_),
+                    ..
+                },
+                ..
+            })]
+        ),
+        other => panic!("{other:?}"),
+    };
+    for (source, takes_else) in [
+        // `else` on the consequence's line.
+        (
+            "match s {\n  A(x) then if x > 0 then 1 else 2\n  else 0\n}",
+            true,
+        ),
+        // A bracketed conditional keeps the ordinary continuation rule.
+        (
+            "match s {\n  A(x) then (if x > 0 then 1\n  else 2)\n  else 0\n}",
+            true,
+        ),
+        (
+            "match s {\n  A(x) then { if x > 0 then 1\n  else 2 }\n  else 0\n}",
+            true,
+        ),
+        // A comma ends the arm before the `else` arm.
+        (
+            "match s {\n  A(x) then if x > 0 then 1,\n  else 0\n}",
+            false,
+        ),
+    ] {
+        let written = match_of(source);
+        assert_eq!(alternative(&written.arms[0]), takes_else, "{source}");
+        assert!(written.otherwise.is_some(), "{source}");
+    }
+    // Brackets inside the body enclose the conditional too.
+    let written = match_of("match s {\n  A(x) then f(if x > 0 then 1\n  else 2)\n}");
+    assert!(written.otherwise.is_none());
+
+    // Outside `match` a line-leading `else` still continues the nearest `if`.
+    let source = "x = if a then if b then 1\n  else 2\ny = { if c then 3\n  else 4 }";
+    let document = ast::parse_document(source).unwrap_or_else(|errors| panic!("{errors:?}"));
+    let ItemKind::Binding(binding) = &document.items[0].kind else {
+        panic!();
+    };
+    let ExprKind::If {
+        consequence,
+        alternative: None,
+        ..
+    } = &binding.value.kind
+    else {
+        panic!("{:?}", binding.value);
+    };
+    assert!(matches!(
+        consequence.kind,
+        ExprKind::If {
+            alternative: Some(_),
+            ..
+        }
+    ));
+    assert_eq!(document.items.len(), 2);
+}

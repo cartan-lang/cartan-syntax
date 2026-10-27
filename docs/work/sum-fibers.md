@@ -2,12 +2,13 @@
 id: sum-fibers
 title: Normalize sum rosters, constructors and match
 kind: work
-status: active
-implementation: partial
+status: done
+implementation: implemented
 topics: [syntax, interface, frontend]
 owner: cartan-syntax-agent
 depends: [optional-surface, members-and-patterns]
 authority: Owner adopted the workspace sum fiber record on 2026-10-27; slice 3 syntax assigned by the lead
+evidence: src/ast.rs; src/ast/normalize.rs; tests/ast.rs; verification below
 ---
 
 # Normalize sum rosters, constructors and match
@@ -20,8 +21,8 @@ shapes. Typing, identity, layout, exhaustiveness and demand belong to graph and
 later stages.
 
 The grammar already parsed rosters, constructors and `match` arms. This work
-normalizes them and settles the newline `else` ambiguity before `match` is
-normalized.
+normalizes them and applies the adopted newline `else` rule. It is retained
+while graph's sum slice needs its rule table and evidence.
 
 ## Rule coverage
 
@@ -48,62 +49,34 @@ normalized.
 | `A(x)`, `A(_)`, `B(X: x, Y: y)` as `B((X: x, Y: y))`, unit `Unit` | AST: `MatchArm.payload`, `Components` for the shorthand |
 | Positional `B(x, y)` without inner parens | Grammar refuses |
 | A final `else` arm, at most once | AST: `ElseArm`; `DuplicateElseArm`, `ArmAfterElse` |
-| Newline `else` after an arm body's conditional | Pending the proposal below; currently continues the conditional |
+| Line-leading `else` after an unbracketed arm-body conditional | AST: `LineLeadingArmElse` at the `else` |
+| Same-line `else`, bracketed conditional, comma-ended arm | AST: ordinary `If` and `ElseArm` |
 | Exhaustiveness, duplicate arms, arm outside the roster, parens disagreeing with the roster, non-sum or array scrutinee, arm result meet, selected-arm demand | Graph |
 | Guards, literal patterns, alternatives, several scrutinees | Grammar refuses: no such arm form exists |
 | `match` on `T\|None` with a `none` arm | Open in the record |
 
-## Proposal: newline `else` in `match`
+## Newline `else` in `match`
 
-`else` is a continuation word, so a line beginning with `else` continues a
-conditional, and an `if` without `else` is valid. In
+The workspace record adopts the refusal: inside a `match` arm list, a
+conditional in an arm body (including the `else` arm's) that is not enclosed in
+brackets must not take a line-leading `else`. The normalizer's arm-body step
+walks the body's conditionals, skipping every child after an opening bracket
+of its parent. It refuses a conditional whose `else` token carries its leading
+newline with `LineLeadingArmElse { else_span, conditional_span }`, spanning the
+keyword alone. The grammar, the editor grammar and conditionals outside `match`
+are unchanged. Nested `match` arms are checked against their own arm list.
 
-```text
-match s {
-  A(x) then if x > 0 then 1
-  else 0
-}
-```
-
-the last line may be the `if`'s alternative or the `match`'s `else` arm. The
-parser currently reads it as the alternative, binding to the nearest `if` as
-everywhere else, which silently removes the `else` arm.
-
-Proposed rule: **inside a `match` arm list, a conditional in an arm body that
-is not enclosed in brackets must not take a line-leading `else`.** The source
-is refused with a typed form diagnostic spanning that `else`. The writer
-disambiguates by:
-
-- writing the alternative on the consequence's line: `then 1 else 2`;
-- enclosing the conditional in parentheses or a braced body, where the
-  ordinary continuation rule applies; or
-- ending the arm with a comma before a `match` `else` arm on the next line.
-
-Rationale: neither reading is silently chosen, the check is local to
-normalization and needs no grammar change, and the editor grammar remains
-unchanged. Either reading can later be adopted without changing the meaning of
-any accepted program.
-
-Alternatives considered:
-
-- *Nearest `if` (status quo).* Consistent with conditionals elsewhere, but an
-  intended `else` arm silently becomes the inner `if`'s alternative. That is
-  only caught by exhaustiveness when variants are missing.
-- *The `match` arm wins.* A line-leading `else` in an arm list always opens the
-  `else` arm. This matches the layout most writers intend, but needs a second
-  copy of the expression grammar for arm bodies. It also gives the same text
-  different meanings inside and outside `match`.
-
-The adopted rule applies in the normalizer's single arm-body step, so either
-the refusal or a grammar change for the arm-wins reading slots in there.
+The rejected alternatives were the nearest-`if` reading, which silently drops
+an intended `else` arm, and an arm-wins reading, which needs a second expression
+grammar and gives the same text different meanings inside and outside `match`.
 
 ## Checkpoints
 
 1. Rule table, newline `else` proposal, and tested roster and constructor
    normalization. Accepted.
 2. `match` normalization: arms, payload patterns and `else` arm ordering.
-   Done, awaiting review.
-3. The adopted newline `else` rule, once ruled.
+   Accepted.
+3. The adopted newline `else` rule. Done, awaiting review.
 
 ## Verification
 
@@ -126,3 +99,11 @@ Checkpoint 2: two new AST tests cover:
 - same-line conditional `else` and a comma before the `else` arm;
 - empty and else-only matches;
 - `DuplicateElseArm` and `ArmAfterElse` with both spans.
+
+Checkpoint 3: two new AST tests cover:
+
+- refusal with both spans for a conditional at the body's top, as an operand,
+  nested in a consequence, in the `else` arm and in a nested match's arm;
+- each fix: same-line `else`, parentheses, a braced body, a comma-ended arm,
+  and a conditional inside call brackets;
+- unchanged nearest-`if` continuation outside `match`.

@@ -302,9 +302,12 @@ payload as `B((X: x, Y: y))`, spanning the components without the arm's
 parentheses. The final `else` arm is `ElseArm { body, span }`. A second `else`
 arm yields `DuplicateElseArm { first_span }`, and a variant arm after it yields
 `ArmAfterElse { else_span }`, each spanning the offending arm. Arms separate by
-commas or newlines. A line-leading `else` after an arm body's conditional
-currently continues that conditional; the rule for it is pending the
-[proposal](work/sum-fibers.md#proposal-newline-else-in-match). Coverage,
+commas or newlines. A conditional in an arm body, outside brackets, that takes
+a line-leading `else` yields `LineLeadingArmElse { else_span, conditional_span }`
+spanning that `else`: the line could equally open the `else` arm. Writing
+`else` on the consequence's line, bracketing the conditional or ending the arm
+with a comma disambiguates; conditionals outside `match` keep the ordinary
+continuation rule. Coverage,
 duplicate arms, parentheses against the roster, the scrutinee's type, arm
 result meets and selected-arm demand are analysis checks; an empty or else-only
 `match` normalizes.

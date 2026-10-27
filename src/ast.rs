@@ -695,6 +695,13 @@ pub enum FormDiagnosticKind {
     ArmAfterElse {
         else_span: Span,
     },
+    /// A conditional in a `match` arm body, outside brackets, taking an `else`
+    /// that begins a line. The diagnostic span is `else_span`, the keyword
+    /// alone; `conditional_span` covers the conditional.
+    LineLeadingArmElse {
+        else_span: Span,
+        conditional_span: Span,
+    },
 }
 
 /// Parse and normalize the supported source subset. No partial AST is returned.
