@@ -292,7 +292,22 @@ arguments. `Mode(Binary)`, a headless `(B: x)` and a bare `Binary` stay
 `Call`, `Product` and `Name`: only name resolution and the stated annotation
 tell them from function calls, products and values. Variant membership, roster
 duplicates, payload fitting, alias identity and array construction are analysis
-checks. `match` is not yet normalized and remains an unsupported construct.
+checks.
+
+`match s { … }` is `ExprKind::Match(Box<Match { scrutinee, arms, otherwise }>)`.
+Each `MatchArm { variant, payload, body, span }` keeps source order and repeated
+variants; a bare unit arm has `payload: None`. `A(x)` and `A(_)` carry the
+written pattern. `B(X: x, Y: y)` carries the same `PatternKind::Components`
+payload as `B((X: x, Y: y))`, spanning the components without the arm's
+parentheses. The final `else` arm is `ElseArm { body, span }`. A second `else`
+arm yields `DuplicateElseArm { first_span }`, and a variant arm after it yields
+`ArmAfterElse { else_span }`, each spanning the offending arm. Arms separate by
+commas or newlines. A line-leading `else` after an arm body's conditional
+currently continues that conditional; the rule for it is pending the
+[proposal](work/sum-fibers.md#proposal-newline-else-in-match). Coverage,
+duplicate arms, parentheses against the roster, the scrutinee's type, arm
+result meets and selected-arm demand are analysis checks; an empty or else-only
+`match` normalizes.
 
 ## Maps and configurables
 

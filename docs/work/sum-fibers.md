@@ -44,10 +44,11 @@ normalized.
 | A bare payload under a named head, `Shape(1.0)` | Graph: the AST is a `Call` |
 | Variant outside the roster; payload fitting and promotion; array construction | Graph |
 | An inline product head with a variant argument, `(A: Real)(A: 1)` | Unsupported construct, as for inline product heads |
-| `match s { … }` arms, comma or newline separated | Next checkpoint |
-| `A(x)`, `A(_)`, `B(X: x, Y: y)` as `B((X: x, Y: y))`, unit `Unit` | Next checkpoint: one payload pattern or none per arm |
-| A final `else` arm, at most once | Next checkpoint: syntax checks count and position |
-| Newline `else` after an arm body's conditional | Proposal below |
+| `match s { … }` arms, comma or newline separated | AST: `ExprKind::Match`, arms in source order |
+| `A(x)`, `A(_)`, `B(X: x, Y: y)` as `B((X: x, Y: y))`, unit `Unit` | AST: `MatchArm.payload`, `Components` for the shorthand |
+| Positional `B(x, y)` without inner parens | Grammar refuses |
+| A final `else` arm, at most once | AST: `ElseArm`; `DuplicateElseArm`, `ArmAfterElse` |
+| Newline `else` after an arm body's conditional | Pending the proposal below; currently continues the conditional |
 | Exhaustiveness, duplicate arms, arm outside the roster, parens disagreeing with the roster, non-sum or array scrutinee, arm result meet, selected-arm demand | Graph |
 | Guards, literal patterns, alternatives, several scrutinees | Grammar refuses: no such arm form exists |
 | `match` on `T\|None` with a `none` arm | Open in the record |
@@ -93,20 +94,16 @@ Alternatives considered:
   copy of the expression grammar for arm bodies. It also gives the same text
   different meanings inside and outside `match`.
 
-## Planned `match` AST
-
-`ExprKind::Match(Box<Match>)` with `scrutinee: Expr`, ordered
-`arms: Vec<MatchArm>` and `otherwise: Option<ElseArm>`. Each
-`MatchArm { variant: Name, payload: Option<Pattern>, body: Expr, span }` has
-`payload: None` for a bare unit arm. `B(X: x, Y: y)` normalizes to a
-`PatternKind::Components` payload, the same as `B((X: x, Y: y))`. A second
-`else` arm or an `else` arm before a variant arm is a typed form error.
+The adopted rule applies in the normalizer's single arm-body step, so either
+the refusal or a grammar change for the arm-wins reading slots in there.
 
 ## Checkpoints
 
 1. Rule table, newline `else` proposal, and tested roster and constructor
-   normalization. Done, awaiting review.
-2. `match` normalization with the adopted `else` rule.
+   normalization. Accepted.
+2. `match` normalization: arms, payload patterns and `else` arm ordering.
+   Done, awaiting review.
+3. The adopted newline `else` rule, once ruled.
 
 ## Verification
 
@@ -120,4 +117,12 @@ Checkpoint 1: four new AST tests cover:
 - each typed form error, with its span.
 
 The unsupported-construct test now covers inline product heads with a variant
-argument and `match`.
+argument.
+
+Checkpoint 2: two new AST tests cover:
+
+- every arm form with spans, including shorthand and explicit components,
+  repeated variants, nested and newline-separated arms;
+- same-line conditional `else` and a comma before the `else` arm;
+- empty and else-only matches;
+- `DuplicateElseArm` and `ArmAfterElse` with both spans.

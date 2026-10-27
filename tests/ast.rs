@@ -307,6 +307,23 @@ fn assert_expr_spans(source: &str, expr: &Expr) {
             assert_expr_spans(source, &comprehension.collection);
             assert_expr_spans(source, &comprehension.body);
         }
+        ExprKind::Match(written) => {
+            assert_expr_spans(source, &written.scrutinee);
+            for arm in &written.arms {
+                assert_name_span(source, &arm.variant);
+                assert!(source[arm.span.start..arm.span.end].starts_with(&arm.variant.text));
+                if let Some(payload) = &arm.payload {
+                    assert_pattern_spans(source, payload);
+                }
+                assert_expr_spans(source, &arm.body);
+                assert_eq!(arm.body.span.end, arm.span.end);
+            }
+            if let Some(otherwise) = &written.otherwise {
+                assert!(source[otherwise.span.start..].starts_with("else"));
+                assert_expr_spans(source, &otherwise.body);
+                assert_eq!(otherwise.body.span.end, otherwise.span.end);
+            }
+        }
         ExprKind::Reduce(reduction) => {
             assert_name_span(source, &reduction.accumulator);
             assert_pattern_spans(source, &reduction.binder);
@@ -593,7 +610,6 @@ fn unsupported_constructs_and_optional_clauses_are_not_discarded() {
         "x = f(:1)",
         "x = (A: Real)(1)",
         "x = (A: Real)(A: 1)",
-        "x = match s { A(x) then x }",
         "x = { state p := 1\n p }",
         "x = { y <- 1\n y }",
         "namespace a() { x = 1 }",
@@ -2352,5 +2368,137 @@ fn sum_form_errors_are_typed_at_their_spans() {
             cartan_syntax::parse_document(source).has_errors(),
             "{source}"
         );
+    }
+}
+
+fn match_of(source: &str) -> Match {
+    let expr = expression(source);
+    assert_expr_spans(source, &expr);
+    let ExprKind::Match(written) = expr.kind else {
+        panic!("{expr:?}");
+    };
+    *written
+}
+
+/// A payload pattern's shape without spans.
+fn payload_shape(pattern: &Pattern) -> String {
+    match &pattern.kind {
+        PatternKind::Name(name) => name.text.clone(),
+        PatternKind::Wildcard => "_".into(),
+        PatternKind::Components(components) => {
+            let items: Vec<_> = components
+                .iter()
+                .map(|component| {
+                    let ComponentKey::Name(key) = &component.key else {
+                        panic!();
+                    };
+                    format!("{}: {}", key.text, payload_shape(&component.pattern))
+                })
+                .collect();
+            format!("({})", items.join(", "))
+        }
+        other => format!("{other:?}"),
+    }
+}
+
+#[test]
+fn match_arms_keep_order_payload_patterns_and_a_final_else() {
+    let source = "match shape(i) { A(x) then x, B(X: x, Y: y) then x + y, \
+                  C((X: x)) then x, D(_) then 0, Unit then 1, A(z) then z, else 2 }";
+    let written = match_of(source);
+    assert!(matches!(written.scrutinee.kind, ExprKind::Call { .. }));
+    let arms: Vec<_> = written
+        .arms
+        .iter()
+        .map(|arm| {
+            (
+                arm.variant.text.as_str(),
+                arm.payload.as_ref().map(payload_shape),
+            )
+        })
+        .collect();
+    assert_eq!(
+        arms,
+        [
+            ("A", Some("x".into())),
+            ("B", Some("(X: x, Y: y)".into())),
+            ("C", Some("(X: x)".into())),
+            ("D", Some("_".into())),
+            ("Unit", None),
+            // A repeated arm is kept for analysis to refuse.
+            ("A", Some("z".into())),
+        ]
+    );
+    // The shorthand's payload spans its components; the explicit form its parens.
+    let shorthand = written.arms[1].payload.as_ref().unwrap().span;
+    assert_eq!(&source[shorthand.start..shorthand.end], "X: x, Y: y");
+    let explicit = written.arms[2].payload.as_ref().unwrap().span;
+    assert_eq!(&source[explicit.start..explicit.end], "(X: x)");
+    let otherwise = written.otherwise.unwrap();
+    assert_eq!(&source[otherwise.span.start..otherwise.span.end], "else 2");
+
+    // Newlines separate arms as commas do, and arms nest.
+    let source = "match s {\n  A(x) then match x {\n    P then 1\n    Q then 2\n  }\n  B then 3\n\n  else 4\n}";
+    let written = match_of(source);
+    assert_eq!(written.arms.len(), 2);
+    assert!(
+        matches!(&written.arms[0].body.kind, ExprKind::Match(inner) if inner.arms.len() == 2 && inner.otherwise.is_none())
+    );
+    assert!(written.otherwise.is_some());
+
+    // A conditional arm body: same-line `else`, or a comma before the `else` arm.
+    let written = match_of("match s { A(x) then if x > 0 then 1 else 2, else 0 }");
+    assert!(matches!(
+        &written.arms[0].body.kind,
+        ExprKind::If {
+            alternative: Some(_),
+            ..
+        }
+    ));
+    assert!(written.otherwise.is_some());
+    let written = match_of("match s {\n  A(x) then if x > 0 then 1,\n  else 0\n}");
+    assert!(matches!(
+        &written.arms[0].body.kind,
+        ExprKind::If {
+            alternative: None,
+            ..
+        }
+    ));
+    assert!(written.otherwise.is_some());
+
+    // Coverage is analysis: an empty or else-only match normalizes.
+    assert!(match_of("match s { }").arms.is_empty());
+    let written = match_of("match s { else 1 }");
+    assert!(written.arms.is_empty() && written.otherwise.is_some());
+}
+
+#[test]
+fn else_arms_stand_once_and_last() {
+    for (source, written, first) in [
+        ("x = match s { else 1, else 2 }", "else 2", "else 1"),
+        (
+            "x = match s { A then 1, else 2, B then 3 }",
+            "B then 3",
+            "else 2",
+        ),
+    ] {
+        assert!(
+            !cartan_syntax::parse_document(source).has_errors(),
+            "{source}"
+        );
+        let errors = ast::parse_document(source).unwrap_err();
+        let [Error::Form(FormDiagnostic { kind, span })] = errors.as_slice() else {
+            panic!("{source}: {errors:?}");
+        };
+        let earlier = match kind {
+            FormDiagnosticKind::DuplicateElseArm { first_span } => {
+                assert!(written.starts_with("else"));
+                first_span
+            }
+            FormDiagnosticKind::ArmAfterElse { else_span } => else_span,
+            other => panic!("{source}: {other:?}"),
+        };
+        assert_eq!(&source[span.start..span.end], written, "{source}");
+        assert_eq!(&source[earlier.start..earlier.end], first, "{source}");
     }
 }

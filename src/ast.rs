@@ -385,6 +385,7 @@ pub enum ExprKind {
     Body(Body),
     For(Box<Comprehension>),
     Reduce(Box<Reduction>),
+    Match(Box<Match>),
 }
 
 /// The written head of a sum constructor.
@@ -571,6 +572,33 @@ pub struct Comprehension {
     pub body: Expr,
 }
 
+/// `match s { A(x) then e, Unit then e, else e }`. Arms keep source order and
+/// duplicates; graph owns roster coverage and arm agreement.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Match {
+    pub scrutinee: Expr,
+    pub arms: Vec<MatchArm>,
+    /// The final `else` arm, when written.
+    pub otherwise: Option<ElseArm>,
+}
+
+/// One variant's arm. A bare unit arm has no payload pattern; `B(X: x, Y: y)`
+/// has the same `PatternKind::Components` payload as `B((X: x, Y: y))`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MatchArm {
+    pub variant: Name,
+    pub payload: Option<Pattern>,
+    pub body: Expr,
+    pub span: Span,
+}
+
+/// `else e`; the span starts at the keyword.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ElseArm {
+    pub body: Expr,
+    pub span: Span,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Reduction {
     pub accumulator: Name,
@@ -657,6 +685,16 @@ pub enum FormDiagnosticKind {
     /// name, as in `(A: Real | B)(1.0)`; a bare payload never chooses a
     /// variant. The span covers the parenthesized arguments.
     ConstructorWithoutVariant,
+    /// A second `else` arm in one `match`; the span is the second arm and
+    /// `first_span` the first.
+    DuplicateElseArm {
+        first_span: Span,
+    },
+    /// A variant arm written after the `else` arm; the span is that arm and
+    /// `else_span` the `else` arm.
+    ArmAfterElse {
+        else_span: Span,
+    },
 }
 
 /// Parse and normalize the supported source subset. No partial AST is returned.

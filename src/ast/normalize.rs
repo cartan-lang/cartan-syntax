@@ -845,17 +845,7 @@ impl Reader<'_> {
             }
             "named_pattern" => PatternKind::Components(
                 children(node)
-                    .map(|component| {
-                        if component.kind != "named_sub_pattern" {
-                            return Err(unsupported(component));
-                        }
-                        shape(component, &["name", "pattern"], &[])?;
-                        Ok(ComponentPattern {
-                            key: self.component_key(field(component, "name")?)?,
-                            pattern: self.pattern(field(component, "pattern")?)?,
-                            span: span(component),
-                        })
-                    })
+                    .map(|component| self.component_pattern(component))
                     .collect::<Result<_>>()?,
             ),
             "map_pattern" => PatternKind::Entries(
@@ -880,6 +870,18 @@ impl Reader<'_> {
         };
         Ok(Pattern {
             kind,
+            span: span(node),
+        })
+    }
+
+    fn component_pattern(&self, node: &Node) -> Result<ComponentPattern> {
+        if node.kind != "named_sub_pattern" {
+            return Err(unsupported(node));
+        }
+        shape(node, &["name", "pattern"], &[])?;
+        Ok(ComponentPattern {
+            key: self.component_key(field(node, "name")?)?,
+            pattern: self.pattern(field(node, "pattern")?)?,
             span: span(node),
         })
     }
@@ -1240,11 +1242,80 @@ impl Reader<'_> {
                     body: self.body(field(node, "body")?)?,
                 }))
             }
+            "match_expression" => ExprKind::Match(Box::new(self.match_expression(node)?)),
             _ => return Err(unsupported(node)),
         };
         Ok(Expr {
             kind,
             span: span(node),
         })
+    }
+
+    fn match_expression(&self, node: &Node) -> Result<Match> {
+        shape(node, &["scrutinee"], &["match_arm", "else_arm"])?;
+        let mut arms = Vec::new();
+        let mut otherwise: Option<ElseArm> = None;
+        for arm in children(node).filter(|child| child.field.is_none()) {
+            if let Some(first) = &otherwise {
+                let kind = if arm.kind == "else_arm" {
+                    FormDiagnosticKind::DuplicateElseArm {
+                        first_span: first.span,
+                    }
+                } else {
+                    FormDiagnosticKind::ArmAfterElse {
+                        else_span: first.span,
+                    }
+                };
+                return Err(form(arm, kind));
+            }
+            if arm.kind == "else_arm" {
+                shape(arm, &["body"], &[])?;
+                otherwise = Some(ElseArm {
+                    body: self.arm_body(field(arm, "body")?)?,
+                    span: span(arm),
+                });
+                continue;
+            }
+            shape(arm, &["variant", "pattern", "body"], &["named_sub_pattern"])?;
+            let components: Vec<_> = children(arm)
+                .filter(|child| child.kind == "named_sub_pattern")
+                .collect();
+            let payload = match (arm.child("pattern"), components.as_slice()) {
+                (Some(pattern), []) => Some(self.pattern(pattern)?),
+                (None, []) => None,
+                // `B(X: x, Y: y)` stands for `B((X: x, Y: y))`; the span covers
+                // the components inside the arm's parentheses.
+                (None, [first, ..]) => Some(Pattern {
+                    kind: PatternKind::Components(
+                        components
+                            .iter()
+                            .map(|component| self.component_pattern(component))
+                            .collect::<Result<_>>()?,
+                    ),
+                    span: Span {
+                        start: first.start,
+                        end: components[components.len() - 1].end,
+                    },
+                }),
+                (Some(_), [extra, ..]) => return Err(unsupported(extra)),
+            };
+            arms.push(MatchArm {
+                variant: self.name(field(arm, "variant")?)?,
+                payload,
+                body: self.arm_body(field(arm, "body")?)?,
+                span: span(arm),
+            });
+        }
+        Ok(Match {
+            scrutinee: self.expr(field(node, "scrutinee")?)?,
+            arms,
+            otherwise,
+        })
+    }
+
+    /// An arm's result expression. The newline `else` rule, once adopted,
+    /// applies here.
+    fn arm_body(&self, node: &Node) -> Result<Expr> {
+        self.expr(node)
     }
 }
