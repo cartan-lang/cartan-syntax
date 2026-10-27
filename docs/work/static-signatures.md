@@ -26,7 +26,7 @@ mandatory parentheses for zero, one or many arguments. `Parameter.annotation`
 becomes `Option<ParameterAnnotation>` with `Value(Annotation)` and
 `Signature(Signature { arguments, result, arrow_span, span })`. Slots admit only
 the existing named and generic-application annotations. Arrows anywhere else,
-nested signatures in argument or result slots, and unparenthesized `T -> R` are
+nested signatures in argument or result slots are
 typed form errors carrying a position enum and the offending arrow span. Ordinary
 value parameters are unchanged. The slice also corrects stale statements that
 codegen consumes this AST: graph is the only direct consumer.
@@ -38,8 +38,8 @@ specificity, conversion or overlap timing; those belong to graph and the lead.
 Grammar plan: a `signature_type` alternative, `(` items of type annotations `)`
 `->` result, is tried before the existing `fiber_type` reading inside
 `type_annotation`, because fiber descriptions accept `()` as an empty product.
-An optional trailing `->` after an ordinary annotation is captured only to report
-the unparenthesized spelling. `type_annotation` appears in document bindings
+An optional trailing `->` after an ordinary annotation is the unary `T -> R`
+spelling, adopted later in the [structural annotation work](structural-annotations.md). `type_annotation` appears in document bindings
 (including `param`/`state`), body locals, parameters, namespace holes and generic
 type arguments, so the position enum covers `Binding`, `Local`, `TypeArgument`,
 `SignatureArgument` and `SignatureResult`. Struct entries and fiber components

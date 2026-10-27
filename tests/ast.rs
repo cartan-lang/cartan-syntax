@@ -1250,14 +1250,14 @@ fn struct_declarations_keep_ordered_duplicate_entries_and_named_annotations() {
         AnnotationKind::Named(name) if name.text == "P"
     ));
     assert!(matches!(binding.value.kind, ExprKind::Map(_)));
-    // Inline nested struct entries remain a typed unsupported construct.
-    let errors = ast::parse_document("struct S = {p: {x: Real}}").unwrap_err();
+    // An inline struct may stand as an entry's type.
+    let document = ast::parse_document("struct S = {p: {x: Real}}").unwrap();
+    let ItemKind::Struct(declaration) = &document.items[0].kind else {
+        panic!();
+    };
     assert!(matches!(
-        errors.as_slice(),
-        [Error::Form(FormDiagnostic {
-            kind: FormDiagnosticKind::UnsupportedConstruct { kind },
-            ..
-        })] if kind == "struct_type"
+        &declaration.entries[0].annotation.kind,
+        AnnotationKind::Struct(entries) if entries.len() == 1 && entries[0].name.text == "x"
     ));
 }
 
@@ -1457,17 +1457,30 @@ fn signatures_outside_parameters_are_typed_by_position_at_the_arrow() {
             "{source}"
         );
     }
-    // A bare arrow names the missing parentheses, wherever it stands.
-    for source in ["f(g: Real -> Real) = 1", "x: Real -> Real = 1"] {
+    // The unary spelling is equally refused outside a parameter.
+    for (source, expected) in [
+        ("x: Real -> Real = 1", SignaturePosition::Binding),
+        ("x = { c: Real -> Real := 2\n c }", SignaturePosition::Local),
+        (
+            "f(g: Real -> Int -> Real) = 1",
+            SignaturePosition::SignatureResult,
+        ),
+    ] {
         let errors = ast::parse_document(source).unwrap_err();
         let [Error::Form(FormDiagnostic {
-            kind: FormDiagnosticKind::UnparenthesizedSignature,
+            kind:
+                FormDiagnosticKind::SignatureOutsideParameter {
+                    position,
+                    signature_span,
+                },
             span,
         })] = errors.as_slice()
         else {
             panic!("{source}: {errors:?}");
         };
+        assert_eq!(*position, expected, "{source}");
         assert_eq!(&source[span.start..span.end], "->");
+        assert!(source[signature_span.start..signature_span.end].ends_with("Real"));
     }
     // Struct entries and fiber components take a bare fiber type, so an arrow
     // there stays a structured grammar error.
@@ -1499,5 +1512,129 @@ fn signatures_outside_parameters_are_typed_by_position_at_the_arrow() {
             )),
             "{source}: {errors:?}"
         );
+    }
+}
+
+fn parameter_signature(source: &str) -> Signature {
+    signature(&function(source).parameters[0]).clone()
+}
+
+fn without_spans(signature: &Signature) -> String {
+    // Debug text with every span removed, for comparing shapes only.
+    let text = format!("{:?}", (&signature.arguments, &signature.result));
+    let mut out = String::new();
+    let mut rest = text.as_str();
+    while let Some(at) = rest.find("span: Span {") {
+        out.push_str(&rest[..at]);
+        rest = &rest[at + rest[at..].find('}').unwrap() + 1..];
+    }
+    out + rest
+}
+
+#[test]
+fn unary_signatures_match_parenthesized_ones_with_written_spans() {
+    let source = "f(x: Real, g: Real -> {a: Real, b: Real}) = x";
+    let function_ = function(source);
+    let text = |span: Span| &source[span.start..span.end];
+    let unary = signature(&function_.parameters[1]);
+    assert_eq!(text(unary.span), "Real -> {a: Real, b: Real}");
+    assert_eq!(text(unary.arrow_span), "->");
+    assert_eq!(text(unary.arguments[0].span), "Real");
+    assert_eq!(text(unary.result.span), "{a: Real, b: Real}");
+    let AnnotationKind::Struct(entries) = &unary.result.kind else {
+        panic!("{unary:?}");
+    };
+    let names: Vec<_> = entries
+        .iter()
+        .map(|entry| entry.name.text.as_str())
+        .collect();
+    assert_eq!(names, ["a", "b"]);
+    // The unary and parenthesized spellings give the same shape.
+    for (unary, parenthesized) in [
+        ("f(g: Real -> Real) = 1", "f(g: (Real) -> Real) = 1"),
+        (
+            "f(g: Array<Real, 1> -> Int) = 1",
+            "f(g: (Array<Real, 1>) -> Int) = 1",
+        ),
+        (
+            "f(g: {a: Real} -> {b: Int}) = 1",
+            "f(g: ({a: Real}) -> {b: Int}) = 1",
+        ),
+    ] {
+        let (left, right) = (
+            parameter_signature(unary),
+            parameter_signature(parenthesized),
+        );
+        assert_eq!(left.arguments.len(), 1);
+        assert_eq!(without_spans(&left), without_spans(&right), "{unary}");
+    }
+    // Inline products, named signature formals and optional arguments stay out.
+    for (source, kind) in [
+        ("f(g: (x: Real) -> Real) = 1", "component"),
+        ("f(p: (a: Real, b: Real)) = p", "component"),
+        ("f(g: Real|None -> Real) = 1", "fiber_type"),
+    ] {
+        let errors = ast::parse_document(source).unwrap_err();
+        assert!(
+            matches!(
+                errors.as_slice(),
+                [Error::Form(FormDiagnostic {
+                    kind: FormDiagnosticKind::UnsupportedConstruct { kind: found },
+                    ..
+                })] if found == kind
+            ),
+            "{source}: {errors:?}"
+        );
+    }
+}
+
+#[test]
+fn inline_structs_nest_keep_order_duplicates_empty_forms_and_brace_spans() {
+    let source = "label = \"λ\"\nf(x: {b: Int, a: {}, b: Array<{c: Real}, 1>}) = x\n";
+    let document = ast::parse_document(source).unwrap();
+    let ItemKind::Function(function_) = &document.items[1].kind else {
+        panic!();
+    };
+    let Some(ParameterAnnotation::Value(annotation)) = &function_.parameters[0].annotation else {
+        panic!();
+    };
+    let text = |span: Span| &source[span.start..span.end];
+    assert_eq!(
+        text(annotation.span),
+        "{b: Int, a: {}, b: Array<{c: Real}, 1>}"
+    );
+    let AnnotationKind::Struct(entries) = &annotation.kind else {
+        panic!();
+    };
+    let names: Vec<_> = entries
+        .iter()
+        .map(|entry| entry.name.text.as_str())
+        .collect();
+    assert_eq!(names, ["b", "a", "b"]);
+    for entry in entries {
+        assert_name_span(source, &entry.name);
+        assert!(text(entry.span).starts_with(&entry.name.text));
+    }
+    assert!(
+        matches!(&entries[1].annotation.kind, AnnotationKind::Struct(empty) if empty.is_empty())
+    );
+    assert_eq!(text(entries[1].annotation.span), "{}");
+    let AnnotationKind::Apply { arguments, .. } = &entries[2].annotation.kind else {
+        panic!();
+    };
+    let TypeArgument::Type(element) = &arguments[0] else {
+        panic!();
+    };
+    assert_eq!(text(element.span), "{c: Real}");
+    assert!(matches!(&element.kind, AnnotationKind::Struct(inner) if inner[0].name.text == "c"));
+    // Bindings, locals, fiber components and generic arguments admit the form;
+    // graph decides where a struct is semantically eligible.
+    for source in [
+        "x: {a: Real} = 1",
+        "x = { c: {a: Real} := 2\n c }",
+        "fiber F = (p: {x: Real})",
+        "x: List<{a: Real}> = 1",
+    ] {
+        assert!(ast::parse_document(source).is_ok(), "{source}");
     }
 }

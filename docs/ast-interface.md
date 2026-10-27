@@ -58,7 +58,7 @@ The source constructs are:
 | Items | Imports, ordinary and `param` bindings, `state` declarations, fiber declarations, struct declarations, function equations, and guarded `while` update blocks. |
 | Functions | Name, ordered parameters with patterns and optional value or function-signature annotations, and expression body. |
 | Fibers | Name, written base annotation such as `Module`, and ordered named components with annotations. |
-| Annotations | Named types and generic applications, preserving names and numeric arguments such as `Array<Primitive, 1>` without interpreting rank. |
+| Annotations | Named types, generic applications and inline struct types, preserving names and numeric arguments such as `Array<Primitive, 1>` without interpreting rank. |
 | Patterns | Name, wildcard, recursive list pattern, and positional site pattern with its enclosing annotation retained. |
 | Expressions | Literal number/boolean/string, tagged template, local/qualified name, unary/binary operation, conditional, local/qualified call, indexing, `of` projection, list, named map, map join, configurable constructor/application, range, `periodic`, body, `for` comprehension and `reduce`. |
 | Body | Ordered `BodyItem::Local` and `BodyItem::Result` entries, with exactly one result. A result need not be last. |
@@ -166,8 +166,18 @@ order, including duplicate keys; graph diagnoses duplicates and empty structs.
 Annotations naming a struct use the existing `AnnotationKind::Named`, and a brace
 value remains `ExprKind::Map`. A struct declaration is a structural alias, not a
 nominal constructor or type identity; graph interprets an annotated brace value
-structurally through the alias, never from AST spelling alone. Inline nested struct entry types such as
-`{p: {x: Real}}` remain an `UnsupportedConstruct` of kind `struct_type`.
+structurally through the alias, never from AST spelling alone.
+
+An inline struct type `{a: Real, b: Int}` written where an annotation stands is
+`AnnotationKind::Struct(Vec<StructEntry>)`, using the same entries as a
+declaration: source order, duplicate keys and an empty `{}` are preserved, and
+entry types nest. The annotation span covers the braces. It is admitted wherever
+a value annotation stands, including signature slots and results, struct entries,
+fiber components and generic type arguments. Graph interns an inline struct like
+a `struct` alias and decides where a struct is semantically eligible. The
+[structural annotation work](work/structural-annotations.md) records this slice.
+Inline product descriptions such as `(a: Real, b: Real)` remain an
+`UnsupportedConstruct` of kind `component` in annotations.
 
 ## Function-signature parameters
 
@@ -176,10 +186,13 @@ agreed with graph; graph's [resolution table](../../cartan-graph/docs/work/stati
 owns overload semantics. `Parameter.annotation` is
 `Option<ParameterAnnotation>`: `ParameterAnnotation::Value(Annotation)` for an
 ordinary type, or `ParameterAnnotation::Signature(Signature { arguments, result,
-arrow_span, span })` for `g: (T1, …, Tn) -> R`. Parentheses are required for any
-number of arguments, including `() -> R` and `(T) -> R`. Argument and result slots
-are ordinary `Annotation`s: named types and generic applications. Optional and sum
-annotations remain unsupported. `span` covers the parentheses through the result,
+arrow_span, span })` for `g: (T1, …, Tn) -> R`, including `() -> R` and
+`(T) -> R`. One argument may also be written without parentheses, `g: T -> R`,
+which yields the same `Signature` with one argument. Argument and result slots
+are ordinary `Annotation`s: named types, generic applications and inline structs.
+Optional and sum annotations remain unsupported, and `(x: Real) -> R` reads as an
+inline product argument, which is unsupported; there are no named signature
+formals. `span` covers what was written through the result,
 `arrow_span` covers `->`, every slot keeps its own span, and the parameter span
 covers the whole `g: (…) -> R`. Unannotated and value-annotated parameters are
 unchanged.
@@ -194,8 +207,8 @@ A signature written anywhere else yields
 the diagnostic span on its arrow. `SignaturePosition` is `Binding` (including
 `param` and `state`), `Local`, `TypeArgument`, `SignatureArgument` or
 `SignatureResult`. The last two reject signatures nested in another signature's
-argument or result slot. `T -> R` without parentheses yields
-`UnparenthesizedSignature`, spanning the arrow. Struct entries and fiber
+argument or result slot; a chained `T -> R -> S` therefore yields
+`SignatureResult`. Struct entries and fiber
 components take a bare fiber type in the grammar, so an arrow there is a
 structured grammar error. Namespace declarations and `use` hole clauses keep
 their unsupported-construct rejections.
@@ -276,7 +289,7 @@ Structured errors distinguish `Grammar(Diagnostic)` from
 `Form(FormDiagnostic)`. Form diagnostics carry a span and typed kind with
 relevant payloads: unsupported construct and its CST kind, comparison/range
 chain, body result count, a use alias combined with selectors, malformed
-format precision or notation, and misplaced or unparenthesized signatures. `Error::span()` returns the full byte range; errors
+format precision or notation, and misplaced signatures. `Error::span()` returns the full byte range; errors
 derive `Clone`, `Debug`, `PartialEq` and `Eq`. Grammar diagnostics are preserved
 without rewriting. Normalization reports the first form error in each document
 item; it returns no partial AST if any error occurs. Unsupported syntax is

@@ -102,6 +102,11 @@ fn unsupported(node: &Node) -> Error {
     )
 }
 
+enum Written<'a> {
+    Value(&'a Node),
+    Signature(&'a Node),
+}
+
 struct Reader<'a> {
     tree: &'a SyntaxTree,
 }
@@ -433,19 +438,7 @@ impl Reader<'_> {
             }
             "struct_declaration" => {
                 shape(node, &["name", "entries"], &[])?;
-                let entries = field(node, "entries")?;
-                shape(entries, &["entry"], &[])?;
-                let entries = entries
-                    .children_named("entry")
-                    .map(|entry| {
-                        shape(entry, &["name", "type"], &[])?;
-                        Ok(StructEntry {
-                            name: self.name(field(entry, "name")?)?,
-                            annotation: self.value_type(field(entry, "type")?)?,
-                            span: span(entry),
-                        })
-                    })
-                    .collect::<Result<_>>()?;
+                let entries = self.struct_entries(field(node, "entries")?)?;
                 ItemKind::Struct(Struct {
                     name: self.name(field(node, "name")?)?,
                     entries,
@@ -508,19 +501,22 @@ impl Reader<'_> {
         })
     }
 
-    /// The written type inside a `type_annotation`: a fiber type or a signature.
-    fn written_type<'a>(&self, node: &'a Node) -> Result<&'a Node> {
+    /// The written type inside a `type_annotation`: a value type, a parenthesized
+    /// `signature_type`, or the annotation itself for the unary `T -> R` spelling.
+    fn written_type<'a>(&self, node: &'a Node) -> Result<Written<'a>> {
         if node.kind != "type_annotation" {
-            return Ok(node);
+            return Ok(Written::Value(node));
         }
-        if let Some(arrow) = node.child("arrow") {
-            return Err(form_at(
-                self.arrow_span(arrow),
-                FormDiagnosticKind::UnparenthesizedSignature,
-            ));
+        if node.child("arrow").is_some() {
+            return Ok(Written::Signature(node));
         }
         shape(node, &[], &["fiber_type", "signature_type"])?;
-        single(node)
+        let written = single(node)?;
+        Ok(if written.kind == "signature_type" {
+            Written::Signature(written)
+        } else {
+            Written::Value(written)
+        })
     }
 
     /// Token nodes include leading whitespace; the arrow is the last two bytes.
@@ -533,30 +529,42 @@ impl Reader<'_> {
 
     /// A value type, refusing a signature written at `position`.
     fn annotation(&self, node: &Node, position: SignaturePosition) -> Result<Annotation> {
-        let written = self.written_type(node)?;
-        if written.kind == "signature_type" {
-            return Err(form_at(
+        match self.written_type(node)? {
+            Written::Value(written) => self.value_type(written),
+            Written::Signature(written) => Err(form_at(
                 self.arrow_span(field(written, "arrow")?),
                 FormDiagnosticKind::SignatureOutsideParameter {
                     position,
                     signature_span: span(written),
                 },
-            ));
+            )),
         }
-        self.value_type(written)
     }
 
     fn parameter_annotation(&self, node: &Node) -> Result<ParameterAnnotation> {
-        let written = self.written_type(node)?;
-        if written.kind != "signature_type" {
-            return self.value_type(written).map(ParameterAnnotation::Value);
-        }
-        shape(written, &["argument", "arrow", "result"], &[])?;
-        Ok(ParameterAnnotation::Signature(Signature {
-            arguments: written
+        let written = match self.written_type(node)? {
+            Written::Value(written) => {
+                return self.value_type(written).map(ParameterAnnotation::Value)
+            }
+            Written::Signature(written) => written,
+        };
+        let arguments = if written.kind == "signature_type" {
+            shape(written, &["argument", "arrow", "result"], &[])?;
+            written
                 .children_named("argument")
                 .map(|argument| self.annotation(argument, SignaturePosition::SignatureArgument))
-                .collect::<Result<_>>()?,
+                .collect::<Result<_>>()?
+        } else {
+            // `T -> R`: the single argument is the annotation's own value type.
+            // An optional `T|None` argument stays outside this subset.
+            shape(written, &["arrow", "result"], &["fiber_type"])?;
+            let argument = children(written)
+                .find(|child| child.field.is_none())
+                .ok_or_else(|| unsupported(written))?;
+            vec![self.value_type(argument)?]
+        };
+        Ok(ParameterAnnotation::Signature(Signature {
+            arguments,
             result: self.annotation(
                 field(written, "result")?,
                 SignaturePosition::SignatureResult,
@@ -566,11 +574,34 @@ impl Reader<'_> {
         }))
     }
 
-    /// A named type or generic application; struct entries and fiber
-    /// components take this form directly.
+    /// Struct entries in source order, keeping duplicates and an empty list.
+    fn struct_entries(&self, node: &Node) -> Result<Vec<StructEntry>> {
+        shape(node, &["entry"], &[])?;
+        node.children_named("entry")
+            .map(|entry| {
+                shape(entry, &["name", "type"], &[])?;
+                Ok(StructEntry {
+                    name: self.name(field(entry, "name")?)?,
+                    annotation: self.value_type(field(entry, "type")?)?,
+                    span: span(entry),
+                })
+            })
+            .collect()
+    }
+
+    /// A named type, generic application or inline struct; struct entries and
+    /// fiber components take this form directly.
     fn value_type(&self, node: &Node) -> Result<Annotation> {
         if node.kind != "fiber_type" {
             return Err(unsupported(node));
+        }
+        if let Some(entries) = node.child("entries") {
+            // An inline struct; its span covers the braces.
+            shape(node, &["entries"], &[])?;
+            return Ok(Annotation {
+                kind: AnnotationKind::Struct(self.struct_entries(entries)?),
+                span: span(node),
+            });
         }
         shape(node, &["name"], &["type_annotation", "number"])?;
         let name = self.name(field(node, "name")?)?;

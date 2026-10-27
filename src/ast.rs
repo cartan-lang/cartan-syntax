@@ -152,7 +152,8 @@ pub enum ParameterAnnotation {
     Signature(Signature),
 }
 
-/// `(T1, …, Tn) -> R`; `span` covers the parentheses through the result.
+/// `(T1, …, Tn) -> R`, or `T -> R` for one argument; `span` covers what was
+/// written, through the result.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Signature {
     pub arguments: Vec<Annotation>,
@@ -203,6 +204,9 @@ pub enum AnnotationKind {
         name: Name,
         arguments: Vec<TypeArgument>,
     },
+    /// An inline struct type `{a: Real, b: Int}`, possibly empty; the
+    /// annotation span covers the braces.
+    Struct(Vec<StructEntry>),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -498,8 +502,6 @@ pub enum FormDiagnosticKind {
         position: SignaturePosition,
         signature_span: Span,
     },
-    /// `T -> R` without the parentheses a signature requires; spans the arrow.
-    UnparenthesizedSignature,
 }
 
 /// Parse and normalize the supported source subset. No partial AST is returned.
