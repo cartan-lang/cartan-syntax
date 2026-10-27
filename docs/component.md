@@ -50,7 +50,7 @@ tests. Other tests check structured identity, payload, location, cause and statu
 External process streams remain opaque output, not a source for string classification.
 
 The Rust CST/AST APIs already retain structured diagnostics. The standalone Rust
-CLI carries usage, file-read, parse and stdout failures as `CliError` variants;
+CLI carries file-read, parse and stdout failures as `CliError` variants;
 I/O variants retain the original `io::Error`, and parse failures retain their path
 and complete AST errors/spans. Only [the CLI formatter](../cli/src/diagnostic.rs)
 implements diagnostic presentation, called by the top-level CLI exit boundary.
@@ -75,6 +75,38 @@ arrangement. The selected package has one binary, so no `default-run` is needed.
 The binary disables rustdoc output to avoid colliding with the same-named
 library's documentation; CLI usage lives in its help and the README.
 See the [README](../README.md) for source inspection and library-example commands.
+
+The [Clap builder tree](../cli/src/command.rs) is the sole command definition.
+`ir SOURCE` prints the normalized AST; `ast` is its visible compatibility alias.
+Bare groups and help exit 0 on stdout, usage errors exit 2 on stderr, and domain
+failures retain exit 1 and typed causes until the formatter. File operands use
+OS-native paths and `--` terminates option parsing. Color accepts auto/always/never;
+explicit choices take precedence over `NO_COLOR`, and auto uses the destination's
+terminal state. AST output and metadata JSON never contain presentation escapes.
+
+`--describe-cli` exports the built tree using the
+[version-one shared schema](../../docs/records/component-apps.md#rust-authority-and-python-exposure).
+Visible command/argument aliases, inherited globals, value arity, defaults and
+choices are derived through Clap introspection. Custom validation/relationships
+remain Rust responsibilities. The local exporter and raw Python adapter introduce
+no component dependency; peers agreed the schema and maintain their own adapters.
+
+The CLI alone depends on Clap 4.6.6 with default features disabled and
+`std`, `help`, `usage`, `error-context`, `color` enabled, plus `serde_json`.
+The parser library dependency graph is unchanged. On the existing local build
+cache, the initial offline CLI dependency check completed in about 1.8 seconds
+and build in about 2.0 seconds; these are observed incremental build costs, not
+clean-build benchmarks or cross-machine estimates.
+
+CLI migration verification covers 46 Rust tests, 27 Python tests, strict offline
+check/Clippy/rustdoc, formatting, seven documentation-tool tests and metadata
+validation. [CLI process tests](../cli/tests/cli.rs) exercise aliases, help,
+version, usage failures, OS path operands, termination, color and JSON discovery.
+[Python tests](../tests/python/test_application.py) cover nested/standalone
+forwarding, terminal color precedence and process-free local help. The installed
+entrypoint preserves statuses 0/1/2 outside the repository and matches Rust output
+for all five workload fixtures. The existing Starlette warning remains; actual
+Tree-sitter parser generation/execution is outside this CLI change's verification.
 
 `grammar::grammar()` returns the shared grammar value. The same value drives:
 
@@ -112,14 +144,25 @@ a hyphen. Factories and standalone commands read a component-local
 is supplied. The default is `target/debug/cartan-syntax` under the configured
 root. Missing binaries yield a build instruction, never an implicit build.
 
-`ir` resolves the input against the caller's invocation directory before running
-Rust's `ast` command with `cwd=repo_root`. Text output and child error streams
-are preserved. `--json` emits the version-one process-result envelope, retaining
-opaque Rust debug text and the actual child exit code when available. A missing
-executable has a null exit code; failed/timeout operations exit nonzero. The
-default timeout is 30 seconds. The asynchronous service kills its POSIX process
-group and reaps the child on timeout or cancellation; cancellation propagates
-after cleanup.
+The CLI factory retains only Python-owned commands such as `serve`. Its local
+help starts no Rust process. Other argument vectors are forwarded literally to
+the configured binary, including unknown command names and options; the Rust CLI
+owns validation and command help. `help` requests Rust discovery and
+`--describe-cli` forwards the versioned metadata query. Invoking-directory paths
+retain their meaning because CLI forwarding does not change the child cwd.
+Real stdin/stdout/stderr are inherited without buffering or decoration, preserving
+terminal detection and child exit codes (signals map to conventional 128+signal).
+In-process callers whose streams lack descriptors use captured byte streams.
+The standalone configuration prefix stops at the first Rust/Python command, so
+later `--repo` or `--rust-command` tokens remain literal Rust arguments.
+
+There is no copied Python `ir` declaration. Its previous `--json`/`--timeout`
+wrapper options are removed; Rust reports unsupported options as usage errors.
+Web diagnostics still invoke the syntax operation with repository-relative paths
+and a default 30-second bound. Their version-one result envelope preserves opaque
+child streams and status; it is not command metadata or structured Rust IR.
+The asynchronous web service kills its POSIX process group and reaps the child
+on timeout or cancellation; cancellation propagates after cleanup.
 
 The web app serves `/`, `/docs/`, `/diagnostics/` and locally packaged CSS and
 JavaScript. It follows the [shared visual conventions](../../docs/records/component-apps.md)

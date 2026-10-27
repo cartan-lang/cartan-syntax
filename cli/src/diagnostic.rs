@@ -4,7 +4,6 @@ use std::{error::Error, fmt, io, path::PathBuf};
 
 #[derive(Debug)]
 pub(crate) enum CliError {
-    Usage,
     Read {
         path: PathBuf,
         source: io::Error,
@@ -21,7 +20,6 @@ pub(crate) enum CliError {
 impl fmt::Display for CliError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Usage => formatter.write_str(super::HELP),
             Self::Read { path, source } => write!(formatter, "{}: {source}", path.display()),
             Self::Parse { path, errors } => write!(formatter, "{}: {errors:#?}", path.display()),
             Self::Output { source } => write!(formatter, "stdout: {source}"),
@@ -33,8 +31,17 @@ impl Error for CliError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Read { source, .. } | Self::Output { source } => Some(source),
-            Self::Usage | Self::Parse { .. } => None,
+            Self::Parse { .. } => None,
         }
+    }
+}
+
+/// Render domain errors only at the application's presentation boundary.
+pub(crate) fn print(error: &CliError, colored: bool) {
+    if colored {
+        eprintln!("\x1b[1;31merror:\x1b[0m {error}");
+    } else {
+        eprintln!("error: {error}");
     }
 }
 
@@ -43,8 +50,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn formats_usage_and_preserves_io_causes() {
-        assert_eq!(CliError::Usage.to_string(), super::super::HELP);
+    fn formats_and_preserves_io_causes() {
         let error = CliError::Read {
             path: PathBuf::from("source.cart"),
             source: io::Error::from(io::ErrorKind::NotFound),

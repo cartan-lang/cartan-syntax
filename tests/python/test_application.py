@@ -43,7 +43,8 @@ def test_factories_cli(repo):
     failed = create_cli(repo_root=repo, rust_command=fake('import sys; print("bad",file=sys.stderr); sys.exit(7)'))
     result = runner.invoke(failed, ['ir', '--json', str(source)])
     assert result.exit_code == 7
-    assert json.loads(result.stdout)['exit_code'] == 7
+    assert result.stdout == ''
+    assert result.stderr == 'bad\n'
     assert runner.invoke(main, ['--repo', str(repo)]).exit_code == 0
 
 
@@ -157,7 +158,7 @@ def test_caller_relative_input(repo, tmp_path, monkeypatch):
     caller = repo / 'caller'
     caller.mkdir()
     monkeypatch.chdir(caller)
-    cli = create_cli(repo_root=repo, rust_command=fake('import sys; print(sys.argv[-1])'))
+    cli = create_cli(repo_root=repo, rust_command=fake('import os,sys; print(os.path.abspath(sys.argv[-1]))'))
     result = CliRunner().invoke(cli, ['ir', 'relative.cart'])
     assert result.exit_code == 0
     assert result.stdout.strip() == str(caller / 'relative.cart')
@@ -178,7 +179,7 @@ def test_standalone_help_without_repository(tmp_path, monkeypatch):
     for args in ([], ['--help']):
         result = CliRunner().invoke(main, args)
         assert result.exit_code == 0
-        assert all(word in result.stdout for word in ('ir', 'serve', '--repo', '--rust-command'))
+        assert all(word in result.stdout for word in ('forwarded', 'serve', '--repo', '--rust-command'))
 
 
 @pytest.mark.parametrize('command', [(), ('',), ('python', None), 'python'])
@@ -232,10 +233,7 @@ def test_nested_ir_and_machine_output(repo):
     source = repo / 'spaces ; literal.cart'
     result = CliRunner().invoke(outer, ['syntax', 'ir', '--json', str(source)])
     assert result.exit_code == 0 and not result.stderr
-    envelope = json.loads(result.stdout)
-    assert set(envelope) == {'schema_version', 'status', 'exit_code', 'stdout', 'stderr'}
-    assert envelope['schema_version'] == 1 and envelope['status'] == 'ok'
-    assert json.loads(envelope['stdout']) == [str(repo), ['ast', str(source)]]
+    assert json.loads(result.stdout) == [str(Path.cwd()), ['ir', '--json', str(source)]]
 
 
 def test_document_front_matter_is_not_rendered(repo):
@@ -297,3 +295,90 @@ def test_diagnostic_form_renders_escaped_output_and_json_api_is_unchanged(repo):
         assert payload['stdout'] == '<AST>\n'
         assert payload['stderr'] == '<error>\n'
         assert client.post('/api/inspect', data={'source': ''}).status_code == 400
+
+
+def test_forwarding_preserves_unknown_options_termination_and_help(repo, monkeypatch):
+    caller = repo / 'caller'
+    caller.mkdir()
+    monkeypatch.chdir(caller)
+    command = fake('import json,os,sys; print(json.dumps([os.getcwd(),sys.argv[1:]]))')
+    cli = create_cli(repo_root=repo, rust_command=command)
+    for args in [
+        ['ir', '--help'], ['--describe-cli'], ['help'],
+        ['--color=always', 'ir', '--', '-name with spaces.cart'],
+        ['new-rust-command', '--repeat', 'a', '--repeat', 'b', '--repo', 'literal'],
+    ]:
+        result = CliRunner().invoke(cli, args)
+        assert result.exit_code == 0
+        assert json.loads(result.stdout) == [str(caller), args]
+    args = ['ir', '--repo', 'literal', '--rust-command', 'literal']
+    result = CliRunner().invoke(main, ['--repo', str(repo), *sum((['--rust-command', token] for token in command), []), *args])
+    assert result.exit_code == 0
+    assert json.loads(result.stdout) == [str(caller), args]
+
+
+def test_python_help_and_serve_help_do_not_probe_rust(repo, monkeypatch):
+    import subprocess
+    def forbidden(*args, **kwargs):
+        raise AssertionError('unexpected Rust discovery/process')
+    monkeypatch.setattr(subprocess, 'run', forbidden)
+    cli = create_cli(repo_root=repo, rust_command=('/missing-rust',))
+    for args in [[], ['--help'], ['serve', '--help']]:
+        assert CliRunner().invoke(cli, args).exit_code == 0
+
+
+def test_missing_forwarded_binary_fails_without_build(repo):
+    result = CliRunner().invoke(create_cli(repo_root=repo, rust_command=('/missing-rust',)), ['ir', 'file.cart'])
+    assert result.exit_code == 1
+    assert not result.stdout
+    assert result.stderr
+
+
+def test_rust_color_with_terminal_and_redirected_streams():
+    import os
+    import pty
+    import subprocess
+    root = Path(__file__).resolve().parents[2]
+    binary = root / 'target/debug/cartan-syntax'
+    if not binary.exists():
+        pytest.skip('explicit Rust build required')
+    cases = [([], {}, True), ([], {'NO_COLOR': '1'}, False),
+             (['--color=auto'], {'NO_COLOR': '1'}, True),
+             (['--color=always'], {'NO_COLOR': '1'}, True),
+             (['--color=never'], {}, False)]
+    for options, env, colored in cases:
+        master, slave = pty.openpty()
+        try:
+            process = subprocess.Popen([str(binary), *options, '--help'],
+                                       stdout=slave, stderr=subprocess.PIPE,
+                                       env={**{key: value for key, value in os.environ.items() if key != 'NO_COLOR'}, 'TERM': 'xterm', **env})
+            os.close(slave)
+            slave = None
+            output = b''
+            while True:
+                try:
+                    chunk = os.read(master, 65536)
+                except OSError:
+                    break
+                if not chunk:
+                    break
+                output += chunk
+            assert process.wait(timeout=5) == 0
+            assert (b'\x1b' in output) == colored
+            assert process.stderr.read() == b''
+        finally:
+            os.close(master)
+            if slave is not None:
+                os.close(slave)
+    result = subprocess.run([str(binary), '--color=auto', '--help'], capture_output=True,
+                            env={**os.environ, 'NO_COLOR': '1'})
+    assert result.returncode == 0 and b'\x1b' not in result.stdout
+
+
+def test_standalone_preserves_child_exit_status(repo):
+    command = fake('import sys; print("child",file=sys.stderr); sys.exit(7)')
+    prefix = sum((['--rust-command', token] for token in command), [])
+    result = CliRunner().invoke(main, ['--repo', str(repo), *prefix, 'ir', 'x.cart'])
+    assert result.exit_code == 7
+    assert result.stderr == 'child\n'
+    assert not result.stdout

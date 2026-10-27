@@ -4,7 +4,6 @@ import asyncio
 from contextlib import asynccontextmanager
 from html import escape
 from importlib.resources import files
-import json
 from pathlib import Path
 import tomllib
 from urllib.parse import parse_qs, urlsplit, urlunsplit
@@ -17,6 +16,7 @@ from starlette.responses import HTMLResponse, JSONResponse, Response
 from starlette.routing import Route
 
 from .service import inspect
+from .forward import RustGroup
 
 
 def _root(repo_root: Path) -> Path:
@@ -60,27 +60,17 @@ def create_cli(*, repo_root: Path, rust_command: tuple[str, ...] | None = None) 
     root = _root(repo_root)
     rust_command = _configured_command(root, rust_command)
 
-    @click.group(name="syntax", invoke_without_command=True)
+    @click.group(
+        name="syntax", cls=RustGroup, invoke_without_command=True,
+        rust_command=rust_command or (str(root / "target/debug/cartan-syntax"),),
+        context_settings={"help_option_names": ["-h", "--help"]},
+        epilog="Other arguments are forwarded unchanged to Rust. Use 'help' for Rust command help or '--describe-cli' for JSON discovery. Rust must be built explicitly.",
+    )
     @click.pass_context
     def cli(ctx):
         """Inspect syntax and browse component documentation."""
         if ctx.invoked_subcommand is None:
             click.echo(ctx.get_help())
-
-    @cli.command("ir")
-    @click.argument("source", type=click.Path(path_type=Path))
-    @click.option("--json", "as_json", is_flag=True, help="Emit a version-one result envelope.")
-    @click.option("--timeout", type=click.FloatRange(min=0, min_open=True), default=30.0)
-    def ir(source, as_json, timeout):
-        """Display the source AST using the existing Rust CLI."""
-        result = asyncio.run(inspect(root, rust_command, source.resolve(), timeout))
-        if as_json:
-            click.echo(json.dumps(result.envelope()))
-        else:
-            click.echo(result.stdout, nl=False)
-            click.echo(result.stderr, err=True, nl=False)
-        if result.status != "ok":
-            raise click.exceptions.Exit(result.exit_code if result.exit_code and result.exit_code > 0 else 1)
 
     @cli.command()
     @click.option("--host", default="127.0.0.1", show_default=True)
@@ -317,7 +307,7 @@ def component():
             "create_cli": create_cli, "create_app": create_app}
 
 
-@click.command(context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "help_option_names": []})
+@click.command(context_settings={"ignore_unknown_options": True, "allow_extra_args": True, "help_option_names": [], "allow_interspersed_args": False})
 @click.option("--repo", type=click.Path(path_type=Path), help="Component repository (otherwise search invocation directory parents).")
 @click.option("--rust-command", multiple=True, help="Executable/prefix token; repeat for each argument. No shell is run.")
 @click.pass_context
@@ -343,4 +333,6 @@ def main(ctx, repo, rust_command):
         click.echo(cli.get_help(click.Context(cli, info_name=ctx.info_name)))
         click.echo("\nStandalone options:\n  --repo PATH  Component repository.\n  --rust-command TEXT  Executable/prefix token (repeatable).")
         return
-    cli.main(args=ctx.args, prog_name=ctx.info_name, standalone_mode=False)
+    status = cli.main(args=ctx.args, prog_name=ctx.info_name, standalone_mode=False)
+    if isinstance(status, int):
+        ctx.exit(status)

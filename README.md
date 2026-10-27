@@ -24,13 +24,19 @@ form checks and boundary with semantic analysis.
 Inspect a `.cart` file's normalized AST, including source spans:
 
 ```sh
-cargo run --offline -- ast tests/fixtures/diffusion.cart | less
+cargo run --offline -- ir tests/fixtures/diffusion.cart | less
 ```
 
 This prints Rust's indented debug representation of source items, not typed
 computational IR or generated target code. Errors go to stderr with a nonzero
 exit status. The inspection format is not a stable interchange format.
 With no arguments, `cargo run` prints help to stdout and exits successfully.
+`ast` remains a compatibility alias for `ir`. Use `ir --help` or `help ir` for
+command help, `--version` for the version, and `--describe-cli` for version-one
+JSON discovery derived from the same Clap definitions. Usage errors exit 2;
+execution failures exit 1. `--color auto|always|never` controls help/diagnostics;
+`NO_COLOR` disables automatic color unless an explicit option overrides it.
+Inspection and JSON output remain undecorated.
 
 The Python development app provides the composable `cartdev-syntax` commands
 and a documentation/diagnostics web app. In an independent clone, run these
@@ -40,7 +46,8 @@ from this repository; uv uses its own `uv.lock` and `.venv`:
 uv sync --locked
 uv run cartdev-syntax
 uv run cartdev-syntax ir tests/fixtures/diffusion.cart
-uv run cartdev-syntax ir --json tests/fixtures/diffusion.cart
+uv run cartdev-syntax help ir
+uv run cartdev-syntax --describe-cli
 uv run cartdev-syntax serve --port 8000
 ```
 
@@ -58,6 +65,12 @@ The component lockfile remains for independent clones; it does not select
 dependencies inside the parent workspace. Coordinate shared environment changes
 with the workspace owner. Use `--no-sync` for checks and commands against the
 prepared environment; `--locked` alone can still change installed packages.
+
+Python forwards Rust command arguments unchanged, preserving the invocation
+directory, streams and exit status. Its local help and `serve` command need no
+Rust process; use `help` for Rust command discovery. The former Python-only
+`ir --json` and `--timeout` options are removed: Rust validates its own options.
+The web diagnostics API retains its bounded version-one result envelope.
 
 IR inspection invokes the existing debug binary; build it explicitly with
 `cargo build --offline` when needed. Help and documentation browsing do not need
@@ -85,7 +98,9 @@ The root library uses the local `support/treegram` package. The `cli` workspace
 member supplies the `cartan-syntax` binary and is the default member, so ordinary
 `cargo run` selects it. Use `-p cartan-syntax` for library examples or library-only
 checks; use `--workspace` to check all packages. All packages have publication
-disabled and require no registry downloads or adjacent repository.
+disabled and require no adjacent repository. Offline builds require cached
+Clap and JSON dependencies for the CLI; the parser library gains no registry
+dependency.
 For Python tests in an independent clone, run
 `uv run --locked pytest -q tests/python`; in the parent workspace use the
 package-selected command above. Cargo packages and build directories remain
