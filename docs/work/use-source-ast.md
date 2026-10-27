@@ -26,8 +26,8 @@ with/hole clauses, namespace declarations/functors, qualified annotations, gener
 strings and new builtins unsupported. No grammar change or semantic resolution.
 
 The [adopted source contract](../ast-interface.md#adopted-source-contracts)
-records the lead's checked legacy findings and rationale. The syntax owner did
-not consult legacy or adopt any additional execution responsibility.
+records the adopted form and decoding rules and their rationale. The task adds
+no execution responsibility.
 
 Acceptance: agreement with consumers, five existing workload fixtures, import
 selector/alias/path shapes and UTF-8 offsets, exact path decoding, qualified

@@ -24,7 +24,7 @@ Preserve duplicate keys, ordered operands/atoms/entries, full child source spans
 and exact punctuation spans. Reuse existing Body form checks and configuration
 atoms; no parser workaround or semantic inference. Computed map keys/walks,
 retired function-header configuration, parameter defaults and named/trailing-dot
-closing remain excluded. No helper, legacy access, sibling edit or shared Python
+closing remain excluded. No helper, sibling edit or shared Python
 mutation is authorized by this task.
 
 Acceptance: structural and span tests for all added forms, precedence and chained

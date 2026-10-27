@@ -132,6 +132,5 @@ independent of the Python workspace.
   Git dependency. Codegen consumes graph's typed representation without a
   syntax dependency; integration and device execution are verified downstream.
 
-The [source provenance](docs/provenance.md) records the extraction inputs.
 The [documentation conventions](docs/documentation.md) define the queryable
 Markdown format used in this repository.

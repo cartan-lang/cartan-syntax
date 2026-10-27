@@ -59,7 +59,7 @@ offline workspace check, strict Clippy/rustdoc, default rustfmt, all 22 Python a
 tests with `uv run --no-sync --package cartan-syntax-dev`, nine-document metadata
 validation, seven documentation-tool tests and diff whitespace checks. The
 existing Starlette HTTPX deprecation warning remains. No shared sync, dependency
-change, device run, helper or legacy access occurred.
+change, device run or helper occurred.
 
 Documentation review retains the adopted rule in AGENTS and the component
 contract, with audit findings and completion evidence here. No parallel design

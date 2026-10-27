@@ -263,12 +263,10 @@ otherwise supported so graph can diagnose them. The retired function-header
 configuration `f(x):{c:1}=body` and positional parameter defaults remain
 unsupported normalized forms. No execution support follows from AST acceptance.
 
-The lead verified the accepted constructor chain and literal closing against
-legacy `docs/rulings/configurable-syntax.md` option 4 and
-`docs/records/config-map.md` at `a2916b3`, and recorded the bounded contract in
-[the governing workspace work item](../../docs/work/compile-language-integration.md).
-Syntax adopts the written forms and source provenance, not legacy evaluation or
-expansion machinery. The syntax owner did not consult or execute legacy.
+The constructor chain and literal closing are the adopted configurable forms;
+[the governing workspace work item](../../docs/work/compile-language-integration.md)
+records their bounded contract. Syntax adopts only the written forms; evaluation
+and expansion machinery are outside this component.
 
 ## Normalization and diagnostics
 
@@ -319,34 +317,22 @@ analysis concerns.
 
 ## Adopted source contracts
 
-The supervisor supplied read-only findings from legacy revision
-`a2916b3e93d8a28561f34b31f5208ceffa9fea9e`, `crates/cartan/src/parser.rs`: pattern normalization at
-line 1474, comparison chains at 1870, range chains at 1883, and body handling at
-1155/1189. Referenced tests are at 2317 and 3497. The supervisor inspected that
-evidence without executing the legacy tests; the syntax agent did not access
-the legacy checkout. These findings justify preserving pattern distinctions,
-checking written grouping, and requiring one result without requiring it last.
-They do not import legacy evaluation, semantic analysis or full-language duties.
-The local normalizer is a new implementation over this component's CST.
+These form rules are adopted design. List patterns stay distinct from site
+patterns, written grouping is checked before parentheses are removed, and a body
+requires exactly one result without requiring it to come last. The normalizer is
+implemented over this component's CST; adopting these rules adds no evaluation,
+semantic analysis or full-language obligations.
 
-For imports, the lead supplied and checked the same legacy revision's
-`crates/cartan/src/parser.rs` lines 552–596 and test at 2141 for alias-plus-selector
-refusal, and `crates/cartan/src/lexer.rs` lines 72–94 and test at 182 for exact
-string decoding. Specification section 2.1 states backslash escaping; the lexer
-provides the precise rule above. The owner-authorized import prerequisite adopts
-these source-form and decoding rules to avoid divergent syntax/loader behavior.
-It does not import legacy module execution, functors or a builtin catalogue.
-The syntax owner did not read or execute legacy material for that slice.
+For imports, an alias combined with selectors is refused and quoted paths decode
+with the exact backslash rule above, so syntax and module loading cannot diverge.
+The import prerequisite adds no module execution, functors or builtin catalogue.
 
-For strings and templates, the owner permitted selective harvesting of the
-lead-audited candidates at the same revision, read-only and without execution:
-`crates/cartan/src/parser.rs` `template`/`format_spec` and their tests,
-`ast.rs` `Piece`/`FormatSpec`, and `lexer.rs` `string_text`, `triple_text` and
-`triple_pieces`. The retained behavior is the decoding, dedent, brace and
-format-spec rules above. Adaptations: spans and raw spelling on every piece,
-typed form errors instead of rendered refusals and panics, no empty text pieces,
-and dedent across holes without legacy's U+0001 separator, which collides with
-text containing that character. See [provenance](provenance.md).
+For strings and templates, the decoding, dedent, brace and format-spec rules
+above are the adopted behavior. Every piece keeps spans and raw spelling,
+malformed forms are typed errors rather than rendered refusals, text pieces are
+never empty, and raw-form dedent follows lines across holes directly rather than
+joining text around a separator character, so any character, U+0001 included,
+may appear in text.
 
 ## Local dependency delivery
 

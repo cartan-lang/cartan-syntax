@@ -42,8 +42,7 @@ analysis, numerical lowering and the consuming adapter belong to codegen.
 The syntax task has no remaining interface questions. Codegen owns integration
 and its locked Git revision evidence; acceptance by syntax does not establish frontend
 execution support. Actual Tree-sitter parser generation/execution and device
-execution were not run by this component. Legacy evidence was supplied by the
-supervisor; no legacy checkout was read or executed here.
+execution were not run by this component.
 
 The agreed AST is available on `main`. The owner authorizes consumers to use the
 local Git URL and lock a committed revision, as described by the

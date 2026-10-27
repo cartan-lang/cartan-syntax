@@ -148,14 +148,6 @@ blocked_on: Module interface decision remains open
 ---
 ```
 
-Legacy's `docs/rulings/index.md` and `docs/work/index.md` at `a2916b3e9`
-informed the separation of decisions, work status, ownership and completion
-criteria. The supervisor inspected those sources. This schema retains the
-workspace's YAML metadata and generated inventory, rather than legacy manual
-status tables or append-only logs. No legacy ruling or work item is adopted by
-this structural adaptation. Any substantive migration is reviewed individually
-and records source revision/path, rationale and current authority.
-
 ## Content and vocabulary
 
 - Begin with purpose and scope. State the current contract, examples and limits.

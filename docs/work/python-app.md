@@ -55,7 +55,7 @@ the common registration/factory interface. No new analysis or Rust API is needed
   and the selected interpreter used the root `.venv`. Neither the component
   manifest nor standalone lockfile changed; no Rust build was needed.
 
-No persistent server, GPU, SSH, publication, remote cleanup or legacy access is
+No persistent server, GPU, SSH, publication or remote cleanup is
 part of this task. The installed HTTPX-based Starlette TestClient emits an
 upstream deprecation warning; request behavior is tested. The subprocess service
 currently uses POSIX process groups; other operating systems are untested.

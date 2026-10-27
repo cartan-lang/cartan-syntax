@@ -256,6 +256,8 @@ The five fixture programs parse and retain their expected loops and fields.
 Tests also pin precedence, typed versus untyped patterns, scalar versus list
 binders, newline rules, byte spans, Unicode handling and diagnostic identity.
 The fixture copies are tests, not a second authoritative workload collection.
+They hold the five workload programs; Conway's subtraction places its operator at
+the end of the preceding line, as the newline rule requires.
 
 Inside a body, `i, j := [10, 2]` and `[i, j] := [10, 2]` both parse as one
 `local` with two identifiers in its `pattern` field. Their CST kinds remain
@@ -265,10 +267,14 @@ pattern bindings use `=`; both forms with `:=` report `Rule::PatternValue` at
 the colon.
 The [syntax tests](../tests/syntax.rs) verify these structures and byte spans.
 
-The generated Tree-sitter productions match the extracted source grammar's
-output apart from provenance comments. JavaScript syntax is checked with Node.
+JavaScript syntax of the generated Tree-sitter grammar is checked with Node.
 Actual Tree-sitter parser generation and execution are untested because its CLI
 is unavailable in this environment. There is no full editor-conformance claim.
+
+## Licensing
+
+All packages declare `MIT OR Apache-2.0` in their manifests and have publication
+disabled.
 
 ## Consumer integration
 
