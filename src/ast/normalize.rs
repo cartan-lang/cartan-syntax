@@ -127,6 +127,42 @@ impl Reader<'_> {
         &self.tree.source[node.start..node.end]
     }
 
+    fn number(&self, node: &Node) -> Result<NumberLiteral> {
+        if node.kind != "number" {
+            return Err(unsupported(node));
+        }
+        Ok(NumberLiteral {
+            text: self.text(node).into(),
+            span: span(node),
+        })
+    }
+
+    /// A name, a number, or a parenthesized run of numbers (`component_key`
+    /// or `position_pair`); only a run of two forms a pair.
+    fn component_key(&self, node: &Node) -> Result<ComponentKey> {
+        match node.kind.as_str() {
+            "identifier" => Ok(ComponentKey::Name(self.name(node)?)),
+            "number" => Ok(ComponentKey::Position(self.number(node)?)),
+            "component_key" | "position_pair" => {
+                let numbers: Vec<_> = children(node).collect();
+                match numbers.as_slice() {
+                    [row, column] => Ok(ComponentKey::Pair {
+                        row: self.number(row)?,
+                        column: self.number(column)?,
+                        span: span(node),
+                    }),
+                    _ => Err(form(
+                        node,
+                        FormDiagnosticKind::ComponentKeyPositions {
+                            found: numbers.len(),
+                        },
+                    )),
+                }
+            }
+            _ => Err(unsupported(node)),
+        }
+    }
+
     fn name(&self, node: &Node) -> Result<Name> {
         if node.kind != "identifier" {
             return Err(unsupported(node));
@@ -782,10 +818,70 @@ impl Reader<'_> {
             }
             "component_expression" => {
                 shape(node, &["key", "value"], &[])?;
+                let key = field(node, "key")?;
+                // A component key wraps a name, a number or a parenthesized run.
+                let key = match children(key).collect::<Vec<_>>().as_slice() {
+                    [single] => self.component_key(single)?,
+                    _ => self.component_key(key)?,
+                };
                 ExprKind::Projection {
-                    key: self.name(single(field(node, "key")?)?)?,
+                    key,
                     value: Box::new(self.expr(field(node, "value")?)?),
                 }
+            }
+            "product" => ExprKind::Product(
+                children(node)
+                    .map(|entry| {
+                        if entry.kind != "product_component" {
+                            return Err(unsupported(entry));
+                        }
+                        shape(entry, &["name", "value"], &[])?;
+                        Ok(ProductEntry {
+                            key: self.component_key(field(entry, "name")?)?,
+                            value: self.expr(field(entry, "value")?)?,
+                            span: span(entry),
+                        })
+                    })
+                    .collect::<Result<_>>()?,
+            ),
+            "but_expression" => {
+                shape(node, &["target", "override"], &[])?;
+                let keyword = node
+                    .children
+                    .iter()
+                    .find(|child| child.kind == "but")
+                    .ok_or_else(|| unsupported(node))?;
+                // Continuation keyword tokens carry surrounding whitespace.
+                let start = keyword.start
+                    + self
+                        .text(keyword)
+                        .find("but")
+                        .ok_or_else(|| unsupported(keyword))?;
+                ExprKind::Update {
+                    base: Box::new(self.expr(field(node, "target")?)?),
+                    overrides: Box::new(self.expr(field(node, "override")?)?),
+                    operator_span: Span {
+                        start,
+                        end: start + 3,
+                    },
+                }
+            }
+            "site_update_expression" => {
+                let key = field(node, "key")?;
+                let colon = node
+                    .children
+                    .iter()
+                    .find(|child| child.kind == ":" && child.start >= key.end)
+                    .ok_or_else(|| unsupported(node))?;
+                return Err(form_at(
+                    Span {
+                        start: colon.end - 1,
+                        end: colon.end,
+                    },
+                    FormDiagnosticKind::RemovedSpatialUpdate {
+                        key_span: span(key),
+                    },
+                ));
             }
             "list" => ExprKind::List(
                 children(node)

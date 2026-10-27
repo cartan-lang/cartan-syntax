@@ -60,7 +60,7 @@ The source constructs are:
 | Fibers | Name, written base annotation such as `Module`, and ordered named components with annotations. |
 | Annotations | Named types, generic applications and inline struct types, preserving names and numeric arguments such as `Array<Primitive, 1>` without interpreting rank. |
 | Patterns | Name, wildcard, recursive list pattern, and positional site pattern with its enclosing annotation retained. |
-| Expressions | Literal number/boolean/string, tagged template, local/qualified name, unary/binary operation, conditional, local/qualified call, indexing, `of` projection, list, named map, map join, configurable constructor/application, range, `periodic`, body, `for` comprehension and `reduce`. |
+| Expressions | Literal number/boolean/string, tagged template, local/qualified name, unary/binary operation, conditional, local/qualified call, indexing, `of` component read, product value, `but` update, list, named map, map join, configurable constructor/application, range, `periodic`, body, `for` comprehension and `reduce`. |
 | Body | Ordered `BodyItem::Local` and `BodyItem::Result` entries, with exactly one result. A result need not be last. |
 | Update block | Written guard and ordered writes, preserving target names, values and spans. |
 
@@ -218,6 +218,35 @@ annotation, because fiber descriptions also open with a parenthesis and accept
 `()`. The generated Tree-sitter grammar has not been generated or executed with
 this alternative.
 
+## Component reads and updates
+
+The [members and patterns work](work/members-and-patterns.md) supplies this
+interface under the workspace
+[component reads and updates](../../docs/records/components-and-updates.md) record.
+`key of value` is `ExprKind::Projection { key, value }`, where `key` is a
+`ComponentKey`: `Name`, `Position(NumberLiteral)` or `Pair { row, column, span }`.
+A number keeps its written spelling; analysis checks that it is an in-range
+integer and that the key kind suits the value. A parenthesized key with other
+than two positions is `FormDiagnosticKind::ComponentKeyPositions { found }`.
+The grammar fixes precedence: `of` binds tighter than arithmetic, comparison,
+power and unary minus, looser than postfix calls and indexing, and nests from the
+right.
+
+A product value or partial product `(D: 9.0, 0: x, (0, 1): 1.0)` is
+`ExprKind::Product(Vec<ProductEntry { key, value, span }>)`, keeping source order
+and duplicate keys for analysis to diagnose. `base but overrides` is
+`ExprKind::Update { base, overrides, operator_span }`, where `operator_span`
+covers the `but` keyword and `overrides` is any value. `but` binds looser than
+`of` and arithmetic, groups left, and a line beginning with `but` continues the
+previous expression. Every update law (keys, fitting, recursion over nested
+partial products, arrays of products, structs) belongs to analysis.
+
+The removed spatial replacement `base but key: value`, where a colon follows the
+operand at the same nesting level, yields
+`FormDiagnosticKind::RemovedSpatialUpdate { key_span }` with the diagnostic span
+on that colon. A colon inside a parenthesized partial product is an ordinary
+product entry.
+
 ## Maps and configurables
 
 The [configurable source work](work/configurable-source-ast.md) supplies the
@@ -287,7 +316,8 @@ Structured errors distinguish `Grammar(Diagnostic)` from
 `Form(FormDiagnostic)`. Form diagnostics carry a span and typed kind with
 relevant payloads: unsupported construct and its CST kind, comparison/range
 chain, body result count, a use alias combined with selectors, malformed
-format precision or notation, and misplaced signatures. `Error::span()` returns the full byte range; errors
+format precision or notation, misplaced signatures, component keys of the
+wrong length and the removed spatial update. `Error::span()` returns the full byte range; errors
 derive `Clone`, `Debug`, `PartialEq` and `Eq`. Grammar diagnostics are preserved
 without rewriting. Normalization reports the first form error in each document
 item; it returns no partial AST if any error occurs. Unsupported syntax is
@@ -306,7 +336,7 @@ The adapter must explicitly reject orders it cannot represent, rather than
 misclassify them as invalid source syntax. Update bodies currently support
 ordered writes only; other update-body forms are outside this AST subset.
 
-Only named types and generic applications, named projections, the imports above,
+Only named types, generic applications and inline structs, the imports above,
 and the listed expression forms are normalized. Default arguments,
 function-header configuration/lock clauses, sum fibers, qualified annotations,
 general `fold`, guard/configuration clauses on reductions and additional pattern forms

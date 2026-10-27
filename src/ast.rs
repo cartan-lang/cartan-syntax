@@ -267,9 +267,20 @@ pub enum ExprKind {
         target: Box<Expr>,
         indices: Vec<Expr>,
     },
+    /// `key of value`, reading one component.
     Projection {
-        key: Name,
+        key: ComponentKey,
         value: Box<Expr>,
+    },
+    /// A product value or partial product `(D: 1.0, 0: x)`, entries in source
+    /// order with duplicate keys kept for analysis to diagnose.
+    Product(Vec<ProductEntry>),
+    /// `base but overrides`: a new value with the named components replaced.
+    Update {
+        base: Box<Expr>,
+        overrides: Box<Expr>,
+        /// The `but` keyword alone.
+        operator_span: Span,
     },
     List(Vec<Expr>),
     Map(Vec<MapEntry>),
@@ -298,6 +309,37 @@ pub enum ExprKind {
     Body(Body),
     For(Box<Comprehension>),
     Reduce(Box<Reduction>),
+}
+
+/// The literal key of a component read or product entry.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ComponentKey {
+    /// A named component.
+    Name(Name),
+    /// A position, by its written spelling; analysis checks that it is an
+    /// in-range integer.
+    Position(NumberLiteral),
+    /// `(row, column)` for a two-index fiber; the span covers the parentheses.
+    Pair {
+        row: NumberLiteral,
+        column: NumberLiteral,
+        span: Span,
+    },
+}
+
+/// A numeric literal kept as written.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NumberLiteral {
+    pub text: String,
+    pub span: Span,
+}
+
+/// One `key: value` entry of a product value or partial product.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ProductEntry {
+    pub key: ComponentKey,
+    pub value: Expr,
+    pub span: Span,
 }
 
 /// An ordinary named-map entry, preserving order and duplicate keys.
@@ -501,6 +543,15 @@ pub enum FormDiagnosticKind {
     SignatureOutsideParameter {
         position: SignaturePosition,
         signature_span: Span,
+    },
+    /// The removed spatial replacement `base but key: value`. The diagnostic
+    /// span is the colon after the key; `key_span` covers the key.
+    RemovedSpatialUpdate {
+        key_span: Span,
+    },
+    /// A parenthesized component key with other than two positions.
+    ComponentKeyPositions {
+        found: usize,
     },
 }
 

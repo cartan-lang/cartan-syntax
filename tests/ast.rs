@@ -15,6 +15,22 @@ fn assert_name_span(source: &str, name: &Name) {
     );
 }
 
+fn assert_key_spans(source: &str, key: &ComponentKey) {
+    match key {
+        ComponentKey::Name(name) => assert_name_span(source, name),
+        ComponentKey::Position(number) => {
+            assert_eq!(&source[number.span.start..number.span.end], number.text)
+        }
+        ComponentKey::Pair { row, column, span } => {
+            let text = &source[span.start..span.end];
+            assert!(text.starts_with('(') && text.ends_with(')'));
+            for number in [row, column] {
+                assert_eq!(&source[number.span.start..number.span.end], number.text);
+            }
+        }
+    }
+}
+
 fn assert_qualified_spans(source: &str, name: &QualifiedName) {
     assert!(source.get(name.span.start..name.span.end).is_some());
     assert_name_span(source, &name.namespace);
@@ -144,8 +160,24 @@ fn assert_expr_spans(source: &str, expr: &Expr) {
             }
         }
         ExprKind::Projection { key, value } => {
-            assert_name_span(source, key);
+            assert_key_spans(source, key);
             assert_expr_spans(source, value);
+        }
+        ExprKind::Product(entries) => {
+            for entry in entries {
+                assert!(source.get(entry.span.start..entry.span.end).is_some());
+                assert_key_spans(source, &entry.key);
+                assert_expr_spans(source, &entry.value);
+            }
+        }
+        ExprKind::Update {
+            base,
+            overrides,
+            operator_span,
+        } => {
+            assert_eq!(&source[operator_span.start..operator_span.end], "but");
+            assert_expr_spans(source, base);
+            assert_expr_spans(source, overrides);
         }
         ExprKind::List(expressions) => {
             for expr in expressions {
@@ -459,7 +491,7 @@ fn preserves_annotations_site_patterns_and_source_spelling() {
     let ExprKind::Projection { key, value } = &function.body.kind else {
         panic!()
     };
-    assert_eq!(key.text, "pre");
+    assert!(matches!(key, ComponentKey::Name(name) if name.text == "pre"));
     assert!(
         matches!(&value.kind, ExprKind::Index { target, indices } if matches!(&target.kind, ExprKind::Name(name) if name.text == "p") && indices.len() == 1)
     );
@@ -493,7 +525,6 @@ fn unsupported_constructs_and_optional_clauses_are_not_discarded() {
         "x = Foo(A: 1)",
         "x = (A: Real)(1)",
         "x = if true then 1",
-        "x = 0 of y",
         "x = 1 ?? 2",
         "x = { state p := 1\n p }",
         "x = { y <- 1\n y }",
@@ -1636,5 +1667,145 @@ fn inline_structs_nest_keep_order_duplicates_empty_forms_and_brace_spans() {
         "x: List<{a: Real}> = 1",
     ] {
         assert!(ast::parse_document(source).is_ok(), "{source}");
+    }
+}
+
+fn key_text<'a>(source: &'a str, key: &ComponentKey) -> &'a str {
+    let span = match key {
+        ComponentKey::Name(name) => name.span,
+        ComponentKey::Position(number) => number.span,
+        ComponentKey::Pair { span, .. } => *span,
+    };
+    &source[span.start..span.end]
+}
+
+#[test]
+fn component_reads_take_name_position_and_pair_keys_at_their_precedence() {
+    for (source, key) in [
+        ("rho of u", "rho"),
+        ("0 of v", "0"),
+        ("(0, 1) of m", "(0, 1)"),
+    ] {
+        let ExprKind::Projection { key: found, value } = expression(source).kind else {
+            panic!("{source}");
+        };
+        assert_eq!(key_text(source, &found), key);
+        assert!(matches!(value.kind, ExprKind::Name(_)), "{source}");
+    }
+    // `of` binds tighter than arithmetic and unary minus, looser than postfix.
+    let ExprKind::Binary {
+        operator: BinaryOperator::Add,
+        left,
+        ..
+    } = expression("0 of v + 1").kind
+    else {
+        panic!();
+    };
+    assert!(matches!(left.kind, ExprKind::Projection { .. }));
+    let ExprKind::Unary {
+        operator: UnaryOperator::Negate,
+        operand,
+    } = expression("-0 of v").kind
+    else {
+        panic!();
+    };
+    assert!(matches!(operand.kind, ExprKind::Projection { .. }));
+    for source in ["0 of v[s]", "0 of f(x)"] {
+        let ExprKind::Projection { value, .. } = expression(source).kind else {
+            panic!("{source}");
+        };
+        assert!(
+            matches!(value.kind, ExprKind::Index { .. } | ExprKind::Call { .. }),
+            "{source}"
+        );
+    }
+    // Reads nest from the right.
+    let ExprKind::Projection { key, value } = expression("a of b of c").kind else {
+        panic!();
+    };
+    assert!(matches!(key, ComponentKey::Name(name) if name.text == "a"));
+    assert!(matches!(value.kind, ExprKind::Projection { .. }));
+    // A real spelling is kept for analysis to refuse; a pair needs two positions.
+    let ExprKind::Projection {
+        key: ComponentKey::Position(number),
+        ..
+    } = expression("1.5 of v").kind
+    else {
+        panic!();
+    };
+    assert_eq!(number.text, "1.5");
+    let errors = ast::parse_expression("(0, 1, 2) of m").unwrap_err();
+    assert!(matches!(
+        errors.as_slice(),
+        [Error::Form(FormDiagnostic { kind: FormDiagnosticKind::ComponentKeyPositions { found: 3 }, span })]
+            if span.start == 0 && span.end == 9
+    ));
+}
+
+#[test]
+fn updates_take_partial_products_chain_left_and_bind_looser_than_reads() {
+    let source = "u but (D: 9.0, 0: x, (0, 1): 1.0, D: 2.0)";
+    let ExprKind::Update {
+        base,
+        overrides,
+        operator_span,
+    } = expression(source).kind
+    else {
+        panic!();
+    };
+    assert_eq!(&source[operator_span.start..operator_span.end], "but");
+    assert!(matches!(base.kind, ExprKind::Name(name) if name.text == "u"));
+    let ExprKind::Product(entries) = &overrides.kind else {
+        panic!();
+    };
+    let keys: Vec<_> = entries
+        .iter()
+        .map(|entry| key_text(source, &entry.key))
+        .collect();
+    assert_eq!(keys, ["D", "0", "(0, 1)", "D"]);
+    assert_eq!(
+        &source[entries[2].span.start..entries[2].span.end],
+        "(0, 1): 1.0"
+    );
+    // Updates group left, continue across a line, and bind looser than `of`.
+    let ExprKind::Update { base, .. } = expression("u but (D: 9.0) but (S: 7.0)").kind else {
+        panic!();
+    };
+    assert!(matches!(base.kind, ExprKind::Update { .. }));
+    assert!(matches!(
+        expression("u\n but (D: 1.0)").kind,
+        ExprKind::Update { .. }
+    ));
+    let ExprKind::Update { base, .. } = expression("0 of v but (D: 1.0)").kind else {
+        panic!();
+    };
+    assert!(matches!(base.kind, ExprKind::Projection { .. }));
+    // Overrides are ordinary values, and nested partial products stay nested.
+    for source in ["u but o", "u but f(x)", "u but (D: (x: 1.0))"] {
+        assert!(
+            matches!(expression(source).kind, ExprKind::Update { .. }),
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn the_removed_spatial_update_is_a_typed_error_at_its_colon() {
+    for (source, key) in [
+        ("u but 0..4: 1.0", "0..4"),
+        ("u but (n - 1): 0.0", "(n - 1)"),
+        ("u but [0..1, 1..2]: v", "[0..1, 1..2]"),
+        ("u but mask: v", "mask"),
+    ] {
+        let errors = ast::parse_expression(source).unwrap_err();
+        let [Error::Form(FormDiagnostic {
+            kind: FormDiagnosticKind::RemovedSpatialUpdate { key_span },
+            span,
+        })] = errors.as_slice()
+        else {
+            panic!("{source}: {errors:?}");
+        };
+        assert_eq!(&source[span.start..span.end], ":", "{source}");
+        assert_eq!(&source[key_span.start..key_span.end], key, "{source}");
     }
 }
