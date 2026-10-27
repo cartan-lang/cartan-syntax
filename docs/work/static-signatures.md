@@ -21,15 +21,19 @@ this syntax-only subset (rows S1–S7) independently of the remaining proposed
 and open graph rows, which stay unadopted and are not implemented here. The
 [AST contract](../ast-interface.md) owns the final data structures.
 
-Scope: `(T1, …, Tn) -> R` as a function-definition parameter annotation, with
-mandatory parentheses for zero, one or many arguments. `Parameter.annotation`
-becomes `Option<ParameterAnnotation>` with `Value(Annotation)` and
-`Signature(Signature { arguments, result, arrow_span, span })`. Slots admit only
-the existing named and generic-application annotations. Arrows anywhere else,
-nested signatures in argument or result slots are
-typed form errors carrying a position enum and the offending arrow span. Ordinary
-value parameters are unchanged. The slice also corrects stale statements that
-codegen consumes this AST: graph is the only direct consumer.
+Initial checkpoint scope, superseded in part by the
+[structural annotation work](structural-annotations.md), which adds the unary
+`T -> R` spelling and inline struct slots: `(T1, …, Tn) -> R` as a
+function-definition parameter annotation, with parentheses for zero, one or many
+arguments. `Parameter.annotation` becomes `Option<ParameterAnnotation>` with
+`Value(Annotation)` and `Signature(Signature { arguments, result, arrow_span,
+span })`, and slots admitted the then-existing named and generic-application
+annotations. Signatures written anywhere else, or nested in argument or result
+slots, are typed form errors carrying a position enum and the offending arrow
+span. Ordinary value parameters are unchanged. The slice also corrected stale
+statements that codegen consumes this AST: graph is the only direct consumer. The
+[AST contract](../ast-interface.md#function-signature-parameters) states the
+current interface.
 
 Excluded: overload markers, definition result annotations, optional `T|None`
 and member, update, sum and merge forms. Syntax decides no concrete-type set,
