@@ -28,7 +28,7 @@ async def inspect(repo_root: Path, rust_command: tuple[str, ...] | None,
     command = rust_command or (str(repo_root / "target/debug/cartan-syntax"),)
     try:
         process = await asyncio.create_subprocess_exec(
-            *command, "ast", str(source), cwd=repo_root,
+            *command, "ir", str(source), cwd=repo_root,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
             start_new_session=True)
     except OSError as error:

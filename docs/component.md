@@ -77,7 +77,8 @@ library's documentation; CLI usage lives in its help and the README.
 See the [README](../README.md) for source inspection and library-example commands.
 
 The [Clap builder tree](../cli/src/command.rs) is the sole command definition.
-`ir SOURCE` prints the normalized AST; `ast` is its visible compatibility alias.
+`ir SOURCE` is the sole inspection command and prints the normalized AST.
+The former `ast` spelling is rejected with usage status 2.
 Bare groups and help exit 0 on stdout, usage errors exit 2 on stderr, and domain
 failures retain exit 1 and typed causes until the formatter. File operands use
 OS-native paths and `--` terminates option parsing. Color accepts auto/always/never;
@@ -98,9 +99,9 @@ cache, the initial offline CLI dependency check completed in about 1.8 seconds
 and build in about 2.0 seconds; these are observed incremental build costs, not
 clean-build benchmarks or cross-machine estimates.
 
-CLI migration verification covers 46 Rust tests, 27 Python tests, strict offline
+CLI migration verification covers 47 Rust tests, 28 Python tests, strict offline
 check/Clippy/rustdoc, formatting, seven documentation-tool tests and metadata
-validation. [CLI process tests](../cli/tests/cli.rs) exercise aliases, help,
+validation. [CLI process tests](../cli/tests/cli.rs) exercise sole-command enforcement, help,
 version, usage failures, OS path operands, termination, color and JSON discovery.
 [Python tests](../tests/python/test_application.py) cover nested/standalone
 forwarding, terminal color precedence and process-free local help. The installed

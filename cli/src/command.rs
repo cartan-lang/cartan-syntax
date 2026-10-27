@@ -23,7 +23,6 @@ pub(crate) fn command() -> Command {
         )
         .subcommand(
             Command::new("ir")
-                .visible_alias("ast")
                 .about("Print the normalized source AST and byte spans")
                 .long_about("Print the normalized source AST and byte spans as indented Rust debug output. This inspection format is not typed computational IR or a stable interchange format.")
                 .arg(

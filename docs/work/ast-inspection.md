@@ -26,12 +26,12 @@ the existing [AST interface](../ast-interface.md).
 - Direct execution passed for all five workload fixtures. Output includes
   declarations, update blocks and source spans.
 - No arguments prints the same help as `--help` to stdout and exits 0, verified
-  by invoking the actual binary. Missing `ast` operands, extra arguments, unknown
+  by invoking the actual binary. Missing `ir` operands, extra arguments, unknown
   commands, missing files and incomplete syntax were
   checked: nonzero exit status, diagnostics on stderr, no AST on stdout.
 - The [package contract](../component.md#syntax-tooling) uses a separate CLI
   workspace member selected by default. Library dependencies remain unchanged.
-  Root `cargo run --offline -- --help` and `cargo run --offline -- ast` with a
+  Root `cargo run --offline -- --help` and `cargo run --offline -- ir` with a
   fixture select the binary. Explicit library-only checking and the grammar
   example also pass. Diffusion AST output matches the previous example exactly.
 - All 29 Rust tests pass, including three [CLI tests](../../cli/tests/cli.rs).

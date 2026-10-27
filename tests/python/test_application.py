@@ -382,3 +382,10 @@ def test_standalone_preserves_child_exit_status(repo):
     assert result.exit_code == 7
     assert result.stderr == 'child\n'
     assert not result.stdout
+
+
+def test_web_service_uses_sole_ir_command(repo):
+    command = fake('import json,sys; print(json.dumps(sys.argv[1:]))')
+    result = asyncio.run(inspect(repo, command, repo / 'source.cart'))
+    assert result.status == 'ok'
+    assert json.loads(result.stdout) == ['ir', str(repo / 'source.cart')]

@@ -16,7 +16,7 @@ fn help_and_usage_have_distinct_exit_statuses_and_streams() {
     assert_eq!(no_args.status.code(), Some(0));
     assert_eq!(no_args.stdout, help.stdout);
     assert!(no_args.stderr.is_empty());
-    for args in [vec!["ast"], vec!["unknown"], vec!["ast", "one", "two"]] {
+    for args in [vec!["ir"], vec!["unknown"], vec!["ir", "one", "two"]] {
         let output = cli().args(args).output().unwrap();
         assert_eq!(output.status.code(), Some(2));
         assert!(output.stdout.is_empty());
@@ -27,7 +27,7 @@ fn help_and_usage_have_distinct_exit_statuses_and_streams() {
 #[test]
 fn file_inspection_prints_ast_items_and_spans() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/fixtures/diffusion.cart");
-    let output = cli().arg("ast").arg(fixture).output().unwrap();
+    let output = cli().arg("ir").arg(fixture).output().unwrap();
     assert!(output.status.success());
     assert!(output.stderr.is_empty());
     let text = String::from_utf8(output.stdout).unwrap();
@@ -40,20 +40,20 @@ fn file_inspection_prints_ast_items_and_spans() {
 fn parse_and_io_failures_emit_diagnostics_without_ast_output() {
     let path = std::env::temp_dir().join(format!("cartan-syntax-cli-{}.cart", std::process::id()));
     fs::write(&path, "param n =").unwrap();
-    let output = cli().arg("ast").arg(&path).output().unwrap();
+    let output = cli().arg("ir").arg(&path).output().unwrap();
     fs::remove_file(&path).unwrap();
     assert!(!output.status.success());
     assert!(output.stdout.is_empty());
     assert!(!output.stderr.is_empty());
 
-    let output = cli().arg("ast").arg(&path).output().unwrap();
+    let output = cli().arg("ir").arg(&path).output().unwrap();
     assert!(!output.status.success());
     assert!(output.stdout.is_empty());
     assert!(!output.stderr.is_empty());
 }
 
 #[test]
-fn discovery_agrees_with_aliases_options_and_nested_help() {
+fn discovery_agrees_with_options_and_nested_help() {
     let result = cli()
         .args(["--color", "always", "--describe-cli"])
         .output()
@@ -82,7 +82,7 @@ fn discovery_agrees_with_aliases_options_and_nested_help() {
         .iter()
         .find(|cmd| cmd["name"] == "ir")
         .unwrap();
-    assert_eq!(ir["aliases"], serde_json::json!(["ast"]));
+    assert_eq!(ir["aliases"], serde_json::json!([]));
     let source = ir["arguments"]
         .as_array()
         .unwrap()
@@ -92,7 +92,7 @@ fn discovery_agrees_with_aliases_options_and_nested_help() {
     assert_eq!(source["position"], 1);
     assert_eq!(source["required"], true);
     assert_eq!(source["arity"], serde_json::json!({"min":1,"max":1}));
-    for args in [["ir", "--help"], ["ast", "--help"], ["help", "ir"]] {
+    for args in [["ir", "--help"], ["help", "ir"]] {
         let result = cli().args(args).output().unwrap();
         assert!(result.status.success());
         assert!(result.stderr.is_empty());
@@ -150,15 +150,13 @@ fn inspection_preserves_os_paths_termination_and_plain_output() {
     let source = "param n = 32\n";
     for name in ["--color=always", "source with spaces λ.cart"] {
         fs::write(directory.join(name), source).unwrap();
-        for alias in ["ir", "ast"] {
-            let result = cli()
-                .current_dir(&directory)
-                .args(["--color=always", alias, "--", name])
-                .output()
-                .unwrap();
-            assert!(result.status.success(), "{:?}", result.stderr);
-            assert!(!result.stdout.contains(&27));
-        }
+        let result = cli()
+            .current_dir(&directory)
+            .args(["--color=always", "ir", "--", name])
+            .output()
+            .unwrap();
+        assert!(result.status.success(), "{:?}", result.stderr);
+        assert!(!result.stdout.contains(&27));
     }
     #[cfg(unix)]
     {
@@ -175,4 +173,18 @@ fn inspection_preserves_os_paths_termination_and_plain_output() {
         assert_eq!(result.status.code(), Some(1));
     }
     fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn retired_ast_command_is_a_usage_error() {
+    for args in [
+        vec!["ast"],
+        vec!["ast", "--help"],
+        vec!["ast", "source.cart"],
+    ] {
+        let result = cli().args(args).output().unwrap();
+        assert_eq!(result.status.code(), Some(2));
+        assert!(result.stdout.is_empty());
+        assert!(!result.stderr.is_empty());
+    }
 }

@@ -31,7 +31,7 @@ This prints Rust's indented debug representation of source items, not typed
 computational IR or generated target code. Errors go to stderr with a nonzero
 exit status. The inspection format is not a stable interchange format.
 With no arguments, `cargo run` prints help to stdout and exits successfully.
-`ast` remains a compatibility alias for `ir`. Use `ir --help` or `help ir` for
+`ir` is the sole inspection command. Use `ir --help` or `help ir` for
 command help, `--version` for the version, and `--describe-cli` for version-one
 JSON discovery derived from the same Clap definitions. Usage errors exit 2;
 execution failures exit 1. `--color auto|always|never` controls help/diagnostics;
