@@ -292,7 +292,7 @@ fn malformed_annotations_and_unicode_produce_valid_source_spans() {
 
 #[test]
 fn grammar_acceptance_is_explicitly_distinct_from_later_form_checks() {
-    // These have concrete grammar trees; the legacy AST lowering refuses the
+    // These have concrete grammar trees; AST normalization refuses the
     // comparison/range chains and the body with two result expressions.
     for source in ["1 < 2 < 3", "1..2..3", "{1\n2}"] {
         expression(source);

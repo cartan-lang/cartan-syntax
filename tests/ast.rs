@@ -1263,7 +1263,7 @@ fn struct_declarations_keep_ordered_duplicate_entries_and_named_annotations() {
 
 #[test]
 fn raw_template_boundaries_survive_control_characters_beside_holes() {
-    // Legacy split text runs on U+0001; text may contain it here.
+    // Text runs are kept apart without any separator character, so text may contain U+0001.
     let source = "f\"\"\"\n  a\u{1}{x}\u{1}b\n  \u{1}{y}\n  \"\"\"";
     let template_ = template(source);
     assert_eq!(template_.pieces.len(), 5);

@@ -2,7 +2,7 @@
 //!
 //! The interpreter returns concrete syntax trees and the printers generate
 //! editor tooling from this same value. AST normalization and the additional
-//! form checks performed by the legacy parser are outside this bootstrap.
+//! form checks performed after parsing are outside this module.
 //!
 //! # Newlines
 //!
@@ -678,7 +678,7 @@ fn build() -> Grammar {
                  is a declaration rather than a binding: no name, no node in the\n\
                  graph, no part in evaluation. Standing first it is the document's\n\
                  prose; standing above a binding it is that binding's prose. Which\n\
-                 one it is is positional, so legacy AST normalization decides it — the grammar\n\
+                 one it is is positional, so a later analysis stage decides it — the grammar\n\
                  accepts the literal as an item anywhere.\n\
                  \n\
                  A triple string is an expression too, so a document's first line\n\
@@ -707,7 +707,7 @@ fn build() -> Grammar {
                  the namespace's name.\n\
                  \n\
                  That a line states at most one of `as` and an import list, and\n\
-                 which combinations a namespace head admits, legacy AST normalization states.",
+                 which combinations a namespace head admits, a later analysis stage states.",
                 seq(vec![
                     "use".into(),
                     expecting(
@@ -758,7 +758,7 @@ fn build() -> Grammar {
                  position, and in a `use` line, where no expression stands, it is\n\
                  this clause and nothing else. That every hole is bound exactly\n\
                  once and that each argument fits the shape its hole declares,\n\
-                 legacy AST normalization states.",
+                 a later analysis stage states.",
                 seq(vec![
                     "with".into(),
                     expecting(
@@ -923,7 +923,7 @@ fn build() -> Grammar {
                  bare name taking no payload, so `fiber Mode = (Binary |\n\
                  Single)` is an enumeration. A product states at least one\n\
                  component and a sum at least two variants, and no name twice,\n\
-                 which legacy AST normalization states. `fiber Cell<k> = (at: [Int; k],\n\
+                 which a later analysis stage states. `fiber Cell<k> = (at: [Int; k],\n\
                  v: Vector<Real, k>)` names a width parameter after the name,\n\
                  which the component fibers read.\n\
                  \n\
@@ -977,14 +977,14 @@ fn build() -> Grammar {
                  entries.** A fiber is plain old data at a site and a struct is a\n\
                  record of whole values, so the bracket tells the two apart and a\n\
                  struct stands in no field; that a struct is refused wherever a\n\
-                 fiber is required, legacy AST normalization states.",
+                 fiber is required, a later analysis stage states.",
                 seq(vec!["{".into(), items(field("entry", sym("struct_entry"))), "}".into()]),
             ),
             def(
                 "struct_entry",
                 "`iter: Int` — one entry of a struct: the key, and the kind the\n\
                  entry holds. That a struct states at least one entry, and no key\n\
-                 twice, legacy AST normalization states.",
+                 twice, a later analysis stage states.",
                 seq(vec![
                     field("name", sym("identifier")),
                     expecting(":", Stated::StructEntryType.label()),
@@ -1017,7 +1017,7 @@ fn build() -> Grammar {
                 "A fiber type: a name with optional `<…>` arguments, types or\n\
                  widths — `Real`, `Vector<Real, 2>`, `Mat<3, 3>`, a static list\n\
                  kind `[Int; 2]` (`static_list_type`), a type taking the\n\
-                 absence alternative, `List<Real|None>`, where legacy AST normalization admits\n\
+                 absence alternative, `List<Real|None>`, where a later analysis stage admits\n\
                  an entry that may be absent — or a product's\n\
                  components or a sum's variants stated in the open, either of\n\
                  which stands wherever an alias does.\n\
@@ -1033,7 +1033,7 @@ fn build() -> Grammar {
                     let mut rs = descriptions(Some(guard), false);
                     // the brace form reaches every place a type stands,
                     // so a struct written where a fiber is required
-                    // refuses in one sentence at legacy AST normalization rather
+                    // refuses in one sentence at a later analysis stage rather
                     // than as a parse error at each of them
                     rs.push(field("entries", sym("struct_type")));
                     rs.push(field("list", sym("static_list_type")));
@@ -1094,7 +1094,7 @@ fn build() -> Grammar {
                  as an item — **the spelling of `main = expr`**.\n\
                  Any expression stands here, over as many\n\
                  continuation lines as it takes, and the item ends where the\n\
-                 line does. Legacy AST normalization supplies the name `main` and the item\n\
+                 line does. A later analysis stage supplies the name `main` and the item\n\
                  reaches the elaborator as the binding it spells, so a document\n\
                  writing both refuses where two `main` bindings refuse. A\n\
                  namespace body holds no such item: it declares no endpoint.\n\
@@ -1211,7 +1211,7 @@ fn build() -> Grammar {
                  other (wishlist item 71). The annotation and the default stand on\n\
                  the whole slot. That only a trailing run declares defaults, that a\n\
                  default stands on a bare name, and that `None` is the one\n\
-                 alternative an annotation takes, legacy AST normalization states. A\n\
+                 alternative an annotation takes, a later analysis stage states. A\n\
                  positional tuple stands only with the fiber it reads stated after\n\
                  it, `(rho, _, pre): Primitive`.",
                 choice(vec![
@@ -1432,20 +1432,20 @@ fn build() -> Grammar {
                         "consequence",
                     )
                     .assoc(Assoc::Right)
-                    .doc("`if c then a` — legacy AST normalization supplies `none` for the\nalternative. Reading the clause above first is\nwhat binds the `else` of `if a then if b then x else y` to\nthe inner `if`."),
+                    .doc("`if c then a` — a later analysis stage supplies `none` for the\nalternative. Reading the clause above first is\nwhat binds the `else` of `if a then if b then x else y` to\nthe inner `if`."),
                     prefix("unary_expression", NOT, seq(vec![field("operator", "not"), nl()]), "operand")
                         .doc("`not`, above the comparisons and below `and`"),
                     prefix("unary_expression", NEG, seq(vec![field("operator", "-"), nl()]), "operand"),
                     prefix("unary_plus_refusal", NEG, refusing("+", Stated::UnaryPlus.label()), "operand")
                         .doc("unary `+`, retired: it returned its operand unchanged. The refusal\nprints nowhere, so the editors' parser reads no unary `+` either."),
                     infix("range_expression", RANGE, Assoc::Left, "left", seq(vec![field("operator", range_op.clone()), not_ahead("{")]), "right")
-                        .doc("`a..b` / `a..=b` — the loosest operator there is, Rust's own\nprecedence, so `0..n - 1` reads `0..(n - 1)`. It groups left here,\nand legacy AST normalization refuses `a..b..c`: a range states two endpoints.\nAn end reads no brace, which is a header's body after `for i in 3..`.\nThe end stands on the operator's line: `0..` is complete as the open\nrange, so a newline after the operator ends it."),
+                        .doc("`a..b` / `a..=b` — the loosest operator there is, Rust's own\nprecedence, so `0..n - 1` reads `0..(n - 1)`. It groups left here,\nand a later analysis stage refuses `a..b..c`: a range states two endpoints.\nAn end reads no brace, which is a header's body after `for i in 3..`.\nThe end stands on the operator's line: `0..` is complete as the open\nrange, so a newline after the operator ends it."),
                     postfix("periodic_expression", RANGE, "axis", PERIODIC)
-                        .doc("`0..n periodic` — the box axis that wraps. It\nstands on a range and nowhere else, so it reads at the range's own\nprecedence and legacy AST normalization refuses it on anything but a range: the\nword states an axis of a box, and a box's axis is a range."),
+                        .doc("`0..n periodic` — the box axis that wraps. It\nstands on a range and nowhere else, so it reads at the range's own\nprecedence and a later analysis stage refuses it on anything but a range: the\nword states an axis of a box, and a box's axis is a range."),
                     infix("binary_expression", OR, Assoc::Left, "left", seq(vec![field("operator", cont_word("or")), nl()]), "right"),
                     infix("binary_expression", AND, Assoc::Left, "left", seq(vec![field("operator", cont_word("and")), nl()]), "right"),
                     infix("binary_expression", COMPARE, Assoc::Left, "left", seq(vec![field("operator", compare), nl()]), "right")
-                        .doc("the comparisons group left here, and legacy AST normalization refuses a chain\n— `a < b < c` is two comparisons and says so"),
+                        .doc("the comparisons group left here, and a later analysis stage refuses a chain\n— `a < b < c` is two comparisons and says so"),
                     infix("binary_expression", DEFAULT, Assoc::Right, "left", seq(vec![field("operator", cont("??")), nl()]), "right")
                         .doc("`x ?? y` — the presence default: `x` where it is\npresent, `y` where it is absent. It groups right, so defaults chain,\nand stands between the comparisons and arithmetic, so `m ?? 0 > 3` is\n`(m ?? 0) > 3` and `m ?? n + 1` is `m ?? (n + 1)`. The lexer's longest\nmatch takes it over the postfix absence mark `?`."),
                     infix("binary_expression", ADD, Assoc::Left, "left", seq(vec![field("operator", cont("+")), nl()]), "right"),
@@ -1504,7 +1504,7 @@ fn build() -> Grammar {
                     )
                     .doc("`value.{key: expression}` — literal settings closing; links chain left"),
                     postfix("payload_expression", POSTFIX, "target", field("body", sym("body")))
-                        .doc("`head(…) { items }` — call sugar for a trailing List argument; a\nbrace whose first item is a `port <-` write is the writes a control\nhead takes, which legacy AST normalization decides"),
+                        .doc("`head(…) { items }` — call sugar for a trailing List argument; a\nbrace whose first item is a `port <-` write is the writes a control\nhead takes, which a later analysis stage decides"),
                     postfix("payload_expression", POSTFIX, "target", field("body", sym("list")))
                         .doc("`head [a, b]` — a payload of one row, exactly `head { [a, b] }`\n. The bracket opens on the head's line, as the\nbrace does, so `head` and a `[` on the next line stay two items.\nThe index takes its `[` immediately after its target, so `xs[i]`\nreads the element and `xs [i]` is this zone."),
                     postfix(
@@ -1715,9 +1715,9 @@ fn build() -> Grammar {
                 "An axis open at one end or both. In a subscript\n\
                  the target's own box bounds the missing end; as an entry of a\n\
                  `for` header's box literal it states an axis the comprehension\n\
-                 does not bound, and the comprehension is a rule. Legacy AST normalization\n\
+                 does not bound, and the comprehension is a rule. A later analysis stage\n\
                  refuses it anywhere else. `..=` with no end has nothing to\n\
-                 reach, which legacy AST normalization says.",
+                 reach, which a later analysis stage says.",
                 open_range(&range_op, expr, |r| prec(-1, r)),
             ),
             def(
@@ -1881,7 +1881,7 @@ fn build() -> Grammar {
                 "a header's binder is one pattern: a\n\
                  name takes the element whole, a bracket destructures — the site of\n\
                  a box one name per axis, or a lockstep's collections one pattern\n\
-                 apiece, which legacy AST normalization tells apart by the collection — and a\n\
+                 apiece, which a later analysis stage tells apart by the collection — and a\n\
                  constructor pattern reads components. `(i, j)` is no pattern here,\n\
                  and says so naming the bracket. Two or more patterns written\n\
                  with commas and no bracket are the bracket's pattern\n\
@@ -2452,7 +2452,7 @@ fn build() -> Grammar {
                  the point and the notation. It stands immediately after the\n\
                  expression, with no space before the colon, which is what tells\n\
                  it from the configuration zone's colon. Which texts are formats,\n\
-                 legacy AST normalization states, so a spelling that is none is named in a\n\
+                 a later analysis stage states, so a spelling that is none is named in a\n\
                  sentence rather than left to the closing brace.",
                 immediate(Rule::Pat(p::seq(vec![
                     Pat::Ch(':'),

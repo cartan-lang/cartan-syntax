@@ -1,6 +1,6 @@
-//! String literal decoding, adapted from `crates/cartan/src/lexer.rs`
-//! (`string_text`, `triple_text`, `triple_pieces`) at `counterplot` revision
-//! `a2916b3e93d8a28561f34b31f5208ceffa9fea9e`, under MIT OR Apache-2.0.
+//! String literal decoding.
+//!
+//! Copyright (c) 2026 Jonathan Zrake. Licensed MIT OR Apache-2.0.
 
 /// Quoted text: `\n` and `\t` spell control characters and a backslash before
 /// any other character spells that character. `None` for a trailing backslash,
