@@ -1,3 +1,4 @@
+use super::text;
 use super::*;
 use crate::{Node, SyntaxTree};
 
@@ -85,10 +86,11 @@ fn shape(node: &Node, fields: &[&str], unlabelled: &[&str]) -> Result<()> {
 }
 
 fn form(node: &Node, kind: FormDiagnosticKind) -> Error {
-    Error::Form(FormDiagnostic {
-        kind,
-        span: span(node),
-    })
+    form_at(span(node), kind)
+}
+
+fn form_at(span: Span, kind: FormDiagnosticKind) -> Error {
+    Error::Form(FormDiagnostic { kind, span })
 }
 
 fn unsupported(node: &Node) -> Error {
@@ -155,31 +157,162 @@ impl Reader<'_> {
         }
     }
 
+    fn quoted(&self, node: &Node) -> Result<String> {
+        self.text(node)
+            .strip_prefix('"')
+            .and_then(|text| text.strip_suffix('"'))
+            .and_then(text::quoted)
+            .ok_or_else(|| unsupported(node))
+    }
+
     fn path_literal(&self, node: &Node) -> Result<PathLiteral> {
         if node.kind != "string" {
             return Err(unsupported(node));
         }
-        let raw = self.text(node);
-        let content = raw
-            .strip_prefix('"')
-            .and_then(|text| text.strip_suffix('"'))
-            .ok_or_else(|| unsupported(node))?;
-        let mut decoded = String::new();
-        let mut chars = content.chars();
-        while let Some(ch) = chars.next() {
-            decoded.push(if ch == '\\' {
-                match chars.next().ok_or_else(|| unsupported(node))? {
-                    'n' => '\n',
-                    't' => '\t',
-                    escaped => escaped,
-                }
-            } else {
-                ch
-            });
-        }
         Ok(PathLiteral {
+            raw: self.text(node).into(),
+            decoded: self.quoted(node)?,
+            span: span(node),
+        })
+    }
+
+    fn string_literal(&self, node: &Node) -> Result<StringLiteral> {
+        let (form, value) = match node.kind.as_str() {
+            "string" => (StringForm::Quoted, self.quoted(node)?),
+            "triple_string" => {
+                shape(node, &["text"], &[])?;
+                let value = node
+                    .child("text")
+                    .map_or_else(String::new, |content| text::triple(self.text(content)));
+                (StringForm::Triple, value)
+            }
+            _ => return Err(unsupported(node)),
+        };
+        Ok(StringLiteral {
+            form,
+            raw: self.text(node).into(),
+            value,
+        })
+    }
+
+    fn template(&self, node: &Node) -> Result<Template> {
+        shape(node, &[], &["chunk", "raw_chunk", "escape", "substitution"])?;
+        let form = if self.text(node).starts_with("f\"\"\"") {
+            StringForm::Triple
+        } else {
+            StringForm::Quoted
+        };
+        // Text runs alternate with holes: one before each hole and one after the last.
+        let mut runs: Vec<(Option<Span>, String)> = vec![(None, String::new())];
+        let mut holes = Vec::new();
+        for child in children(node) {
+            if child.kind == "substitution" {
+                holes.push(self.hole(child)?);
+                runs.push((None, String::new()));
+                continue;
+            }
+            let decoded = match (child.kind.as_str(), self.text(child)) {
+                ("chunk" | "raw_chunk", written) => written.to_owned(),
+                ("escape", "{{") => "{".to_owned(),
+                ("escape", "}}") => "}".to_owned(),
+                ("escape", written) if form == StringForm::Triple => written.to_owned(),
+                ("escape", written) => text::quoted(written).ok_or_else(|| unsupported(child))?,
+                _ => return Err(unsupported(child)),
+            };
+            let (run_span, value) = runs.last_mut().expect("runs start nonempty");
+            *run_span = Some(match run_span {
+                Some(run_span) => Span {
+                    start: run_span.start,
+                    end: child.end,
+                },
+                None => span(child),
+            });
+            value.push_str(&decoded);
+        }
+        let mut values: Vec<String> = runs.iter().map(|(_, value)| value.clone()).collect();
+        if form == StringForm::Triple {
+            values = text::triple_pieces(&values);
+        }
+        let mut holes = holes.into_iter();
+        let mut pieces = Vec::new();
+        for ((run_span, _), value) in runs.into_iter().zip(values) {
+            match run_span {
+                Some(run_span) if !value.is_empty() => pieces.push(Piece::Text(TextPiece {
+                    raw: self.tree.source[run_span.start..run_span.end].into(),
+                    value,
+                    span: run_span,
+                })),
+                _ => {}
+            }
+            pieces.extend(holes.next().map(Piece::Hole));
+        }
+        Ok(Template { form, pieces })
+    }
+
+    fn hole(&self, node: &Node) -> Result<Hole> {
+        shape(node, &["expr", "spec"], &[])?;
+        Ok(Hole {
+            expr: self.expr(field(node, "expr")?)?,
+            format: node
+                .child("spec")
+                .map(|spec| self.format_spec(spec))
+                .transpose()?,
+            span: span(node),
+        })
+    }
+
+    /// The grammar admits only ASCII format characters, so byte offsets are safe.
+    fn format_spec(&self, node: &Node) -> Result<FormatSpec> {
+        let raw = self
+            .text(node)
+            .strip_prefix(':')
+            .ok_or_else(|| unsupported(node))?;
+        let start = node.start + 1;
+        let (precision, rest) = match raw.strip_prefix('.') {
+            None => (None, 0),
+            Some(after) => {
+                let end = 1 + after
+                    .find(|ch: char| !ch.is_ascii_digit())
+                    .unwrap_or(after.len());
+                let precision_span = Span {
+                    start,
+                    end: start + end,
+                };
+                let digits = raw[1..end].parse::<u32>().map_err(|_| {
+                    form_at(
+                        precision_span,
+                        FormDiagnosticKind::FormatPrecision {
+                            written: raw[..end].into(),
+                        },
+                    )
+                })?;
+                let precision = Precision {
+                    digits,
+                    span: precision_span,
+                };
+                (Some(precision), end)
+            }
+        };
+        let notation = match &raw[rest..] {
+            "" => None,
+            "sci" => Some(Notation::Sci),
+            "eng" => Some(Notation::Eng),
+            written => {
+                return Err(form_at(
+                    Span {
+                        start: start + rest,
+                        end: node.end,
+                    },
+                    FormDiagnosticKind::FormatNotation {
+                        written: written.into(),
+                    },
+                ))
+            }
+        };
+        Ok(FormatSpec {
+            precision,
+            notation,
             raw: raw.into(),
-            decoded,
             span: span(node),
         })
     }
@@ -282,6 +415,26 @@ impl Reader<'_> {
                         .map(|name| self.name(name))
                         .transpose()?,
                     components,
+                })
+            }
+            "struct_declaration" => {
+                shape(node, &["name", "entries"], &[])?;
+                let entries = field(node, "entries")?;
+                shape(entries, &["entry"], &[])?;
+                let entries = entries
+                    .children_named("entry")
+                    .map(|entry| {
+                        shape(entry, &["name", "type"], &[])?;
+                        Ok(StructEntry {
+                            name: self.name(field(entry, "name")?)?,
+                            annotation: self.annotation(field(entry, "type")?)?,
+                            span: span(entry),
+                        })
+                    })
+                    .collect::<Result<_>>()?;
+                ItemKind::Struct(Struct {
+                    name: self.name(field(node, "name")?)?,
+                    entries,
                 })
             }
             "function_definition" => {
@@ -431,6 +584,8 @@ impl Reader<'_> {
         let kind = match node.kind.as_str() {
             "number" => ExprKind::Number(self.text(node).into()),
             "boolean" => ExprKind::Bool(self.text(node) == "true"),
+            "string" | "triple_string" => ExprKind::String(self.string_literal(node)?),
+            "template_string" => ExprKind::Template(self.template(node)?),
             "identifier" => ExprKind::Name(self.name(node)?),
             "qualified_identifier" => ExprKind::QualifiedName(self.qualified_name(node)?),
             "parenthesized_expression" | "selector" => {

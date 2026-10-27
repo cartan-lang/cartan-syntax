@@ -4,6 +4,7 @@
 //! grammar constructs return structured errors instead of being omitted.
 
 mod normalize;
+mod text;
 
 use crate::{Diagnostic, Span};
 
@@ -31,6 +32,7 @@ pub enum ItemKind {
     Use(Use),
     Binding(Binding),
     Fiber(Fiber),
+    Struct(Struct),
     Function(Function),
     While(While),
 }
@@ -113,6 +115,21 @@ pub struct Component {
     pub span: Span,
 }
 
+/// A named struct shape. Entries keep source order and duplicate keys; graph
+/// owns duplicate, empty-struct and kind diagnostics.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Struct {
+    pub name: Name,
+    pub entries: Vec<StructEntry>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StructEntry {
+    pub name: Name,
+    pub annotation: Annotation,
+    pub span: Span,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Function {
     pub name: Name,
@@ -188,6 +205,8 @@ pub struct Expr {
 pub enum ExprKind {
     Number(String),
     Bool(bool),
+    String(StringLiteral),
+    Template(Template),
     Name(Name),
     QualifiedName(QualifiedName),
     Unary {
@@ -251,6 +270,77 @@ pub struct MapEntry {
     pub key: Name,
     pub value: Expr,
     pub span: Span,
+}
+
+/// Whether a string or template was written with one or three quotation marks.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StringForm {
+    Quoted,
+    Triple,
+}
+
+/// A string expression. `raw` is the written spelling including delimiters and
+/// `value` the decoded text. Import paths use [`PathLiteral`] instead.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StringLiteral {
+    pub form: StringForm,
+    pub raw: String,
+    pub value: String,
+}
+
+/// A tagged `f"…"` or `f"""…"""` literal, without desugaring or formatting.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Template {
+    pub form: StringForm,
+    /// Source order. Adjacent text is one piece and no text piece is empty.
+    pub pieces: Vec<Piece>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Piece {
+    Text(TextPiece),
+    Hole(Hole),
+}
+
+/// Text between holes; `span` and `raw` cover its written chunks and escapes.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TextPiece {
+    pub raw: String,
+    pub value: String,
+    pub span: Span,
+}
+
+/// One `{expr}` or `{expr:format}` hole; `span` includes both braces.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Hole {
+    pub expr: Expr,
+    pub format: Option<FormatSpec>,
+    pub span: Span,
+}
+
+/// A hole's written format: digits after the point and notation. Consumers
+/// validate the precision range and which values a format applies to.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FormatSpec {
+    pub precision: Option<Precision>,
+    pub notation: Option<Notation>,
+    /// The spelling after the colon.
+    pub raw: String,
+    /// Includes the colon.
+    pub span: Span,
+}
+
+/// `.3`; the span covers the point and its digits.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Precision {
+    pub digits: u32,
+    pub span: Span,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Notation {
+    Sci,
+    Eng,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -361,6 +451,14 @@ pub enum FormDiagnosticKind {
     RangeChain,
     BodyResultCount {
         found: usize,
+    },
+    /// A format's point is not followed by a digit count that fits `u32`.
+    FormatPrecision {
+        written: String,
+    },
+    /// A format's text after any precision is neither `sci` nor `eng`.
+    FormatNotation {
+        written: String,
     },
 }
 

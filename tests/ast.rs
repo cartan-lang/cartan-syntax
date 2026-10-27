@@ -78,6 +78,35 @@ fn assert_expr_spans(source: &str, expr: &Expr) {
     assert!(source.get(expr.span.start..expr.span.end).is_some());
     match &expr.kind {
         ExprKind::Number(_) | ExprKind::Bool(_) => {}
+        ExprKind::String(string) => {
+            assert_eq!(&source[expr.span.start..expr.span.end], string.raw);
+        }
+        ExprKind::Template(template) => {
+            let mut previous_end = expr.span.start;
+            for piece in &template.pieces {
+                let piece_span = match piece {
+                    Piece::Text(text) => {
+                        assert_eq!(&source[text.span.start..text.span.end], text.raw);
+                        assert!(!text.value.is_empty());
+                        text.span
+                    }
+                    Piece::Hole(hole) => {
+                        let written = &source[hole.span.start..hole.span.end];
+                        assert!(written.starts_with('{') && written.ends_with('}'));
+                        assert_expr_spans(source, &hole.expr);
+                        if let Some(format) = &hole.format {
+                            assert_eq!(
+                                &source[format.span.start..format.span.end],
+                                format!(":{}", format.raw)
+                            );
+                        }
+                        hole.span
+                    }
+                };
+                assert!(previous_end <= piece_span.start && piece_span.end <= expr.span.end);
+                previous_end = piece_span.end;
+            }
+        }
         ExprKind::Name(name) => assert_name_span(source, name),
         ExprKind::QualifiedName(name) => assert_qualified_spans(source, name),
         ExprKind::Unary { operand, .. } | ExprKind::Periodic(operand) => {
@@ -228,6 +257,7 @@ fn normalizes_all_five_workloads_and_retains_document_items() {
                     assert_eq!(fiber.components.len(), expected);
                     assert_eq!(fiber.algebra.as_ref().unwrap().text, "Module");
                 }
+                ItemKind::Struct(_) => panic!("workloads declare no structs"),
             }
         }
         assert_eq!(
@@ -745,7 +775,6 @@ fn import_extension_keeps_unsupported_clauses_and_grammar_failures_structured() 
         "use std with (x: 1)",
         "use \"file.cart\" as file with (x: 1)",
         "x: ns::Type = 1",
-        "x = \"general string\"",
         "x = ns::f'(1)",
     ] {
         assert!(
@@ -1012,4 +1041,241 @@ fn configurable_forms_preserve_supported_values_and_reject_unhandled_map_forms()
             "{source}"
         );
     }
+}
+
+fn template(source: &str) -> Template {
+    match expression(source).kind {
+        ExprKind::Template(template) => template,
+        kind => panic!("{source:?}: {kind:?}"),
+    }
+}
+
+fn text(piece: &Piece) -> &str {
+    match piece {
+        Piece::Text(text) => &text.value,
+        Piece::Hole(hole) => panic!("expected text, found {hole:?}"),
+    }
+}
+
+fn hole(piece: &Piece) -> &Hole {
+    match piece {
+        Piece::Hole(hole) => hole,
+        Piece::Text(text) => panic!("expected a hole, found {text:?}"),
+    }
+}
+
+#[test]
+fn strings_keep_raw_spelling_beside_decoded_unicode_text() {
+    let source = r#""λ \"🐈\" \n\t\\ \x {x}""#;
+    let ExprKind::String(string) = expression(source).kind else {
+        panic!("{source}");
+    };
+    assert_eq!(string.form, StringForm::Quoted);
+    assert_eq!(string.raw, source);
+    assert_eq!(string.value, "λ \"🐈\" \n\t\\ x {x}");
+    let source = "\"\"\"\n    λ \\n \"so\"\n      {x}\n    \"\"\"";
+    let ExprKind::String(string) = expression(source).kind else {
+        panic!("{source}");
+    };
+    assert_eq!(string.form, StringForm::Triple);
+    assert_eq!(string.value, "λ \\n \"so\"\n  {x}\n");
+    let ExprKind::String(empty) = expression("\"\"").kind else {
+        panic!("empty");
+    };
+    assert_eq!(empty.value, "");
+    // A string value is not an import path, and a binding's value can be a string.
+    let document = ast::parse_document("x = \"a\"\ny = \"\"\"\n  b\n  \"\"\"\n").unwrap();
+    for item in &document.items {
+        let ItemKind::Binding(binding) = &item.kind else {
+            panic!("{item:?}");
+        };
+        assert!(matches!(binding.value.kind, ExprKind::String(_)));
+    }
+    // A standalone triple string is doc prose, not a string expression.
+    assert!(matches!(
+        ast::parse_document("\"\"\"Prose.\"\"\"\nx = 1\n").unwrap_err().as_slice(),
+        [Error::Form(FormDiagnostic {
+            kind: FormDiagnosticKind::UnsupportedConstruct { kind },
+            ..
+        })] if kind == "doc_declaration"
+    ));
+}
+
+#[test]
+fn templates_merge_text_and_keep_ordinary_hole_expressions() {
+    let template_ = template("f\"x = {x:.2} and {{literal}} {a + f(b)}\"");
+    assert_eq!(template_.form, StringForm::Quoted);
+    assert_eq!(template_.pieces.len(), 4);
+    assert_eq!(text(&template_.pieces[0]), "x = ");
+    let first = hole(&template_.pieces[1]);
+    assert!(matches!(&first.expr.kind, ExprKind::Name(name) if name.text == "x"));
+    let format = first.format.as_ref().unwrap();
+    assert_eq!(format.raw, ".2");
+    assert_eq!(format.precision.as_ref().map(|p| p.digits), Some(2));
+    assert_eq!(format.notation, None);
+    // Escapes and chunks between holes form one piece with written spelling.
+    let Piece::Text(middle) = &template_.pieces[2] else {
+        panic!();
+    };
+    assert_eq!(middle.value, " and {literal} ");
+    assert_eq!(middle.raw, " and {{literal}} ");
+    let last = hole(&template_.pieces[3]);
+    assert!(last.format.is_none());
+    assert!(matches!(
+        last.expr.kind,
+        ExprKind::Binary {
+            operator: BinaryOperator::Add,
+            ..
+        }
+    ));
+    // Empty, hole-only and adjacent holes produce no empty text pieces.
+    assert!(template("f\"\"").pieces.is_empty());
+    let adjacent = template("f\"{a}{b}\"");
+    assert_eq!(adjacent.pieces.len(), 2);
+    assert!(adjacent
+        .pieces
+        .iter()
+        .all(|piece| matches!(piece, Piece::Hole(_))));
+    assert_eq!(template("f\"plain\"").pieces.len(), 1);
+    // Quoted escapes decode; untagged braces are literal text.
+    assert_eq!(text(&template("f\"a\\n\\\"b\\{\"").pieces[0]), "a\n\"b{");
+    // Nested templates and strings are ordinary hole expressions.
+    let nested = template("f\"<{f\"{x}\"}|{\"s\"}>\"");
+    assert!(matches!(
+        hole(&nested.pieces[1]).expr.kind,
+        ExprKind::Template(_)
+    ));
+    assert!(matches!(
+        hole(&nested.pieces[3]).expr.kind,
+        ExprKind::String(_)
+    ));
+}
+
+#[test]
+fn template_spans_are_utf8_byte_offsets() {
+    let source = "f\"λ🐈 {e:.3sci} ü\"";
+    let template_ = template(source);
+    let Piece::Text(first) = &template_.pieces[0] else {
+        panic!();
+    };
+    assert_eq!(&source[first.span.start..first.span.end], "λ🐈 ");
+    let hole_ = hole(&template_.pieces[1]);
+    assert_eq!(&source[hole_.span.start..hole_.span.end], "{e:.3sci}");
+    let format = hole_.format.as_ref().unwrap();
+    assert_eq!(&source[format.span.start..format.span.end], ":.3sci");
+    let precision = format.precision.as_ref().unwrap();
+    assert_eq!(&source[precision.span.start..precision.span.end], ".3");
+    assert_eq!(
+        (precision.digits, format.notation),
+        (3, Some(Notation::Sci))
+    );
+    assert_eq!(text(&template_.pieces[2]), " ü");
+}
+
+#[test]
+fn raw_templates_dedent_across_holes_and_keep_backslashes() {
+    let source = "f\"\"\"\n    x is {x}\n      \\n {y:eng}\n    \"\"\"";
+    let template_ = template(source);
+    assert_eq!(template_.form, StringForm::Triple);
+    assert_eq!(text(&template_.pieces[0]), "x is ");
+    assert_eq!(text(&template_.pieces[2]), "\n  \\n ");
+    let format = hole(&template_.pieces[3]).format.as_ref().unwrap();
+    assert_eq!(
+        (format.precision.as_ref(), format.notation),
+        (None, Some(Notation::Eng))
+    );
+    assert_eq!(text(&template_.pieces[4]), "\n");
+    // Braces are still escaped by doubling in the raw form.
+    assert_eq!(
+        text(&template("f\"\"\"{{ \"q\" }}\"\"\"").pieces[0]),
+        "{ \"q\" }"
+    );
+}
+
+#[test]
+fn malformed_formats_are_typed_form_errors_with_spans() {
+    for (source, expected, written) in [
+        ("f\"{1.0:log}\"", "notation", ":log"),
+        ("f\"{1.0:.x}\"", "precision", ":."),
+        ("f\"{1.0:.}\"", "precision", ":."),
+        ("f\"{1.0:.99999999999}\"", "precision", ":.99999999999"),
+        ("f\"{1.0:.3sc}\"", "notation", "sc"),
+        ("f\"{1.0:3}\"", "notation", ":3"),
+    ] {
+        let errors = ast::parse_expression(source).unwrap_err();
+        let [Error::Form(diagnostic)] = errors.as_slice() else {
+            panic!("{source}: {errors:?}");
+        };
+        let found = &source[diagnostic.span.start..diagnostic.span.end];
+        match (&diagnostic.kind, expected) {
+            (FormDiagnosticKind::FormatPrecision { written: text }, "precision")
+            | (FormDiagnosticKind::FormatNotation { written: text }, "notation") => {
+                assert_eq!(found, text, "{source}");
+                assert!(written.ends_with(found), "{source}: {found}");
+            }
+            (kind, _) => panic!("{source}: {kind:?}"),
+        }
+    }
+}
+
+#[test]
+fn struct_declarations_keep_ordered_duplicate_entries_and_named_annotations() {
+    let source = "struct P = {x: Real, n: Int, x: Vector<Real, 2>, q: Q}\np: P = {x: 1}\n";
+    let document = ast::parse_document(source).unwrap();
+    let ItemKind::Struct(declaration) = &document.items[0].kind else {
+        panic!("{:?}", document.items[0]);
+    };
+    assert_name_span(source, &declaration.name);
+    let names: Vec<_> = declaration
+        .entries
+        .iter()
+        .map(|entry| entry.name.text.as_str())
+        .collect();
+    assert_eq!(names, ["x", "n", "x", "q"]);
+    for entry in &declaration.entries {
+        assert_name_span(source, &entry.name);
+        assert!(source[entry.span.start..entry.span.end].starts_with(&entry.name.text));
+    }
+    assert!(matches!(
+        &declaration.entries[2].annotation.kind,
+        AnnotationKind::Apply { name, .. } if name.text == "Vector"
+    ));
+    let ItemKind::Binding(binding) = &document.items[1].kind else {
+        panic!();
+    };
+    assert!(matches!(
+        &binding.annotation.as_ref().unwrap().kind,
+        AnnotationKind::Named(name) if name.text == "P"
+    ));
+    assert!(matches!(binding.value.kind, ExprKind::Map(_)));
+    // Inline nested struct entries remain a typed unsupported construct.
+    let errors = ast::parse_document("struct S = {p: {x: Real}}").unwrap_err();
+    assert!(matches!(
+        errors.as_slice(),
+        [Error::Form(FormDiagnostic {
+            kind: FormDiagnosticKind::UnsupportedConstruct { kind },
+            ..
+        })] if kind == "struct_type"
+    ));
+}
+
+#[test]
+fn raw_template_boundaries_survive_control_characters_beside_holes() {
+    // Legacy split text runs on U+0001; text may contain it here.
+    let source = "f\"\"\"\n  a\u{1}{x}\u{1}b\n  \u{1}{y}\n  \"\"\"";
+    let template_ = template(source);
+    assert_eq!(template_.pieces.len(), 5);
+    assert_eq!(text(&template_.pieces[0]), "a\u{1}");
+    assert!(
+        matches!(&hole(&template_.pieces[1]).expr.kind, ExprKind::Name(name) if name.text == "x")
+    );
+    assert_eq!(text(&template_.pieces[2]), "\u{1}b\n\u{1}");
+    assert!(
+        matches!(&hole(&template_.pieces[3]).expr.kind, ExprKind::Name(name) if name.text == "y")
+    );
+    assert_eq!(text(&template_.pieces[4]), "\n");
+    let ExprKind::String(string) = expression("\"\"\"\n  \u{1}x\n  \"\"\"").kind else {
+        panic!();
+    };
+    assert_eq!(string.value, "\u{1}x\n");
 }

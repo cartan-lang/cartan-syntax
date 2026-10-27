@@ -18,6 +18,8 @@ repository a build dependency or import its project requirements.
 | `src/grammar.rs` | `crates/cartan/src/grammar.rs` |
 | `src/diagnostic.rs` rule identities | `crates/cartan/src/diag/parse/mod.rs` |
 | `src/lexer.rs` keyword roster | `crates/cartan/src/lexer.rs` |
+| `src/ast/text.rs` string decoding | `crates/cartan/src/lexer.rs` `string_text`, `triple_text`, `triple_pieces` |
+| `src/ast/normalize.rs` templates and format specs | `crates/cartan/src/parser.rs` `template`, `format_spec` |
 | `support/treegram/src/` | `crates/treegram/src/` |
 
 The current grammar retains the source productions. Diagnostic identities are

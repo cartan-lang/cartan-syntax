@@ -56,12 +56,12 @@ The source constructs are:
 
 | Area | Supported source representation |
 | --- | --- |
-| Items | Imports, ordinary and `param` bindings, `state` declarations, fiber declarations, function equations, and guarded `while` update blocks. |
+| Items | Imports, ordinary and `param` bindings, `state` declarations, fiber declarations, struct declarations, function equations, and guarded `while` update blocks. |
 | Functions | Name, ordered parameters with patterns and optional annotations, and expression body. |
 | Fibers | Name, written base annotation such as `Module`, and ordered named components with annotations. |
 | Annotations | Named types and generic applications, preserving names and numeric arguments such as `Array<Primitive, 1>` without interpreting rank. |
 | Patterns | Name, wildcard, recursive list pattern, and positional site pattern with its enclosing annotation retained. |
-| Expressions | Literal number/boolean, local/qualified name, unary/binary operation, conditional, local/qualified call, indexing, `of` projection, list, named map, map join, configurable constructor/application, range, `periodic`, body, `for` comprehension and `reduce`. |
+| Expressions | Literal number/boolean/string, tagged template, local/qualified name, unary/binary operation, conditional, local/qualified call, indexing, `of` projection, list, named map, map join, configurable constructor/application, range, `periodic`, body, `for` comprehension and `reduce`. |
 | Body | Ordered `BodyItem::Local` and `BodyItem::Result` entries, with exactly one result. A result need not be last. |
 | Update block | Written guard and ordered writes, preserving target names, values and spans. |
 
@@ -95,9 +95,9 @@ For any other escaped character it removes the backslash and retains that
 character, including quote, backslash and Unicode characters. This is not JSON
 escaping: a written backslash followed by `u0041` yields `u0041`, not `A`.
 The raw quoted spelling and original byte span remain available alongside the
-decoded string. Only use-path literals gain this normalization; general string
-expressions remain unsupported. Path validity and filesystem behavior belong to
-consumers.
+decoded string. String expressions share this decoding but remain a distinct
+`StringLiteral`; a path is never a string value. Path validity and filesystem
+behavior belong to consumers.
 
 `QualifiedName` retains its `namespace: Name`, ordered nonempty `members: Vec<Name>`
 and full name span. Every segment retains its own byte span; no dotted/joined
@@ -120,6 +120,51 @@ The revised `Use` fields and call head type require deliberate consumer adapter
 updates. Both graph and codegen owners accepted this exact seam before edits;
 they own their adapters and locked dependency revisions. Accepting a form in
 syntax does not promise execution support in either consumer.
+
+## Strings, templates and structs
+
+The [string interpolation work](work/string-interpolation.md) supplies the
+interface agreed with graph under the workspace's
+[settled string semantics](../../docs/work/source-values-and-configurables.md#first-checkpoint-semantic-resolutions).
+`ExprKind::String(StringLiteral { form, raw, value })` covers `"…"` and, in
+expression position, `"""…"""`; `form` is `StringForm::Quoted` or `Triple`, `raw`
+is the written spelling including delimiters, and the expression span covers it.
+Quoted text uses the path decoding rule above. Triple-quoted text is raw, except
+that one LF or CRLF immediately after the opening delimiter is dropped and the
+longest common run of leading spaces/tabs of the non-blank lines is removed; a
+blank line shorter than that indentation becomes empty. A standalone triple
+string doc declaration is not an expression and keeps its typed unsupported error.
+
+`ExprKind::Template(Template { form, pieces })` covers the tagged `f"…"` and
+`f"""…"""` forms. Pieces stand in source order as `Piece::Text(TextPiece { raw,
+value, span })` or `Piece::Hole(Hole { expr, format, span })`. Adjacent chunks and
+escapes form one maximal text piece whose span and raw spelling cover what was
+written; a piece whose decoded value is empty is omitted, so `f""` has no pieces
+and adjacent holes have no text between them. `{{` and `}}` decode to braces in
+both forms. Backslash escapes decode as quoted text in `f"…"` and stand for
+themselves in `f"""…"""`. The raw form's newline and indentation removal applies
+across its text pieces: lines continue through holes, and a hole counts as
+non-blank content, so a line opening with a hole contributes no indentation.
+Untagged literals keep braces as text.
+
+A hole's span includes its braces and its `expr` is an ordinary expression,
+resolved by consumers in the enclosing scope. `FormatSpec { precision, notation,
+raw, span }` records the written format after the colon: `precision` is
+`Precision { digits: u32, span }` for `.N`, and `notation` is `Notation::Sci` or
+`Eng`. Its span includes the colon; `raw` excludes it. A point without a digit
+count that fits `u32` yields `FormDiagnosticKind::FormatPrecision { written }`
+spanning the point and digits. Remaining text other than `sci`/`eng` yields
+`FormatNotation { written }` spanning that text. The precision range, which
+values a format applies to, desugaring into joins, conversion and formatting
+belong to graph, codegen and runtime. Syntax provides no runtime template parser.
+
+`ItemKind::Struct(Struct { name, entries })` covers `struct P = {x: Real, …}`.
+Each `StructEntry` retains `name`, `annotation` and the entry span in source
+order, including duplicate keys; graph diagnoses duplicates and empty structs.
+Annotations naming a struct use the existing `AnnotationKind::Named`, and a brace
+value remains `ExprKind::Map`; graph derives struct identity from the declaration
+and annotation, not from AST spelling. Inline nested struct entry types such as
+`{p: {x: Real}}` remain an `UnsupportedConstruct` of kind `struct_type`.
 
 ## Maps and configurables
 
@@ -191,7 +236,8 @@ whose semantic validity is the consumer's responsibility.
 Structured errors distinguish `Grammar(Diagnostic)` from
 `Form(FormDiagnostic)`. Form diagnostics carry a span and typed kind with
 relevant payloads: unsupported construct and its CST kind, comparison/range
-chain, body result count, and a use alias combined with selectors. `Error::span()` returns the full byte range; errors
+chain, body result count, a use alias combined with selectors, and malformed
+format precision or notation. `Error::span()` returns the full byte range; errors
 derive `Clone`, `Debug`, `PartialEq` and `Eq`. Grammar diagnostics are preserved
 without rewriting. Normalization reports the first form error in each document
 item; it returns no partial AST if any error occurs. Unsupported syntax is
@@ -239,7 +285,17 @@ string decoding. Specification section 2.1 states backslash escaping; the lexer
 provides the precise rule above. The owner-authorized import prerequisite adopts
 these source-form and decoding rules to avoid divergent syntax/loader behavior.
 It does not import legacy module execution, functors or a builtin catalogue.
-The syntax owner did not read or execute legacy material.
+The syntax owner did not read or execute legacy material for that slice.
+
+For strings and templates, the owner permitted selective harvesting of the
+lead-audited candidates at the same revision, read-only and without execution:
+`crates/cartan/src/parser.rs` `template`/`format_spec` and their tests,
+`ast.rs` `Piece`/`FormatSpec`, and `lexer.rs` `string_text`, `triple_text` and
+`triple_pieces`. The retained behavior is the decoding, dedent, brace and
+format-spec rules above. Adaptations: spans and raw spelling on every piece,
+typed form errors instead of rendered refusals and panics, no empty text pieces,
+and dedent across holes without legacy's U+0001 separator, which collides with
+text containing that character. See [provenance](provenance.md).
 
 ## Local dependency delivery
 
