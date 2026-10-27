@@ -196,7 +196,18 @@ impl Reader<'_> {
     }
 
     fn template(&self, node: &Node) -> Result<Template> {
-        shape(node, &[], &["chunk", "raw_chunk", "escape", "substitution"])?;
+        shape(
+            node,
+            &[],
+            &[
+                "chunk",
+                "raw_chunk",
+                "raw_quote",
+                "escape",
+                "brace_escape",
+                "substitution",
+            ],
+        )?;
         let form = if self.text(node).starts_with("f\"\"\"") {
             StringForm::Triple
         } else {
@@ -212,10 +223,9 @@ impl Reader<'_> {
                 continue;
             }
             let decoded = match (child.kind.as_str(), self.text(child)) {
-                ("chunk" | "raw_chunk", written) => written.to_owned(),
-                ("escape", "{{") => "{".to_owned(),
-                ("escape", "}}") => "}".to_owned(),
-                ("escape", written) if form == StringForm::Triple => written.to_owned(),
+                ("chunk" | "raw_chunk" | "raw_quote", written) => written.to_owned(),
+                ("escape" | "brace_escape", "{{") => "{".to_owned(),
+                ("escape" | "brace_escape", "}}") => "}".to_owned(),
                 ("escape", written) => text::quoted(written).ok_or_else(|| unsupported(child))?,
                 _ => return Err(unsupported(child)),
             };

@@ -1279,3 +1279,49 @@ fn raw_template_boundaries_survive_control_characters_beside_holes() {
     };
     assert_eq!(string.value, "\u{1}x\n");
 }
+
+#[test]
+fn raw_templates_keep_backslashes_and_quotes_beside_holes_and_closers() {
+    // A raw backslash before a hole, or before the closer, is text.
+    let source = "f\"\"\"\\{n}\"\"\"";
+    let template_ = template(source);
+    let Piece::Text(slash) = &template_.pieces[0] else {
+        panic!("{template_:?}");
+    };
+    assert_eq!((slash.value.as_str(), slash.raw.as_str()), ("\\", "\\"));
+    assert_eq!(&source[slash.span.start..slash.span.end], "\\");
+    let hole_ = hole(&template_.pieces[1]);
+    assert_eq!(&source[hole_.span.start..hole_.span.end], "{n}");
+    assert_eq!(template_.pieces.len(), 2);
+    let trailing = template("f\"\"\"abc\\\"\"\"");
+    assert_eq!(trailing.pieces.len(), 1);
+    assert_eq!(text(&trailing.pieces[0]), "abc\\");
+    // A quotation mark directly before a hole is text, not a closer.
+    let source = "f\"\"\"\"{n}\"\"\"";
+    let template_ = template(source);
+    let Piece::Text(quote) = &template_.pieces[0] else {
+        panic!("{template_:?}");
+    };
+    assert_eq!(quote.value, "\"");
+    assert_eq!(&source[quote.span.start..quote.span.end], "\"");
+    assert!(
+        matches!(&hole(&template_.pieces[1]).expr.kind, ExprKind::Name(name) if name.text == "n")
+    );
+    // Quote runs merge with neighbouring chunks and doubled braces.
+    let source = "f\"\"\"a\"\"{n}\"}}\"\"{{λ\"\"\"";
+    let template_ = template(source);
+    assert_eq!(template_.pieces.len(), 3);
+    let Piece::Text(before) = &template_.pieces[0] else {
+        panic!();
+    };
+    assert_eq!(before.value, "a\"\"");
+    assert_eq!(&source[before.span.start..before.span.end], "a\"\"");
+    let Piece::Text(after) = &template_.pieces[2] else {
+        panic!();
+    };
+    assert_eq!(after.value, "\"}\"\"{λ");
+    assert_eq!(after.raw, "\"}}\"\"{{λ");
+    assert_eq!(&source[after.span.start..after.span.end], after.raw);
+    // The quoted form keeps its backslash escapes, including before a brace.
+    assert_eq!(text(&template("f\"a\\{\\\"\"").pieces[0]), "a{\"");
+}

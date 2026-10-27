@@ -141,8 +141,10 @@ value, span })` or `Piece::Hole(Hole { expr, format, span })`. Adjacent chunks a
 escapes form one maximal text piece whose span and raw spelling cover what was
 written; a piece whose decoded value is empty is omitted, so `f""` has no pieces
 and adjacent holes have no text between them. `{{` and `}}` decode to braces in
-both forms. Backslash escapes decode as quoted text in `f"…"` and stand for
-themselves in `f"""…"""`. The raw form's newline and indentation removal applies
+both forms. Backslash escapes decode as quoted text in `f"…"`. In `f"""…"""`
+a backslash is ordinary text, including before a hole or the closing delimiter,
+and one or two quotation marks are text wherever three do not close the literal,
+including directly before a hole or doubled brace. The raw form's newline and indentation removal applies
 across its text pieces: lines continue through holes, and a hole counts as
 non-blank content, so a line opening with a hole contributes no indentation.
 Untagged literals keep braces as text.
@@ -162,8 +164,9 @@ belong to graph, codegen and runtime. Syntax provides no runtime template parser
 Each `StructEntry` retains `name`, `annotation` and the entry span in source
 order, including duplicate keys; graph diagnoses duplicates and empty structs.
 Annotations naming a struct use the existing `AnnotationKind::Named`, and a brace
-value remains `ExprKind::Map`; graph derives struct identity from the declaration
-and annotation, not from AST spelling. Inline nested struct entry types such as
+value remains `ExprKind::Map`. A struct declaration is a structural alias, not a
+nominal constructor or type identity; graph interprets an annotated brace value
+structurally through the alias, never from AST spelling alone. Inline nested struct entry types such as
 `{p: {x: Real}}` remain an `UnsupportedConstruct` of kind `struct_type`.
 
 ## Maps and configurables

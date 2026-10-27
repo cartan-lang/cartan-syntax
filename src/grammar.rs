@@ -2340,7 +2340,8 @@ fn build() -> Grammar {
                         alias(token(Rule::Pat(p::text("f\"\"\""))), "f\"\"\""),
                         repeat(choice(vec![
                             sym("raw_chunk"),
-                            sym("escape"),
+                            sym("raw_quote"),
+                            sym("brace_escape"),
                             sym("substitution"),
                         ])),
                         immediate("\"\"\""),
@@ -2361,22 +2362,38 @@ fn build() -> Grammar {
             ),
             def(
                 "raw_chunk",
-                "the same, inside `f\"\"\"…\"\"\"`: a quotation mark stands for itself\n\
-                 where three do not close the literal, and the text reaches the\n\
-                 value as written",
+                "the same, inside `f\"\"\"…\"\"\"`: a backslash and a newline stand\n\
+                 for themselves, as in the untagged raw literal, and so does a\n\
+                 quotation mark where three do not close the literal; the text\n\
+                 reaches the value as written",
                 immediate(Rule::Pat(p::plus(p::alt(vec![
-                    p::not_class("\"{}\\", &[]),
-                    p::seq(vec![Pat::Ch('"'), p::not_class("\"{}\\", &[])]),
-                    p::seq(vec![Pat::Ch('"'), Pat::Ch('"'), p::not_class("\"{}\\", &[])]),
+                    p::not_class("\"{}", &[]),
+                    p::seq(vec![Pat::Ch('"'), p::not_class("\"{}", &[])]),
+                    p::seq(vec![Pat::Ch('"'), Pat::Ch('"'), p::not_class("\"{}", &[])]),
                 ])))),
             ),
             def(
+                "raw_quote",
+                "`\"` or `\"\"` inside `f\"\"\"…\"\"\"` where a brace follows — raw text\n\
+                 that a raw chunk, whose quotes take a following character, cannot\n\
+                 end with. Three quotation marks close the literal instead.",
+                seq(vec![
+                    not_ahead(immediate("\"\"\"")),
+                    immediate(Rule::Pat(p::alt(vec![p::text("\"\""), p::text("\"")]))),
+                ]),
+            ),
+            def(
+                "brace_escape",
+                "`{{` and `}}` inside `f\"\"\"…\"\"\"` — a brace written as two, since a\n\
+                 single brace opens a hole; the raw form has no backslash escape.",
+                immediate(Rule::Pat(p::alt(vec![p::text("{{"), p::text("}}")]))),
+            ),
+            def(
                 "escape",
-                "`\\n`, `\\\"`, `{{` and `}}` — one character written as two inside a\n\
-                 tagged literal. The backslash escapes are the quoted literal's\n\
+                "`\\n`, `\\\"`, `{{` and `}}` — one character written as two inside\n\
+                 `f\"…\"`. The backslash escapes are the quoted literal's\n\
                  and the doubled braces are the tagged literal's own,\n\
-                 since a single brace opens a hole. Inside `f\"\"\"…\"\"\"` a backslash\n\
-                 stands for itself, as it does in the untagged raw literal.",
+                 since a single brace opens a hole.",
                 immediate(Rule::Pat(p::alt(vec![
                     p::seq(vec![Pat::Ch('\\'), Pat::Any]),
                     p::text("{{"),
