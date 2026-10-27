@@ -733,10 +733,22 @@ impl Reader<'_> {
         shape(node, &["entry"], &[])?;
         node.children_named("entry")
             .map(|entry| {
-                shape(entry, &["name", "type"], &[])?;
+                shape(entry, &["name", "type", "alternative"], &[])?;
+                let written = field(entry, "type")?;
+                let annotation = match entry.child("alternative") {
+                    Some(alternative) => self.optional_type(
+                        written,
+                        alternative,
+                        Span {
+                            start: written.start,
+                            end: alternative.end,
+                        },
+                    )?,
+                    None => self.value_type(written)?,
+                };
                 Ok(StructEntry {
                     name: self.name(field(entry, "name")?)?,
-                    annotation: self.value_type(field(entry, "type")?)?,
+                    annotation,
                     span: span(entry),
                 })
             })

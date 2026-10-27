@@ -2626,3 +2626,73 @@ fn arm_conditionals_take_a_same_line_bracketed_or_comma_ended_else() {
     ));
     assert_eq!(document.items.len(), 2);
 }
+
+#[test]
+fn struct_entries_take_an_optional_type() {
+    for (source, written) in [
+        ("struct P = {name: Real|None, n: Int}", "Real|None"),
+        ("x: {a: Real|None} = {a: none}", "Real|None"),
+        (
+            "f(p: {name: Vector<Real, 2>|None}) = 1.0",
+            "Vector<Real, 2>|None",
+        ),
+        ("struct S = {inner: {a: Int|None}}", "Int|None"),
+        ("struct S = {mode: (On | Off)|None}", "(On | Off)|None"),
+    ] {
+        let document =
+            ast::parse_document(source).unwrap_or_else(|errors| panic!("{source}: {errors:?}"));
+        let mut optionals = Vec::new();
+        fn collect(entries: &[StructEntry], into: &mut Vec<(Span, Span)>) {
+            for entry in entries {
+                match &entry.annotation.kind {
+                    AnnotationKind::Optional { none_span, .. } => {
+                        into.push((entry.annotation.span, *none_span))
+                    }
+                    AnnotationKind::Struct(inner) => collect(inner, into),
+                    _ => {}
+                }
+            }
+        }
+        match &document.items[0].kind {
+            ItemKind::Struct(declaration) => collect(&declaration.entries, &mut optionals),
+            ItemKind::Binding(Binding {
+                annotation:
+                    Some(Annotation {
+                        kind: AnnotationKind::Struct(entries),
+                        ..
+                    }),
+                ..
+            }) => collect(entries, &mut optionals),
+            ItemKind::Function(function) => {
+                let Some(ParameterAnnotation::Value(Annotation {
+                    kind: AnnotationKind::Struct(entries),
+                    ..
+                })) = &function.parameters[0].annotation
+                else {
+                    panic!("{source}");
+                };
+                collect(entries, &mut optionals);
+            }
+            other => panic!("{source}: {other:?}"),
+        }
+        let [(whole, none)] = optionals.as_slice() else {
+            panic!("{source}: {optionals:?}");
+        };
+        assert_eq!(&source[whole.start..whole.end], written, "{source}");
+        assert_eq!(&source[none.start..none.end], "None", "{source}");
+    }
+    // `T|None` is still the only union, and one alternative is all it takes.
+    let source = "struct P = {a: Real|Int}";
+    let errors = ast::parse_document(source).unwrap_err();
+    let [Error::Form(FormDiagnostic {
+        kind: FormDiagnosticKind::UnionAlternative,
+        span,
+    })] = errors.as_slice()
+    else {
+        panic!("{errors:?}");
+    };
+    assert_eq!(&source[span.start..span.end], "Int");
+    assert!(cartan_syntax::parse_document("struct P = {a: Real|None|None}").has_errors());
+    // Fiber components still take a bare fiber type.
+    assert!(cartan_syntax::parse_document("fiber P = (a: Real|None, b: Real)").has_errors());
+}

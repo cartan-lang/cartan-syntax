@@ -255,8 +255,10 @@ record. `T|None` in an annotation or type argument is
 `AnnotationKind::Optional { value, none_span }`, and composes with parameter
 signatures as an ordinary annotation. It is the only union: any other
 alternative yields `FormDiagnosticKind::UnionAlternative` spanning that
-alternative. Struct entries and fiber components take a bare fiber type, so an
-alternative there is a grammar error.
+alternative. A struct entry, in an alias, an inline struct or a nested one,
+takes `T|None` as `StructEntry.annotation`; the entry is always present and its
+value may be absent. Fiber components take a bare fiber type, so an alternative
+there is a grammar error.
 
 `none` is `ExprKind::None`. `if c then a` without `else` is `ExprKind::If` with
 `alternative: None`; `else` binds to the nearest `if`. `a ?? b` is

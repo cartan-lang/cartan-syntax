@@ -983,12 +983,20 @@ fn build() -> Grammar {
             def(
                 "struct_entry",
                 "`iter: Int` — one entry of a struct: the key, and the kind the\n\
-                 entry holds. That a struct states at least one entry, and no key\n\
-                 twice, a later analysis stage states.",
+                 entry holds, which may take the absence alternative,\n\
+                 `name: Real|None`: the entry is always there and its value may be\n\
+                 absent. That a struct states at least one entry, and no key\n\
+                 twice, and that the alternative is `None`, a later analysis stage\n\
+                 states.",
                 seq(vec![
                     field("name", sym("identifier")),
                     expecting(":", Stated::StructEntryType.label()),
                     field("type", sym("fiber_type")),
+                    optional(seq(vec![
+                        "|".into(),
+                        field("alternative", sym("fiber_type")),
+                        refusing("|", Stated::AnnotationAlternative.label()),
+                    ])),
                 ]),
             ),
             def(
