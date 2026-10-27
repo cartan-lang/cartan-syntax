@@ -579,7 +579,7 @@ pub enum FormDiagnosticKind {
     ComponentKeyPositions {
         found: usize,
     },
-    /// A stated type on a pattern other than a name or positional tuple. The
+    /// A stated type on a pattern other than a name, discard or positional tuple. The
     /// diagnostic span is the type; `pattern_span` covers the pattern.
     PatternTypeAnnotation {
         pattern_span: Span,

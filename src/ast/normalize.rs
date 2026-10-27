@@ -670,12 +670,13 @@ impl Reader<'_> {
         })
     }
 
-    /// A pattern with an optional stated type, which only a name or a
-    /// positional tuple may carry.
+    /// A pattern with an optional stated type, which only a name, a discard or
+    /// a positional tuple may carry.
     fn typed_pattern(&self, node: &Node, written_type: Option<&Node>) -> Result<Pattern> {
         let pattern = self.pattern(node)?;
         match (&pattern.kind, written_type) {
-            (PatternKind::Name(_) | PatternKind::Site(_), _) | (_, None) => Ok(pattern),
+            (PatternKind::Name(_) | PatternKind::Wildcard | PatternKind::Site(_), _)
+            | (_, None) => Ok(pattern),
             (_, Some(written_type)) => Err(form(
                 written_type,
                 FormDiagnosticKind::PatternTypeAnnotation {

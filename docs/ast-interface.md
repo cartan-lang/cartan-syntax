@@ -313,8 +313,9 @@ name or position `ComponentKey`, and `{ k, k2: p }` is
 key has no sub-pattern and binds its own name. All forms nest and stand wherever
 a pattern is admitted. A constructor headed by an inline product description is
 an `UnsupportedConstruct` of kind `described_head`. Written at top level,
-`P(a, b) = m` is read as a function equation. Only a name or a positional tuple
-may carry a stated type; any other pattern with one, `_` included, yields
+`P(a, b) = m` is read as a function equation. Only a name, a discard `_` or a
+positional tuple may carry a stated type; a typed discard takes part in overload
+selection. Any other pattern with one yields
 `FormDiagnosticKind::PatternTypeAnnotation { pattern_span }` spanning the type.
 Arity, heads, keys, duplicates and names bound twice are analysis checks.
 
@@ -331,7 +332,7 @@ relevant payloads: unsupported construct and its CST kind, comparison/range
 chain, body result count, a use alias combined with selectors, malformed
 format precision or notation, misplaced signatures, component keys of the
 wrong length, the removed spatial update and stated types on patterns other than
-names and positional tuples. `Error::span()` returns the full byte range; errors
+names, discards and positional tuples. `Error::span()` returns the full byte range; errors
 derive `Clone`, `Debug`, `PartialEq` and `Eq`. Grammar diagnostics are preserved
 without rewriting. Normalization reports the first form error in each document
 item; it returns no partial AST if any error occurs. Unsupported syntax is

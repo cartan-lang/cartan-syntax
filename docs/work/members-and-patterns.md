@@ -49,7 +49,7 @@ normalization in this component; "graph" means a static check analysis owns.
 | Positions: local, header binder, reduction driver, parameter, top-level `=` | AST for every form | Done |
 | `state` takes a single name; reduction seed and accumulator take a single name | Grammar | None |
 | Parameter default on a bare name only | Defaults are unsupported in this AST | None in this slice |
-| Stated type on a pattern other than a name or positional tuple, `_` included | AST: `PatternTypeAnnotation` (lead ruling) | Done |
+| Stated type on a pattern other than a name, discard or positional tuple | AST: `PatternTypeAnnotation` (lead ruling); a typed `_` is accepted | Done |
 | Arity, unknown head/component/key, duplicate keys, name bound twice, named components over a struct | Not syntax | Graph |
 | `p := e?` | Outside this slice | None |
 

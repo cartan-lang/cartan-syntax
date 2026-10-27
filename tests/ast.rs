@@ -1893,13 +1893,12 @@ fn constructor_component_and_brace_patterns_nest_with_spans() {
 }
 
 #[test]
-fn only_names_and_positional_tuples_take_a_stated_type() {
+fn only_names_discards_and_positional_tuples_take_a_stated_type() {
     for (source, pattern, written) in [
         ("x = { [a, b]: T := m\n a }", "[a, b]", "T"),
         ("x = { { rho }: S := m\n rho }", "{ rho }", "S"),
         ("x = { P(a): Q := m\n a }", "P(a)", "Q"),
         ("f([a, b]: T) = a", "[a, b]", "T"),
-        ("f(_: Real) = 1", "_", "Real"),
     ] {
         let errors = ast::parse_document(source).unwrap_err();
         let [Error::Form(FormDiagnostic {
@@ -1916,11 +1915,14 @@ fn only_names_and_positional_tuples_take_a_stated_type() {
         );
         assert_eq!(&source[span.start..span.end], written, "{source}");
     }
+    // A typed discard takes part in overload selection.
     for source in [
         "x = { a: Real := m\n a }",
         "f((a, b): F) = a",
         "x: Real = 1",
         "f(g: (Real) -> Real) = 1",
+        "f(_: Real) = 1",
+        "x = { _: Real := m\n 1 }",
     ] {
         assert!(ast::parse_document(source).is_ok(), "{source}");
     }
