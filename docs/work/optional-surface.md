@@ -27,7 +27,8 @@ typing and lifting checks remain graph's.
 | `T\|None` as a type argument, e.g. `List<Real\|None>` | AST, as above |
 | A second alternative, `T\|None\|None` | Grammar refuses (`AnnotationAlternative`) |
 | An alternative other than `None`, e.g. `Real\|Int` | AST: `UnionAlternative` at the alternative |
-| `T\|None` as a struct entry or fiber component type | Grammar refuses: those positions take a bare fiber type |
+| `T\|None` as a struct entry | Deferred by the owner; the grammar refuses it until delivery |
+| `T\|None` as a fiber component type | Grammar refuses: components take a bare fiber type |
 | `None` as a type | AST: an ordinary named type |
 | `none` | AST: `ExprKind::None` |
 | `if c then a` without `else`; `else` binds to the nearest `if` | AST: `If { alternative: None }`; grammar decides the binding |
@@ -39,10 +40,12 @@ typing and lifting checks remain graph's.
 | Left operand that can never be absent, incompatible fallback, optional condition, unproven payload read, optional array fiber, optional Boolean operand | Graph |
 | Matching on `T\|None` | Open in the record; outside this slice |
 
-Open for the lead: the record allows optional types in annotations and type
-arguments without naming struct entries. The grammar refuses `{a: Real|None}`
-because struct entry types are bare fiber types; widening it would be a grammar
-change.
+The owner admits optional struct fields, `{a: Real|None}`, with delivery
+deferred: the grammar change that admits an optional annotation in a struct
+entry ships together with graph's optional-value work, under the workspace
+[optional struct fields](../../../docs/records/optional-values.md#optional-struct-fields)
+ruling. Until then the grammar refuses it, because struct entry types are bare
+fiber types.
 
 ## Verification
 
