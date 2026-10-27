@@ -207,6 +207,12 @@ pub enum AnnotationKind {
     /// An inline struct type `{a: Real, b: Int}`, possibly empty; the
     /// annotation span covers the braces.
     Struct(Vec<StructEntry>),
+    /// `T|None`, the only union the type language admits.
+    Optional {
+        value: Box<Annotation>,
+        /// The `None` alternative.
+        none_span: Span,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -280,10 +286,26 @@ pub enum ExprKind {
         left: Box<Expr>,
         right: Box<Expr>,
     },
+    /// `if c then a else b`; without `else` the alternative is absent.
     If {
         condition: Box<Expr>,
         consequence: Box<Expr>,
-        alternative: Box<Expr>,
+        alternative: Option<Box<Expr>>,
+    },
+    /// The literal `none`.
+    None,
+    /// `value ?? fallback`, the presence default.
+    Default {
+        value: Box<Expr>,
+        fallback: Box<Expr>,
+        /// The `??` token alone.
+        operator_span: Span,
+    },
+    /// `value?`, the absence-lifting mark.
+    Lift {
+        value: Box<Expr>,
+        /// The `?` alone.
+        mark_span: Span,
     },
     Call {
         function: NameRef,
@@ -579,6 +601,9 @@ pub enum FormDiagnosticKind {
     ComponentKeyPositions {
         found: usize,
     },
+    /// A type alternative other than `None`, as in `Real|Int`; the span is the
+    /// alternative.
+    UnionAlternative,
     /// A stated type on a pattern other than a name, discard or positional tuple. The
     /// diagnostic span is the type; `pattern_span` covers the pattern.
     PatternTypeAnnotation {

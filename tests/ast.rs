@@ -158,9 +158,24 @@ fn assert_expr_spans(source: &str, expr: &Expr) {
             consequence,
             alternative,
         } => {
-            for expr in [condition, consequence, alternative] {
+            for expr in [condition, consequence].into_iter().chain(alternative) {
                 assert_expr_spans(source, expr);
             }
+        }
+        ExprKind::None => assert_eq!(&source[expr.span.start..expr.span.end], "none"),
+        ExprKind::Default {
+            value,
+            fallback,
+            operator_span,
+        } => {
+            assert_eq!(&source[operator_span.start..operator_span.end], "??");
+            assert_expr_spans(source, value);
+            assert_expr_spans(source, fallback);
+        }
+        ExprKind::Lift { value, mark_span } => {
+            assert_eq!(&source[mark_span.start..mark_span.end], "?");
+            assert_eq!(mark_span.end, expr.span.end);
+            assert_expr_spans(source, value);
         }
         ExprKind::Call {
             function,
@@ -532,7 +547,6 @@ fn unsupported_constructs_and_optional_clauses_are_not_discarded() {
         "fiber Mode = (A | B)",
         "f(x: Real = 1) = x",
         "f(x) : { pad: 1 } = x",
-        "f(x: Real|None) = x",
         "f(x: [Int; 2]) = x",
         "every 1 while true { x <- 1 }",
         "while true : { precision: 1 } { x <- 1 }",
@@ -545,8 +559,6 @@ fn unsupported_constructs_and_optional_clauses_are_not_discarded() {
         "x = f(:1)",
         "x = Foo(A: 1)",
         "x = (A: Real)(1)",
-        "x = if true then 1",
-        "x = 1 ?? 2",
         "x = { state p := 1\n p }",
         "x = { y <- 1\n y }",
         "namespace a() { x = 1 }",
@@ -1548,23 +1560,19 @@ fn signatures_outside_parameters_are_typed_by_position_at_the_arrow() {
             "{source}: {errors:?}"
         );
     }
-    // Optional annotations and namespace holes remain unsupported.
-    for source in [
-        "f(g: (Real|None) -> Real) = 1",
-        "namespace a() { f(g: (Real) -> Real) = 1 }",
-    ] {
-        let errors = ast::parse_document(source).unwrap_err();
-        assert!(
-            errors.iter().all(|error| matches!(
-                error,
-                Error::Form(FormDiagnostic {
-                    kind: FormDiagnosticKind::UnsupportedConstruct { .. },
-                    ..
-                })
-            )),
-            "{source}: {errors:?}"
-        );
-    }
+    // Namespace holes remain unsupported.
+    let source = "namespace a() { f(g: (Real) -> Real) = 1 }";
+    let errors = ast::parse_document(source).unwrap_err();
+    assert!(
+        errors.iter().all(|error| matches!(
+            error,
+            Error::Form(FormDiagnostic {
+                kind: FormDiagnosticKind::UnsupportedConstruct { .. },
+                ..
+            })
+        )),
+        "{source}: {errors:?}"
+    );
 }
 
 fn parameter_signature(source: &str) -> Signature {
@@ -1620,11 +1628,10 @@ fn unary_signatures_match_parenthesized_ones_with_written_spans() {
         assert_eq!(left.arguments.len(), 1);
         assert_eq!(without_spans(&left), without_spans(&right), "{unary}");
     }
-    // Inline products, named signature formals and optional arguments stay out.
+    // Inline products and named signature formals stay out.
     for (source, kind) in [
         ("f(g: (x: Real) -> Real) = 1", "component"),
         ("f(p: (a: Real, b: Real)) = p", "component"),
-        ("f(g: Real|None -> Real) = 1", "fiber_type"),
     ] {
         let errors = ast::parse_document(source).unwrap_err();
         assert!(
@@ -1926,4 +1933,175 @@ fn only_names_discards_and_positional_tuples_take_a_stated_type() {
     ] {
         assert!(ast::parse_document(source).is_ok(), "{source}");
     }
+}
+
+fn default_parts(expr: Expr) -> (Expr, Expr) {
+    match expr.kind {
+        ExprKind::Default {
+            value, fallback, ..
+        } => (*value, *fallback),
+        kind => panic!("expected a default, found {kind:?}"),
+    }
+}
+
+#[test]
+fn presence_defaults_group_right_between_arithmetic_and_comparisons() {
+    // Right-associative: `a ?? b ?? c` is `a ?? (b ?? c)`.
+    let (value, fallback) = default_parts(expression("a ?? b ?? c"));
+    assert!(matches!(value.kind, ExprKind::Name(_)));
+    assert!(matches!(fallback.kind, ExprKind::Default { .. }));
+    // Looser than arithmetic, tighter than comparisons and Boolean words.
+    let (_, fallback) = default_parts(expression("m ?? n + 1"));
+    assert!(matches!(
+        fallback.kind,
+        ExprKind::Binary {
+            operator: BinaryOperator::Add,
+            ..
+        }
+    ));
+    for (source, operator) in [
+        ("m ?? 0 > 3", BinaryOperator::Greater),
+        ("a ?? b and c", BinaryOperator::And),
+    ] {
+        let ExprKind::Binary {
+            operator: found,
+            left,
+            ..
+        } = expression(source).kind
+        else {
+            panic!("{source}");
+        };
+        assert_eq!(found, operator, "{source}");
+        assert!(matches!(left.kind, ExprKind::Default { .. }), "{source}");
+    }
+    let ExprKind::Binary { right, .. } = expression("a == b ?? c").kind else {
+        panic!();
+    };
+    assert!(matches!(right.kind, ExprKind::Default { .. }));
+    let ExprKind::Unary {
+        operator: UnaryOperator::Not,
+        operand,
+    } = expression("not m ?? false").kind
+    else {
+        panic!();
+    };
+    assert!(matches!(operand.kind, ExprKind::Default { .. }));
+    // A line beginning with `??` continues the expression; spans are exact.
+    let source = "xs[i]\n  ?? 0.0";
+    let expr = expression(source);
+    let ExprKind::Default { operator_span, .. } = &expr.kind else {
+        panic!();
+    };
+    assert_eq!(&source[operator_span.start..operator_span.end], "??");
+    let (value, _) = default_parts(expression("(u ?? w)[i] ?? 0.0"));
+    assert!(matches!(value.kind, ExprKind::Index { .. }));
+}
+
+#[test]
+fn absence_comes_from_none_and_else_less_conditionals() {
+    assert_eq!(expression("none").kind, ExprKind::None);
+    let ExprKind::If { alternative, .. } = expression("if c then a").kind else {
+        panic!();
+    };
+    assert!(alternative.is_none());
+    // `else` binds to the nearest `if`.
+    let ExprKind::If {
+        consequence,
+        alternative,
+        ..
+    } = expression("if a then if b then x else y").kind
+    else {
+        panic!();
+    };
+    assert!(alternative.is_none());
+    assert!(matches!(
+        &consequence.kind,
+        ExprKind::If {
+            alternative: Some(_),
+            ..
+        }
+    ));
+}
+
+#[test]
+fn absence_marks_stand_at_each_lifting_position() {
+    let text = |source: &str, expr: &Expr| source[expr.span.start..expr.span.end].to_owned();
+    let lifted = |expr: &Expr| matches!(expr.kind, ExprKind::Lift { .. });
+    let ExprKind::Call { arguments, .. } = expression("f(x?, y)").kind else {
+        panic!();
+    };
+    assert!(lifted(&arguments[0]) && !lifted(&arguments[1]));
+    let ExprKind::Index { target, .. } = expression("m?[0]").kind else {
+        panic!();
+    };
+    assert!(lifted(&target));
+    let ExprKind::Projection { value, .. } = expression("k of a?").kind else {
+        panic!();
+    };
+    assert!(lifted(&value));
+    let ExprKind::For(comprehension) = expression("for u in m? { u }").kind else {
+        panic!();
+    };
+    assert!(lifted(&comprehension.collection));
+    let ExprKind::For(comprehension) = expression("for [a, b] in [xs?, ys] { a }").kind else {
+        panic!();
+    };
+    let ExprKind::List(collections) = &comprehension.collection.kind else {
+        panic!();
+    };
+    assert!(lifted(&collections[0]) && !lifted(&collections[1]));
+    let source = "{ p := g?\n p }";
+    let ExprKind::Body(body) = expression(source).kind else {
+        panic!();
+    };
+    let BodyItem::Local(local) = &body.items[0] else {
+        panic!();
+    };
+    assert!(lifted(&local.value));
+    assert_eq!(text(source, &local.value), "g?");
+    // Whether a mark has an operation to lift through is analysis's check.
+    assert!(matches!(expression("x? + 1").kind, ExprKind::Binary { .. }));
+}
+
+#[test]
+fn optional_types_take_only_a_none_alternative() {
+    for source in [
+        "x: Real|None = 1",
+        "x: List<Real|None> = 1",
+        "state m: Real|None = none",
+        "f(x: Real|None) = x",
+        "f(g: Real|None -> Real) = 1",
+        "f(g: (Real|None) -> Real|None) = 1",
+    ] {
+        let document =
+            ast::parse_document(source).unwrap_or_else(|errors| panic!("{source}: {errors:?}"));
+        let debug = format!("{document:?}");
+        assert!(debug.contains("Optional"), "{source}");
+    }
+    let source = "x: Array<Real, 1>|None = 1";
+    let document = ast::parse_document(source).unwrap();
+    let ItemKind::Binding(binding) = &document.items[0].kind else {
+        panic!();
+    };
+    let annotation = binding.annotation.as_ref().unwrap();
+    assert_eq!(
+        &source[annotation.span.start..annotation.span.end],
+        "Array<Real, 1>|None"
+    );
+    let AnnotationKind::Optional { value, none_span } = &annotation.kind else {
+        panic!();
+    };
+    assert_eq!(&source[none_span.start..none_span.end], "None");
+    assert!(matches!(value.kind, AnnotationKind::Apply { .. }));
+    // `T|None` is the only union.
+    let source = "x: Real|Int = 1";
+    let errors = ast::parse_document(source).unwrap_err();
+    let [Error::Form(FormDiagnostic {
+        kind: FormDiagnosticKind::UnionAlternative,
+        span,
+    })] = errors.as_slice()
+    else {
+        panic!("{errors:?}");
+    };
+    assert_eq!(&source[span.start..span.end], "Int");
 }

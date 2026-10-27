@@ -2,12 +2,13 @@
 id: members-and-patterns
 title: Normalize component reads, updates and destructuring patterns
 kind: work
-status: active
-implementation: partial
+status: done
+implementation: implemented
 topics: [syntax, interface, frontend]
 owner: cartan-syntax-agent
 depends: [normalized-ast, structural-annotations]
 authority: Owner released slice 1 of the workspace optional/members/patterns/sums work on 2026-10-27, assigned to syntax by the lead
+evidence: src/ast.rs; src/ast/normalize.rs; tests/ast.rs; rule table and checkpoints below
 ---
 
 # Normalize component reads, updates and destructuring patterns
@@ -53,15 +54,13 @@ normalization in this component; "graph" means a static check analysis owns.
 | Arity, unknown head/component/key, duplicate keys, name bound twice, named components over a struct | Not syntax | Graph |
 | `p := e?` | Outside this slice | None |
 
-Held for the owner: a top-level constructor pattern `P(a, b) = m` is
-indistinguishable from the function equation `P(a, b) = m` in the grammar and
-keeps the function-definition reading until the owner rules; the recommendation
-is not to admit constructor patterns at top level.
+Owner ruling: constructor patterns are not admitted at top level, so
+`P(a, b) = m` there is a function equation.
 
 ## Checkpoints and verification
 
 Checkpoint 1 (accepted): `of` keys, partial products, `but` and the removed
 spatial form, with tests for `of` precedence and a partial-product update.
-Checkpoint 2: constructor, named-component and brace patterns with spans in
-every admitted position, and the stated-type rejection. Graph adopts the
-breaking AST changes at its own pin.
+Checkpoint 2 (accepted): constructor, named-component and brace patterns with
+spans in every admitted position, and the stated-type rejection, which admits
+typed discards. Graph adopts the breaking AST changes at its own pin.

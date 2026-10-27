@@ -60,7 +60,7 @@ The source constructs are:
 | Fibers | Name, written base annotation such as `Module`, and ordered named components with annotations. |
 | Annotations | Named types, generic applications and inline struct types, preserving names and numeric arguments such as `Array<Primitive, 1>` without interpreting rank. |
 | Patterns | Name, wildcard, list, positional site pattern with its enclosing annotation retained, constructor, named components and brace entries, all nesting. |
-| Expressions | Literal number/boolean/string, tagged template, local/qualified name, unary/binary operation, conditional, local/qualified call, indexing, `of` component read, product value, `but` update, list, named map, map join, configurable constructor/application, range, `periodic`, body, `for` comprehension and `reduce`. |
+| Expressions | Literal number/boolean/string, tagged template, local/qualified name, unary/binary operation, conditional, local/qualified call, indexing, `of` component read, product value, `but` update, `none`, presence default `??`, absence mark `?`, list, named map, map join, configurable constructor/application, range, `periodic`, body, `for` comprehension and `reduce`. |
 | Body | Ordered `BodyItem::Local` and `BodyItem::Result` entries, with exactly one result. A result need not be last. |
 | Update block | Written guard and ordered writes, preserving target names, values and spans. |
 
@@ -247,6 +247,26 @@ operand at the same nesting level, yields
 on that colon. A colon inside a parenthesized partial product is an ordinary
 product entry.
 
+## Optional values
+
+The [optional surface work](work/optional-surface.md) supplies this interface
+under the workspace [optional values](../../docs/records/optional-values.md)
+record. `T|None` in an annotation or type argument is
+`AnnotationKind::Optional { value, none_span }`, and composes with parameter
+signatures as an ordinary annotation. It is the only union: any other
+alternative yields `FormDiagnosticKind::UnionAlternative` spanning that
+alternative. Struct entries and fiber components take a bare fiber type, so an
+alternative there is a grammar error.
+
+`none` is `ExprKind::None`. `if c then a` without `else` is `ExprKind::If` with
+`alternative: None`; `else` binds to the nearest `if`. `a ?? b` is
+`ExprKind::Default { value, fallback, operator_span }`: one token,
+right-associative, looser than arithmetic and tighter than comparisons and the
+Boolean words, and a line beginning with `??` continues the previous expression.
+The postfix mark `x?` is `ExprKind::Lift { value, mark_span }` wherever it is
+written. Presence proofs, the left operand's optionality, fallback types and
+whether a mark has an operation to lift through are analysis checks.
+
 ## Maps and configurables
 
 The [configurable source work](work/configurable-source-ast.md) supplies the
@@ -312,8 +332,8 @@ name or position `ComponentKey`, and `{ k, k2: p }` is
 `PatternKind::Entries(Vec<EntryPattern { key, pattern, span }>)`, where a bare
 key has no sub-pattern and binds its own name. All forms nest and stand wherever
 a pattern is admitted. A constructor headed by an inline product description is
-an `UnsupportedConstruct` of kind `described_head`. Written at top level,
-`P(a, b) = m` is read as a function equation. Only a name, a discard `_` or a
+an `UnsupportedConstruct` of kind `described_head`. Constructor patterns are
+not admitted at top level, so `P(a, b) = m` there is a function equation. Only a name, a discard `_` or a
 positional tuple may carry a stated type; a typed discard takes part in overload
 selection. Any other pattern with one yields
 `FormDiagnosticKind::PatternTypeAnnotation { pattern_span }` spanning the type.
@@ -331,8 +351,8 @@ Structured errors distinguish `Grammar(Diagnostic)` from
 relevant payloads: unsupported construct and its CST kind, comparison/range
 chain, body result count, a use alias combined with selectors, malformed
 format precision or notation, misplaced signatures, component keys of the
-wrong length, the removed spatial update and stated types on patterns other than
-names, discards and positional tuples. `Error::span()` returns the full byte range; errors
+wrong length, the removed spatial update, stated types on patterns other than
+names, discards and positional tuples, and a type alternative other than `None`. `Error::span()` returns the full byte range; errors
 derive `Clone`, `Debug`, `PartialEq` and `Eq`. Grammar diagnostics are preserved
 without rewriting. Normalization reports the first form error in each document
 item; it returns no partial AST if any error occurs. Unsupported syntax is

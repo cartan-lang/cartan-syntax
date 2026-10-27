@@ -550,6 +550,10 @@ impl Reader<'_> {
         if node.child("arrow").is_some() {
             return Ok(Written::Signature(node));
         }
+        if node.child("alternative").is_some() {
+            // `T|None`: the annotation itself carries the alternative.
+            return Ok(Written::Value(node));
+        }
         shape(node, &[], &["fiber_type", "signature_type"])?;
         let written = single(node)?;
         Ok(if written.kind == "signature_type" {
@@ -595,13 +599,27 @@ impl Reader<'_> {
                 .map(|argument| self.annotation(argument, SignaturePosition::SignatureArgument))
                 .collect::<Result<_>>()?
         } else {
-            // `T -> R`: the single argument is the annotation's own value type.
-            // An optional `T|None` argument stays outside this subset.
-            shape(written, &["arrow", "result"], &["fiber_type"])?;
+            // `T -> R`: the single argument is the annotation's own value type,
+            // optional when an alternative precedes the arrow.
+            shape(
+                written,
+                &["arrow", "result", "alternative"],
+                &["fiber_type"],
+            )?;
             let argument = children(written)
                 .find(|child| child.field.is_none())
                 .ok_or_else(|| unsupported(written))?;
-            vec![self.value_type(argument)?]
+            vec![match written.child("alternative") {
+                Some(alternative) => self.optional_type(
+                    argument,
+                    alternative,
+                    Span {
+                        start: argument.start,
+                        end: alternative.end,
+                    },
+                )?,
+                None => self.value_type(argument)?,
+            }]
         };
         Ok(ParameterAnnotation::Signature(Signature {
             arguments,
@@ -612,6 +630,21 @@ impl Reader<'_> {
             arrow_span: self.arrow_span(field(written, "arrow")?),
             span: span(written),
         }))
+    }
+
+    /// `T|None`; any other alternative is refused, since this is the only union.
+    fn optional_type(&self, value: &Node, alternative: &Node, whole: Span) -> Result<Annotation> {
+        let none = self.value_type(alternative)?;
+        if !matches!(&none.kind, AnnotationKind::Named(name) if name.text == "None") {
+            return Err(form(alternative, FormDiagnosticKind::UnionAlternative));
+        }
+        Ok(Annotation {
+            kind: AnnotationKind::Optional {
+                value: Box::new(self.value_type(value)?),
+                none_span: none.span,
+            },
+            span: whole,
+        })
     }
 
     /// Struct entries in source order, keeping duplicates and an empty list.
@@ -632,6 +665,13 @@ impl Reader<'_> {
     /// A named type, generic application or inline struct; struct entries and
     /// fiber components take this form directly.
     fn value_type(&self, node: &Node) -> Result<Annotation> {
+        if node.kind == "type_annotation" {
+            shape(node, &["alternative"], &["fiber_type"])?;
+            let value = children(node)
+                .find(|child| child.field.is_none())
+                .ok_or_else(|| unsupported(node))?;
+            return self.optional_type(value, field(node, "alternative")?, span(node));
+        }
         if node.kind != "fiber_type" {
             return Err(unsupported(node));
         }
@@ -820,6 +860,25 @@ impl Reader<'_> {
                     return Err(form(node, FormDiagnosticKind::ComparisonChain));
                 }
                 let operator = field(node, "operator")?;
+                if self.text(operator).trim() == "??" {
+                    // Continuation tokens carry surrounding whitespace.
+                    let start = operator.start
+                        + self
+                            .text(operator)
+                            .find("??")
+                            .ok_or_else(|| unsupported(operator))?;
+                    return Ok(Expr {
+                        kind: ExprKind::Default {
+                            value: Box::new(self.expr(left)?),
+                            fallback: Box::new(self.expr(field(node, "right")?)?),
+                            operator_span: Span {
+                                start,
+                                end: start + 2,
+                            },
+                        },
+                        span: span(node),
+                    });
+                }
                 if self.text(operator).trim() == "<>" {
                     return Ok(Expr {
                         kind: ExprKind::MapJoin {
@@ -861,7 +920,27 @@ impl Reader<'_> {
                 ExprKind::If {
                     condition: Box::new(self.expr(field(node, "condition")?)?),
                     consequence: Box::new(self.expr(field(node, "consequence")?)?),
-                    alternative: Box::new(self.expr(field(node, "alternative")?)?),
+                    alternative: node
+                        .child("alternative")
+                        .map(|alternative| self.expr(alternative).map(Box::new))
+                        .transpose()?,
+                }
+            }
+            "none" => ExprKind::None,
+            "absent_expression" => {
+                shape(node, &["value"], &[])?;
+                let mark = node
+                    .children
+                    .iter()
+                    .rev()
+                    .find(|child| child.kind == "?")
+                    .ok_or_else(|| unsupported(node))?;
+                ExprKind::Lift {
+                    value: Box::new(self.expr(field(node, "value")?)?),
+                    mark_span: Span {
+                        start: mark.end - 1,
+                        end: mark.end,
+                    },
                 }
             }
             "call_expression" => {
