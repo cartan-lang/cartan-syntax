@@ -8,6 +8,8 @@ import click
 from .metadata import MetadataError, discover, outline, rust_command
 
 HELP_SHORT, HELP_FULL = "-h", "--help"
+# Click 8.2+ marks an absent option default with a sentinel rather than None.
+NO_DEFAULT = getattr(click.core, "UNSET", None)
 
 
 def present(error: MetadataError) -> str:
@@ -101,7 +103,7 @@ class RustGroup(click.Group):
                 metavar = param.metavar or (param.name or "value").upper()
                 spelling = flag if param.is_flag else f"{flag} <{metavar}>"
                 notes = []
-                if not param.is_flag and param.default is not None:
+                if not param.is_flag and param.default not in (None, NO_DEFAULT):
                     notes.append(f"default: {param.default}")
                 if isinstance(param.type, click.Choice):
                     notes.append("choices: " + ", ".join(param.type.choices))

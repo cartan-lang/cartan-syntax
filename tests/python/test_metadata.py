@@ -233,3 +233,18 @@ def test_nested_metadata_commands_are_traversable_click_groups(tmp_path):
     # Traversal never changes invocation: the root still forwards raw argv.
     args = ['lint', 'deep', '--unknown']
     assert json.loads(CliRunner().invoke(cli, args).stdout) == args
+
+
+def test_python_option_without_default_renders_no_default(tmp_path):
+    import click
+    cli = create_cli(repo_root=tmp_path, rust_command=fake(tmp_path, tree(IR)))
+
+    @cli.command()
+    @click.option("--name", help="Optional name.")
+    def label(name):
+        pass
+
+    full = CliRunner().invoke(cli, ['--help']).stdout
+    line = next(line for line in full.splitlines() if '--name' in line)
+    assert line == '      --name <NAME>  Optional name.'
+    assert 'UNSET' not in full
