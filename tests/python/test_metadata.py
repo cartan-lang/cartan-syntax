@@ -145,3 +145,51 @@ def test_actual_binary_outline_and_commands_match_rust_help():
     derived = [line.replace('  syntax', '  cartan-syntax', 1) for line in python_outline]
     assert derived[:len(rust_outline)] == rust_outline
     assert not any(command['name'] == 'help' for command in metadata['command']['commands'])
+
+
+def test_outline_rules_match_the_rust_unit_test_lines():
+    # Mirrors outline_orders_nested_paths_positionals_repeats_defaults_and_choices
+    # in cli/src/command.rs: same tree, same expected lines.
+    value = dict(arity={'min': 1, 'max': 1}, action='set')
+    tool = node('tool', 'A tool', [
+        argument('param', long='param', value_names=['NAME=VALUE'], repeatable=True,
+                 description='Static parameter', **{**value, 'action': 'append'}),
+    ], [
+        node('emit', 'Emit code', [
+            argument('target', position=1, value_names=['TARGET'], required=True,
+                     choices=['metal', 'cuda', 'wasm'], description='Target', **value),
+            argument('source', position=2, value_names=['SOURCE'],
+                     description='Source file', **value),
+        ]),
+        node('wasm', 'Wasm tools', [], [node('validate', None, [], [
+            node('diffusion', 'Validate diffusion', [
+                argument('offset', long='offset', value_names=['X'], default_values=['0.5'],
+                         description='Offset', **value),
+            ]),
+        ])]),
+    ])
+    assert outline(tool, ('tool',)) == [
+        '  tool  A tool',
+        '      --param <NAME=VALUE>...  Static parameter',
+        '  tool emit  Emit code',
+        '      <TARGET>  Target [choices: metal, cuda, wasm]',
+        '      [SOURCE]  Source file',
+        '  tool wasm  Wasm tools',
+        '  tool wasm validate',
+        '  tool wasm validate diffusion  Validate diffusion',
+        '      --offset <X>  Offset [default: 0.5]',
+    ]
+
+
+def test_hidden_python_commands_dispatch_without_listing(tmp_path):
+    import click
+    cli = create_cli(repo_root=tmp_path, rust_command=fake(tmp_path, tree(IR)))
+
+    @cli.command(hidden=True)
+    def worker():
+        click.echo('worker ran')
+
+    runner = CliRunner()
+    assert runner.invoke(cli, ['worker']).stdout == 'worker ran\n'
+    for flag in ('-h', '--help'):
+        assert 'worker' not in runner.invoke(cli, [flag]).stdout

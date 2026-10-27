@@ -83,8 +83,16 @@ Every command takes `-h` for concise help and `--help` for help followed by a
 full command outline generated from the tree; there is no `help` subcommand. Help
 and version arguments are explicit tree entries, which lets the color probe edit
 the unbuilt tree (Clap does not refresh option lookup after a built command is
-edited). The outline omits help/version entries and globals inherited below the
-root, rules the Python outline shares.
+edited). The probe also relaxes `required` and keeps `ignore_errors`, so neither
+a missing operand nor a conditional requirement drops earlier matches.
+
+The outline lists each command path depth first, then its visible arguments in
+definition order. A required positional prints `<NAME>`, an optional one `[NAME]`;
+options print `--long <NAME>` or a bare flag; repeatable arguments end with `...`.
+Value arguments note `default:` and `choices:`. Help/version entries, globals
+inherited below the root and argument relationships such as `requires_if` are
+omitted. The Python outline applies the same rules, and both sides test identical
+expected lines.
 Bare groups and help exit 0 on stdout, usage errors exit 2 on stderr, and domain
 failures retain exit 1 and typed causes until the formatter. File operands use
 OS-native paths and `--` terminates option parsing. Color accepts auto/always/never;
@@ -161,8 +169,12 @@ validates every version-one key. Launch, status, JSON, schema and collision
 failures are typed `MetadataError` kinds, worded by one presentation function;
 group help then still lists Python commands. A Rust command may not share a
 Python command's name. `-h` on the group prints concise help; `--help` adds the
-command outline derived from metadata followed by the Python commands. Python
-command help starts no Rust process. Every other argument vector, including
+command outline derived from metadata followed by the visible Python commands;
+hidden Python commands still dispatch. Bare invocation and group help discover
+metadata; a launch, status or schema failure there exits 0 with the Python commands
+and the build or compatibility instruction, never building. Python command help
+starts no Rust process. Leading options always belong to Rust, so a Python command
+name must come first. Every other argument vector, including
 generated command names, unknown names, options and `--describe-cli`, is
 forwarded literally to the configured binary, which owns validation and the help
 of its own commands. Invoking-directory paths

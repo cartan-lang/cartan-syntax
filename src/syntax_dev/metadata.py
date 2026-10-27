@@ -124,10 +124,12 @@ def outline(node: dict, path: tuple[str, ...], *, root: bool = True) -> list[str
         name = argument["value_names"][0] if argument["value_names"] else argument["id"].upper()
         takes_value = argument["action"] in ("set", "append")
         if argument["position"] is not None:
-            spelling = f"<{name}>"
+            spelling = f"<{name}>" if argument["required"] else f"[{name}]"
         else:
             flag = f"--{argument['long']}" if argument["long"] else f"-{argument['short']}"
             spelling = f"{flag} <{name}>" if takes_value else flag
+        if argument["repeatable"]:
+            spelling += "..."
         notes = []
         if takes_value and argument["default_values"]:
             notes.append("default: " + ", ".join(argument["default_values"]))

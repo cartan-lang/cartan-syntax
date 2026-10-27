@@ -105,8 +105,14 @@ fn write_outline(command: &Command, parents: &[&str], out: &mut String) {
             .map(|name| name.to_string())
             .unwrap_or_else(|| arg.get_id().as_str().to_uppercase());
         let takes_value = matches!(arg.get_action(), ArgAction::Set | ArgAction::Append);
+        let repeat = if matches!(arg.get_action(), ArgAction::Append | ArgAction::Count) {
+            "..."
+        } else {
+            ""
+        };
         let spelling = match (arg.get_long(), arg.get_short()) {
-            _ if arg.is_positional() => format!("<{name}>"),
+            _ if arg.is_positional() && arg.is_required_set() => format!("<{name}>"),
+            _ if arg.is_positional() => format!("[{name}]"),
             (Some(long), _) if takes_value => format!("--{long} <{name}>"),
             (Some(long), _) => format!("--{long}"),
             (None, Some(short)) if takes_value => format!("-{short} <{name}>"),
@@ -137,7 +143,7 @@ fn write_outline(command: &Command, parents: &[&str], out: &mut String) {
         } else {
             format!(" [{}]", notes.join("; "))
         };
-        out.push_str(&format!("      {spelling}  {help}{notes}\n"));
+        out.push_str(&format!("      {spelling}{repeat}  {help}{notes}\n"));
     }
     for child in command
         .get_subcommands()
@@ -209,5 +215,64 @@ pub(crate) fn stream_color(choice: ColorChoice, terminal: bool) -> ColorChoice {
         ColorChoice::Auto if terminal => ColorChoice::Always,
         ColorChoice::Auto => ColorChoice::Never,
         value => value,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The Python outline in tests/python/test_metadata.py expects these lines.
+    /// Argument relationships such as `requires_if` stay in Rust validation.
+    #[test]
+    fn outline_orders_nested_paths_positionals_repeats_defaults_and_choices() {
+        let command = Command::new("tool")
+            .about("A tool")
+            .arg(
+                Arg::new("param")
+                    .long("param")
+                    .value_name("NAME=VALUE")
+                    .action(ArgAction::Append)
+                    .help("Static parameter"),
+            )
+            .subcommand(
+                Command::new("emit")
+                    .about("Emit code")
+                    .arg(
+                        Arg::new("target")
+                            .value_name("TARGET")
+                            .required(true)
+                            .value_parser(["metal", "cuda", "wasm"])
+                            .help("Target"),
+                    )
+                    .arg(Arg::new("source").value_name("SOURCE").help("Source file")),
+            )
+            .subcommand(
+                Command::new("wasm").about("Wasm tools").subcommand(
+                    Command::new("validate").subcommand(
+                        Command::new("diffusion").about("Validate diffusion").arg(
+                            Arg::new("offset")
+                                .long("offset")
+                                .value_name("X")
+                                .default_value("0.5")
+                                .help("Offset"),
+                        ),
+                    ),
+                ),
+            );
+        let mut out = String::new();
+        write_outline(&command, &[], &mut out);
+        assert_eq!(
+            out,
+            "  tool  A tool\n\
+             \x20     --param <NAME=VALUE>...  Static parameter\n\
+             \x20 tool emit  Emit code\n\
+             \x20     <TARGET>  Target [choices: metal, cuda, wasm]\n\
+             \x20     [SOURCE]  Source file\n\
+             \x20 tool wasm  Wasm tools\n\
+             \x20 tool wasm validate\n\
+             \x20 tool wasm validate diffusion  Validate diffusion\n\
+             \x20     --offset <X>  Offset [default: 0.5]\n"
+        );
     }
 }

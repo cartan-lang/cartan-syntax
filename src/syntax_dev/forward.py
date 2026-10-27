@@ -91,6 +91,8 @@ class RustGroup(click.Group):
         lines = ["Command outline:", *outline(root["command"], (ctx.command_path,))]
         for name in sorted(self.commands):
             command = self.commands[name]
+            if command.hidden:
+                continue
             lines.append(f"  {ctx.command_path} {name}  {command.get_short_help_str(limit=200)}")
             for param in command.params:
                 if not isinstance(param, click.Option) or param.hidden:
