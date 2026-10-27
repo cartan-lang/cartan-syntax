@@ -451,6 +451,16 @@ impl Reader<'_> {
                     value: self.expr(field(node, "value")?)?,
                 })
             }
+            "fiber_declaration" if node.child("variant").is_some() => {
+                shape(node, &["name", "algebra", "variant"], &[])?;
+                if let Some(algebra) = node.child("algebra") {
+                    return Err(form(algebra, FormDiagnosticKind::SumAlgebra));
+                }
+                ItemKind::Sum(Sum {
+                    name: self.name(field(node, "name")?)?,
+                    variants: self.variants(node)?,
+                })
+            }
             "fiber_declaration" => {
                 shape(node, &["name", "algebra", "component"], &[])?;
                 let components = node
@@ -647,6 +657,77 @@ impl Reader<'_> {
         })
     }
 
+    /// A roster's variants in declared order, keeping duplicates.
+    fn variants(&self, node: &Node) -> Result<Vec<Variant>> {
+        node.children_named("variant")
+            .map(|variant| {
+                shape(variant, &["name", "type"], &[])?;
+                Ok(Variant {
+                    name: self.name(field(variant, "name")?)?,
+                    payload: variant
+                        .child("type")
+                        .map(|payload| self.value_type(payload))
+                        .transpose()?,
+                    span: span(variant),
+                })
+            })
+            .collect()
+    }
+
+    /// `Shape(A: 1.0)`, `(A: Real | B)(A: 1.0)` and `(A: Real | B)(B)`.
+    fn construct(&self, node: &Node) -> Result<ExprKind> {
+        shape(
+            node,
+            &["function", "described", "variants", "arguments"],
+            &[],
+        )?;
+        let head = match (node.child("function"), node.child("described")) {
+            (Some(function), None) => ConstructorHead::Named(self.name_ref(function)?),
+            (None, Some(described)) if described.child("variant").is_some() => {
+                shape(described, &["variant"], &[])?;
+                ConstructorHead::Inline {
+                    variants: self.variants(described)?,
+                    span: span(described),
+                }
+            }
+            // An inline product description as the head stays unsupported.
+            (None, Some(described)) => return Err(unsupported(described)),
+            _ => return Err(unsupported(node)),
+        };
+        if let Some(arguments) = node.child("variants") {
+            let written: Vec<_> = children(arguments).collect();
+            let [argument] = written.as_slice() else {
+                return Err(form(
+                    arguments,
+                    FormDiagnosticKind::ConstructorVariantCount {
+                        found: written.len(),
+                    },
+                ));
+            };
+            shape(argument, &["name", "value"], &[])?;
+            return Ok(ExprKind::Construct {
+                head,
+                variant: self.name(field(argument, "name")?)?,
+                payload: Some(Box::new(self.expr(field(argument, "value")?)?)),
+            });
+        }
+        // Only an inline head reaches here with positional arguments.
+        let arguments = field(node, "arguments")?;
+        match children(arguments).collect::<Vec<_>>().as_slice() {
+            [variant] if variant.kind == "identifier" && self.text(variant) != "_" => {
+                Ok(ExprKind::Construct {
+                    head,
+                    variant: self.name(variant)?,
+                    payload: None,
+                })
+            }
+            _ => Err(form(
+                arguments,
+                FormDiagnosticKind::ConstructorWithoutVariant,
+            )),
+        }
+    }
+
     /// Struct entries in source order, keeping duplicates and an empty list.
     fn struct_entries(&self, node: &Node) -> Result<Vec<StructEntry>> {
         shape(node, &["entry"], &[])?;
@@ -674,6 +755,14 @@ impl Reader<'_> {
         }
         if node.kind != "fiber_type" {
             return Err(unsupported(node));
+        }
+        if node.child("variant").is_some() {
+            // An inline sum roster; its span covers the parentheses.
+            shape(node, &["variant"], &[])?;
+            return Ok(Annotation {
+                kind: AnnotationKind::Sum(self.variants(node)?),
+                span: span(node),
+            });
         }
         if let Some(entries) = node.child("entries") {
             // An inline struct; its span covers the braces.
@@ -942,6 +1031,11 @@ impl Reader<'_> {
                         end: mark.end,
                     },
                 }
+            }
+            "call_expression"
+                if node.child("variants").is_some() || node.child("described").is_some() =>
+            {
+                self.construct(node)?
             }
             "call_expression" => {
                 shape(node, &["function", "arguments"], &[])?;

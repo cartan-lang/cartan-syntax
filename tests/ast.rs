@@ -97,6 +97,19 @@ fn assert_pattern_spans(source: &str, pattern: &Pattern) {
     }
 }
 
+fn assert_variant_spans(source: &str, variants: &[Variant]) {
+    for variant in variants {
+        assert_name_span(source, &variant.name);
+        let written = &source[variant.span.start..variant.span.end];
+        assert!(written.starts_with(&variant.name.text));
+        if let Some(payload) = &variant.payload {
+            assert!(
+                variant.span.start < payload.span.start && payload.span.end == variant.span.end
+            );
+        }
+    }
+}
+
 fn assert_body_spans(source: &str, body: &Body) {
     assert!(source.get(body.span.start..body.span.end).is_some());
     for item in &body.items {
@@ -187,6 +200,27 @@ fn assert_expr_spans(source: &str, expr: &Expr) {
             }
             for expr in arguments {
                 assert_expr_spans(source, expr);
+            }
+        }
+        ExprKind::Construct {
+            head,
+            variant,
+            payload,
+        } => {
+            match head {
+                ConstructorHead::Named(NameRef::Local(name)) => assert_name_span(source, name),
+                ConstructorHead::Named(NameRef::Qualified(name)) => {
+                    assert_qualified_spans(source, name)
+                }
+                ConstructorHead::Inline { variants, span } => {
+                    let written = &source[span.start..span.end];
+                    assert!(written.starts_with('(') && written.ends_with(')'));
+                    assert_variant_spans(source, variants);
+                }
+            }
+            assert_name_span(source, variant);
+            if let Some(payload) = payload {
+                assert_expr_spans(source, payload);
             }
         }
         ExprKind::Index { target, indices } => {
@@ -326,6 +360,7 @@ fn normalizes_all_five_workloads_and_retains_document_items() {
                     assert_eq!(fiber.algebra.as_ref().unwrap().text, "Module");
                 }
                 ItemKind::Struct(_) => panic!("workloads declare no structs"),
+                ItemKind::Sum(_) => panic!("workloads declare no sums"),
             }
         }
         assert_eq!(
@@ -544,7 +579,6 @@ fn unsupported_constructs_and_optional_clauses_are_not_discarded() {
         "use std::* with (x: 1)",
         "param n = 1 (locked when true)",
         "fiber Cell<k> = (v: Real)",
-        "fiber Mode = (A | B)",
         "f(x: Real = 1) = x",
         "f(x) : { pad: 1 } = x",
         "f(x: [Int; 2]) = x",
@@ -557,8 +591,9 @@ fn unsupported_constructs_and_optional_clauses_are_not_discarded() {
         "x = reduce a := 0 { a }",
         "x = f'(1)",
         "x = f(:1)",
-        "x = Foo(A: 1)",
         "x = (A: Real)(1)",
+        "x = (A: Real)(A: 1)",
+        "x = match s { A(x) then x }",
         "x = { state p := 1\n p }",
         "x = { y <- 1\n y }",
         "namespace a() { x = 1 }",
@@ -2104,4 +2139,218 @@ fn optional_types_take_only_a_none_alternative() {
         panic!("{errors:?}");
     };
     assert_eq!(&source[span.start..span.end], "Int");
+}
+
+fn roster(variants: &[Variant]) -> Vec<(&str, Option<&str>)> {
+    variants
+        .iter()
+        .map(|variant| {
+            let payload = variant.payload.as_ref().map(|payload| match &payload.kind {
+                AnnotationKind::Named(name) | AnnotationKind::Apply { name, .. } => {
+                    name.text.as_str()
+                }
+                AnnotationKind::Struct(_) => "{}",
+                AnnotationKind::Sum(_) => "|",
+                AnnotationKind::Optional { .. } => "?",
+            });
+            (variant.name.text.as_str(), payload)
+        })
+        .collect()
+}
+
+#[test]
+fn sum_rosters_keep_declared_order_unit_variants_duplicates_and_nesting() {
+    let source = "fiber Shape = (A: Real | B: Vector<Real, 3>)\n\
+                  fiber Mode = (Binary\n  | Single)\n\
+                  fiber Mixed = (Point | Segment: Real | Point | Inner: (C | D: Int))\n";
+    let document = ast::parse_document(source).unwrap_or_else(|errors| panic!("{errors:?}"));
+    let sums: Vec<_> = document
+        .items
+        .iter()
+        .map(|item| match &item.kind {
+            ItemKind::Sum(sum) => {
+                assert_name_span(source, &sum.name);
+                assert_variant_spans(source, &sum.variants);
+                sum
+            }
+            other => panic!("{other:?}"),
+        })
+        .collect();
+    assert_eq!(
+        roster(&sums[0].variants),
+        [("A", Some("Real")), ("B", Some("Vector"))]
+    );
+    assert_eq!(
+        roster(&sums[1].variants),
+        [("Binary", None), ("Single", None)]
+    );
+    assert_eq!(
+        roster(&sums[2].variants),
+        [
+            ("Point", None),
+            ("Segment", Some("Real")),
+            ("Point", None),
+            ("Inner", Some("|")),
+        ]
+    );
+    let inner = sums[2].variants[3].payload.as_ref().unwrap();
+    assert_eq!(&source[inner.span.start..inner.span.end], "(C | D: Int)");
+    let AnnotationKind::Sum(inner) = &inner.kind else {
+        panic!();
+    };
+    assert_eq!(roster(inner), [("C", None), ("D", Some("Int"))]);
+    // A product's components still normalize as a product fiber.
+    let document = ast::parse_document("fiber P: Module = (x: Real, y: Real)").unwrap();
+    assert!(
+        matches!(&document.items[0].kind, ItemKind::Fiber(fiber) if fiber.components.len() == 2)
+    );
+}
+
+#[test]
+fn inline_sums_stand_where_a_fiber_type_does() {
+    for (source, written) in [
+        ("a: (Point | Segment: Real) = x", "(Point | Segment: Real)"),
+        ("f(s: (A | B)) = s", "(A | B)"),
+        ("x: List<(A | B: Int)> = l", "(A | B: Int)"),
+        ("x: (A | B)|None = none", "(A | B)"),
+        ("struct S = {mode: (On | Off)}", "(On | Off)"),
+        ("fiber P = (m: (On | Off), v: Real)", "(On | Off)"),
+    ] {
+        let document =
+            ast::parse_document(source).unwrap_or_else(|errors| panic!("{source}: {errors:?}"));
+        let debug = format!("{document:?}");
+        assert!(debug.contains("Sum(["), "{source}: {debug}");
+        let start = source.find(written).unwrap();
+        assert!(
+            debug.contains(&format!(
+                "span: Span {{ start: {start}, end: {} }}",
+                start + written.len()
+            )),
+            "{source}: {debug}"
+        );
+    }
+}
+
+#[test]
+fn constructors_name_one_variant_under_a_named_or_inline_head() {
+    let source = "Shape(A: 1.0)";
+    let expr = expression(source);
+    assert_expr_spans(source, &expr);
+    let ExprKind::Construct {
+        head: ConstructorHead::Named(NameRef::Local(head)),
+        variant,
+        payload: Some(payload),
+    } = &expr.kind
+    else {
+        panic!("{expr:?}");
+    };
+    assert_eq!((head.text.as_str(), variant.text.as_str()), ("Shape", "A"));
+    assert!(matches!(&payload.kind, ExprKind::Number(value) if value == "1.0"));
+
+    let source = "orbit::Shape(B: (X: 1, Y: v + 1))";
+    let expr = expression(source);
+    assert_expr_spans(source, &expr);
+    let ExprKind::Construct {
+        head: ConstructorHead::Named(NameRef::Qualified(head)),
+        payload: Some(payload),
+        ..
+    } = &expr.kind
+    else {
+        panic!("{expr:?}");
+    };
+    assert_eq!(head.namespace.text, "orbit");
+    assert!(matches!(&payload.kind, ExprKind::Product(entries) if entries.len() == 2));
+
+    // An inline roster heads a payload or a unit constructor.
+    for (source, variant, has_payload) in [
+        ("(A: Real | B)(A: 1.0)", "A", true),
+        ("(A: Real | B)(B)", "B", false),
+    ] {
+        let expr = expression(source);
+        assert_expr_spans(source, &expr);
+        let ExprKind::Construct {
+            head: ConstructorHead::Inline { variants, span },
+            variant: written,
+            payload,
+        } = &expr.kind
+        else {
+            panic!("{expr:?}");
+        };
+        assert_eq!(&source[span.start..span.end], "(A: Real | B)");
+        assert_eq!(roster(variants), [("A", Some("Real")), ("B", None)]);
+        assert_eq!(written.text, variant);
+        assert_eq!(payload.is_some(), has_payload);
+    }
+
+    // Only name resolution can tell these from calls, products and names.
+    assert!(matches!(
+        expression("Mode(Binary)").kind,
+        ExprKind::Call { .. }
+    ));
+    assert!(matches!(expression("(B: 1.0)").kind, ExprKind::Product(_)));
+    assert!(matches!(expression("Binary").kind, ExprKind::Name(_)));
+
+    // A constructor over an array of payloads is still one constructor.
+    let expr = expression("Shape(A: xs)");
+    assert!(
+        matches!(&expr.kind, ExprKind::Construct { payload: Some(payload), .. } if matches!(payload.kind, ExprKind::Name(_)))
+    );
+}
+
+#[test]
+fn sum_form_errors_are_typed_at_their_spans() {
+    for (source, written, expected) in [
+        (
+            "fiber M: Module = (A | B)",
+            "Module",
+            FormDiagnosticKind::SumAlgebra,
+        ),
+        (
+            "x = Shape(A: 1, B: 2)",
+            "(A: 1, B: 2)",
+            FormDiagnosticKind::ConstructorVariantCount { found: 2 },
+        ),
+        (
+            "x = (A: Real | B)(1.0)",
+            "(1.0)",
+            FormDiagnosticKind::ConstructorWithoutVariant,
+        ),
+        (
+            "x = (A: Real | B)(B, A)",
+            "(B, A)",
+            FormDiagnosticKind::ConstructorWithoutVariant,
+        ),
+        (
+            "x = (A: Real | B)(_)",
+            "(_)",
+            FormDiagnosticKind::ConstructorWithoutVariant,
+        ),
+    ] {
+        assert!(
+            !cartan_syntax::parse_document(source).has_errors(),
+            "{source}"
+        );
+        let errors = ast::parse_document(source).unwrap_err();
+        let [Error::Form(FormDiagnostic { kind, span })] = errors.as_slice() else {
+            panic!("{source}: {errors:?}");
+        };
+        assert_eq!(kind, &expected, "{source}");
+        assert_eq!(&source[span.start..span.end], written, "{source}");
+    }
+    // The grammar refuses one-variant rosters and mixed separators.
+    // So are arm guards, literal and alternative arm patterns, and several
+    // scrutinees.
+    for source in [
+        "fiber M = (A | B, C: Real)",
+        "fiber M = (A: Real, B | C)",
+        "x = match s { A(x) if c then 1 }",
+        "x = match s { 1 then 2 }",
+        "x = match s { A | B then 1 }",
+        "x = match a, b { A then 1 }",
+    ] {
+        assert!(
+            cartan_syntax::parse_document(source).has_errors(),
+            "{source}"
+        );
+    }
 }

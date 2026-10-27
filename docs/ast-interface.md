@@ -267,6 +267,33 @@ The postfix mark `x?` is `ExprKind::Lift { value, mark_span }` wherever it is
 written. Presence proofs, the left operand's optionality, fallback types and
 whether a mark has an operation to lift through are analysis checks.
 
+## Sum fibers
+
+The [sum fiber work](work/sum-fibers.md) supplies this interface under the
+workspace [sum fibers](../../docs/records/sum-fibers.md) record. `fiber Name =
+(A: T | B)` is `ItemKind::Sum(Sum { name, variants })`; a product declaration
+remains `ItemKind::Fiber`. Each `Variant { name, payload, span }` keeps declared
+order and duplicate names, and a unit variant has `payload: None`. An inline
+roster wherever a fiber type stands, including struct entries, fiber components,
+type arguments and before `|None`, is `AnnotationKind::Sum(Vec<Variant>)` with
+its span covering the parentheses. The grammar refuses a one-variant roster and
+mixed `,`/`|` separators; an algebra word on a sum declaration yields
+`FormDiagnosticKind::SumAlgebra` spanning the word.
+
+A constructor whose parentheses hold a tight `Name: value` argument is
+`ExprKind::Construct { head, variant, payload: Some(_) }`. `head` is
+`ConstructorHead::Named(NameRef)` or, for an inline roster such as
+`(A: Real | B)(A: 1.0)`, `ConstructorHead::Inline { variants, span }`. An
+inline head applied to one bare name, `(A: Real | B)(B)`, is a unit
+constructor with `payload: None`. Naming other than one variant yields
+`ConstructorVariantCount { found }`, and an inline head applied to anything
+else yields `ConstructorWithoutVariant`, both spanning the parenthesized
+arguments. `Mode(Binary)`, a headless `(B: x)` and a bare `Binary` stay
+`Call`, `Product` and `Name`: only name resolution and the stated annotation
+tell them from function calls, products and values. Variant membership, roster
+duplicates, payload fitting, alias identity and array construction are analysis
+checks. `match` is not yet normalized and remains an unsupported construct.
+
 ## Maps and configurables
 
 The [configurable source work](work/configurable-source-ast.md) supplies the

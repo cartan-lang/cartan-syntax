@@ -32,6 +32,7 @@ pub enum ItemKind {
     Use(Use),
     Binding(Binding),
     Fiber(Fiber),
+    Sum(Sum),
     Struct(Struct),
     Function(Function),
     While(While),
@@ -112,6 +113,22 @@ pub struct Fiber {
 pub struct Component {
     pub name: Name,
     pub annotation: Annotation,
+    pub span: Span,
+}
+
+/// `fiber Shape = (A: Real | B)`: a sum fiber's roster under an alias name.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Sum {
+    pub name: Name,
+    pub variants: Vec<Variant>,
+}
+
+/// One variant of a sum roster, in declared order. Duplicate names are kept;
+/// graph owns roster checks. A unit variant has no payload.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Variant {
+    pub name: Name,
+    pub payload: Option<Annotation>,
     pub span: Span,
 }
 
@@ -207,6 +224,8 @@ pub enum AnnotationKind {
     /// An inline struct type `{a: Real, b: Int}`, possibly empty; the
     /// annotation span covers the braces.
     Struct(Vec<StructEntry>),
+    /// An inline sum roster `(A: Real | B)`; the span covers the parentheses.
+    Sum(Vec<Variant>),
     /// `T|None`, the only union the type language admits.
     Optional {
         value: Box<Annotation>,
@@ -311,6 +330,15 @@ pub enum ExprKind {
         function: NameRef,
         arguments: Vec<Expr>,
     },
+    /// A sum constructor naming its variant, `Shape(A: 1.0)` or
+    /// `(A: Real | B)(B)`. A unit variant has no payload. A named head applied
+    /// to a bare name, `Mode(Binary)`, stays a [`ExprKind::Call`], since only
+    /// name resolution can tell it from a function call.
+    Construct {
+        head: ConstructorHead,
+        variant: Name,
+        payload: Option<Box<Expr>>,
+    },
     Index {
         target: Box<Expr>,
         indices: Vec<Expr>,
@@ -357,6 +385,15 @@ pub enum ExprKind {
     Body(Body),
     For(Box<Comprehension>),
     Reduce(Box<Reduction>),
+}
+
+/// The written head of a sum constructor.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ConstructorHead {
+    /// An alias name, possibly qualified.
+    Named(NameRef),
+    /// An inline roster; the span covers its parentheses.
+    Inline { variants: Vec<Variant>, span: Span },
 }
 
 /// The literal key of a component read or product entry.
@@ -609,6 +646,17 @@ pub enum FormDiagnosticKind {
     PatternTypeAnnotation {
         pattern_span: Span,
     },
+    /// An algebra word on a sum fiber declaration; the span is the word.
+    SumAlgebra,
+    /// A sum constructor naming other than one variant; the span covers the
+    /// parenthesized arguments.
+    ConstructorVariantCount {
+        found: usize,
+    },
+    /// An inline sum head applied to something other than one bare unit-variant
+    /// name, as in `(A: Real | B)(1.0)`; a bare payload never chooses a
+    /// variant. The span covers the parenthesized arguments.
+    ConstructorWithoutVariant,
 }
 
 /// Parse and normalize the supported source subset. No partial AST is returned.
