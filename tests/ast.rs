@@ -302,7 +302,7 @@ fn assert_expr_spans(source: &str, expr: &Expr) {
             assert_expr_spans(source, settings);
         }
         ExprKind::Body(body) => assert_body_spans(source, body),
-        ExprKind::For(comprehension) => {
+        ExprKind::For(comprehension) | ExprKind::Each(comprehension) => {
             assert_pattern_spans(source, &comprehension.binder);
             assert_expr_spans(source, &comprehension.collection);
             assert_expr_spans(source, &comprehension.body);
@@ -598,7 +598,6 @@ fn unsupported_constructs_and_optional_clauses_are_not_discarded() {
         "fiber Cell<k> = (v: Real)",
         "f(x: Real = 1) = x",
         "f(x) : { pad: 1 } = x",
-        "f(x: [Int; 2]) = x",
         "every 1 while true { x <- 1 }",
         "while true : { precision: 1 } { x <- 1 }",
         "while true { x := 1\n p <- x }",
@@ -2166,6 +2165,7 @@ fn roster(variants: &[Variant]) -> Vec<(&str, Option<&str>)> {
                     name.text.as_str()
                 }
                 AnnotationKind::Struct(_) => "{}",
+                AnnotationKind::Tuple(_) | AnnotationKind::TupleRepeat { .. } => "[]",
                 AnnotationKind::Sum(_) => "|",
                 AnnotationKind::Optional { .. } => "?",
             });
@@ -2930,4 +2930,175 @@ fn writes_take_a_subscript_key_on_the_state() {
     );
     // The `[` stands against the name, as an index's does.
     assert!(ast::parse_document("while true { u [i] <- e }").is_err());
+}
+
+#[test]
+fn each_preserves_ordered_walk_binders_body_and_utf8_spans() {
+    let source = "label = \"λ\"\nmain = each [x, _] in xs { y := +x\n y * 2 }";
+    let document = ast::parse_document(source).unwrap();
+    let ItemKind::Binding(binding) = &document.items[1].kind else {
+        panic!()
+    };
+    assert_expr_spans(source, &binding.value);
+    let ExprKind::Each(walk) = &binding.value.kind else {
+        panic!()
+    };
+    assert_eq!(
+        &source[binding.value.span.start..binding.value.span.end],
+        "each [x, _] in xs { y := +x\n y * 2 }"
+    );
+    let PatternKind::List(patterns) = &walk.binder.kind else {
+        panic!()
+    };
+    assert_eq!(patterns.len(), 2);
+    assert!(matches!(patterns[1].kind, PatternKind::Wildcard));
+    assert_eq!(
+        &source[walk.collection.span.start..walk.collection.span.end],
+        "xs"
+    );
+    let ExprKind::Body(body) = &walk.body.kind else {
+        panic!()
+    };
+    assert!(matches!(
+        body.items.as_slice(),
+        [BodyItem::Local(_), BodyItem::Result(_)]
+    ));
+}
+
+#[test]
+fn each_is_distinct_from_for_and_nests_without_collection_elaboration() {
+    let ExprKind::Each(walk) = expression("each x in 0..n x + 1").kind else {
+        panic!()
+    };
+    assert!(matches!(walk.collection.kind, ExprKind::Range { .. }));
+    assert!(matches!(walk.body.kind, ExprKind::Binary { .. }));
+    let ExprKind::Each(walk) = expression("each x in xs { each y in ys { x + y } }").kind else {
+        panic!()
+    };
+    let ExprKind::Body(body) = &walk.body.kind else {
+        panic!()
+    };
+    assert!(matches!(
+        &body.items[0],
+        BodyItem::Result(Expr {
+            kind: ExprKind::Each(_),
+            ..
+        })
+    ));
+    assert!(matches!(
+        expression("for x in 0..n { x }").kind,
+        ExprKind::For(_)
+    ));
+    // Syntax preserves even collections whose semantic eligibility is undecided.
+    assert!(matches!(
+        expression("each x in [] { x }").kind,
+        ExprKind::Each(_)
+    ));
+}
+
+#[test]
+fn each_keeps_body_validation_and_rejects_map_entry_surface() {
+    let errors = ast::parse_expression("each x in xs { a := x }").unwrap_err();
+    assert!(matches!(
+        &errors[0],
+        Error::Form(FormDiagnostic {
+            kind: FormDiagnosticKind::BodyResultCount { found: 0 },
+            ..
+        })
+    ));
+    assert!(ast::parse_expression("each k in ks { k => 1 }").is_err());
+    assert!(ast::parse_expression("each x xs { x }").is_err());
+}
+
+#[test]
+fn tuple_annotations_keep_nested_slots_and_unexpanded_widths() {
+    let source = "label = \"λ\"\nvalue: [Int, [Real; 100000000000000000000], List<Real>] = []";
+    let document = ast::parse_document(source).unwrap();
+    let ItemKind::Binding(binding) = &document.items[1].kind else {
+        panic!()
+    };
+    let annotation = binding.annotation.as_ref().unwrap();
+    let text = |span: Span| &source[span.start..span.end];
+    assert_eq!(
+        text(annotation.span),
+        "[Int, [Real; 100000000000000000000], List<Real>]"
+    );
+    let AnnotationKind::Tuple(items) = &annotation.kind else {
+        panic!()
+    };
+    assert_eq!(items.len(), 3);
+    assert_eq!(text(items[0].span), "Int");
+    let AnnotationKind::TupleRepeat {
+        item,
+        width: TupleWidth::Number(width),
+    } = &items[1].kind
+    else {
+        panic!()
+    };
+    assert_eq!(text(item.span), "Real");
+    assert_eq!(text(width.span), width.text);
+    assert_eq!(width.text, "100000000000000000000");
+    assert!(matches!(items[2].kind, AnnotationKind::Apply { .. }));
+    for (written, expected) in [("[Real; n]", "n"), ("[Real; _]", "_")] {
+        let f = function(&format!("f(x: {written}) = x"));
+        let Some(ParameterAnnotation::Value(Annotation {
+            kind:
+                AnnotationKind::TupleRepeat {
+                    width: TupleWidth::Name(name),
+                    ..
+                },
+            ..
+        })) = &f.parameters[0].annotation
+        else {
+            panic!()
+        };
+        assert_eq!(name.text, expected);
+    }
+    // Numeric validity and zero-width eligibility are graph decisions.
+    for width in ["0", "1.5", "1e3"] {
+        let f = function(&format!("f(x: [Int; {width}]) = x"));
+        assert!(matches!(
+            f.parameters[0].annotation,
+            Some(ParameterAnnotation::Value(Annotation {
+                kind: AnnotationKind::TupleRepeat { .. },
+                ..
+            }))
+        ));
+    }
+}
+
+#[test]
+fn tuple_annotations_reach_value_and_signature_slots_without_grammar_widening() {
+    for source in [
+        "state x: [Int, Real] = [1, 2.0]",
+        "x = { y: [Int, Int] := [1, 2]\n y }",
+        "struct S = {pair: [Int, Real]}",
+        "f(g: [Int; 2] -> [Real, Int]) = 1",
+        "f(x: List<[Int, Real]>) = x",
+    ] {
+        let parsed = ast::parse_document(source);
+        assert!(parsed.is_ok(), "{source}: {parsed:?}");
+    }
+    // The existing grammar requires an entry and a width token after `;`.
+    assert!(ast::parse_document("x: [] = []").is_err());
+    assert!(ast::parse_document("x: [Int;] = []").is_err());
+}
+
+#[test]
+fn repeated_tuple_annotation_at_leading_body_local_keeps_known_grammar_refusal() {
+    // The competing map-value reading reaches the literal repetition refusal.
+    // Explicit tuple slots work here; fixing the ambiguity is a grammar task.
+    let source = "x = { y: [Int; 2] := [1, 2]\n y }";
+    let errors = ast::parse_document(source).unwrap_err();
+    let [Error::Grammar(diagnostic)] = errors.as_slice() else {
+        panic!()
+    };
+    assert!(matches!(
+        diagnostic.kind,
+        cartan_syntax::DiagnosticKind::Stated {
+            rule: cartan_syntax::Rule::ListRepeat,
+            refused: true,
+            ..
+        }
+    ));
 }

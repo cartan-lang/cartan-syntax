@@ -227,6 +227,13 @@ pub enum AnnotationKind {
     /// An inline struct type `{a: Real, b: Int}`, possibly empty; the
     /// annotation span covers the braces.
     Struct(Vec<StructEntry>),
+    /// Fixed positional annotations, `[Int, Real]`, in source order.
+    Tuple(Vec<Annotation>),
+    /// `[T; width]`, preserving the width without expanding the entries.
+    TupleRepeat {
+        item: Box<Annotation>,
+        width: TupleWidth,
+    },
     /// An inline sum roster `(A: Real | B)`; the span covers the parentheses.
     Sum(Vec<Variant>),
     /// `T|None`, the only union the type language admits.
@@ -235,6 +242,14 @@ pub enum AnnotationKind {
         /// The `None` alternative.
         none_span: Span,
     },
+}
+
+/// A tuple repetition width as written; analysis resolves names and validates
+/// numeric widths. A name `_` remains distinct from every numeric width.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TupleWidth {
+    Number(NumberLiteral),
+    Name(Name),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -387,6 +402,9 @@ pub enum ExprKind {
     Periodic(Box<Expr>),
     Body(Body),
     For(Box<Comprehension>),
+    /// A value-producing ordered walk, `each x in xs { value }`.
+    /// Collection eligibility and result element types belong to analysis.
+    Each(Box<Comprehension>),
     Reduce(Box<Reduction>),
     Match(Box<Match>),
 }

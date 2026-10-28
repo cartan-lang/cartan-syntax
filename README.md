@@ -121,7 +121,8 @@ independent of the Python workspace.
   configurable constructors and colon/literal-dot application, strings, tagged
   templates with structured format specs, struct declarations, sum rosters,
   constructors and `match`,
-  function-signature parameter annotations, and source-form checks. Import paths retain raw text, decoded strings and byte spans; syntax
+  function-signature parameter annotations, tuple annotations, value-producing
+  `each` walks, and source-form checks. Import paths retain raw text, decoded strings and byte spans; syntax
   performs no file loading, name resolution or formatting. Other constructs may parse into
   a CST but return a structured unsupported-form error during normalization.
   Neither API performs semantic validation or verifies execution support.

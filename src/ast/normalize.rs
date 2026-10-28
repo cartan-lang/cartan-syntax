@@ -789,6 +789,35 @@ impl Reader<'_> {
                 span: span(node),
             });
         }
+        if let Some(tuple) = node.child("list") {
+            shape(node, &["list"], &[])?;
+            shape(tuple, &["item", "width"], &[])?;
+            let items = tuple.children_named("item");
+            let kind = if let Some(width) = tuple.child("width") {
+                let items: Vec<_> = items.collect();
+                let [item] = items.as_slice() else {
+                    return Err(unsupported(tuple));
+                };
+                AnnotationKind::TupleRepeat {
+                    item: Box::new(self.value_type(item)?),
+                    width: if width.kind == "number" {
+                        TupleWidth::Number(self.number(width)?)
+                    } else {
+                        TupleWidth::Name(self.name(width)?)
+                    },
+                }
+            } else {
+                AnnotationKind::Tuple(
+                    items
+                        .map(|item| self.value_type(item))
+                        .collect::<Result<_>>()?,
+                )
+            };
+            return Ok(Annotation {
+                kind,
+                span: span(node),
+            });
+        }
         shape(node, &["name"], &["type_annotation", "number"])?;
         let name = self.name(field(node, "name")?)?;
         let kind = if node.children.iter().any(|child| child.kind == "<") {
@@ -1235,6 +1264,14 @@ impl Reader<'_> {
                 ExprKind::For(Box::new(Comprehension {
                     binder: self.pattern(field(node, "binders")?)?,
                     collection: self.expr(field(node, "space")?)?,
+                    body: self.expr(field(node, "body")?)?,
+                }))
+            }
+            "each_expression" => {
+                shape(node, &["binders", "collection", "body"], &[])?;
+                ExprKind::Each(Box::new(Comprehension {
+                    binder: self.pattern(field(node, "binders")?)?,
+                    collection: self.expr(field(node, "collection")?)?,
                     body: self.expr(field(node, "body")?)?,
                 }))
             }

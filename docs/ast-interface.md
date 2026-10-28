@@ -58,9 +58,9 @@ The source constructs are:
 | Items | Imports, ordinary and `param` bindings, `state` declarations, fiber declarations, struct declarations, function equations, and guarded `while` update blocks. |
 | Functions | Name, ordered parameters with patterns and optional value or function-signature annotations, and expression body. |
 | Fibers | Name, written base annotation such as `Module`, and ordered named components with annotations. |
-| Annotations | Named types, generic applications and inline struct types, preserving names and numeric arguments such as `Array<Primitive, 1>` without interpreting rank. |
+| Annotations | Named types, generic applications, inline struct types and fixed positional tuple annotations, preserving names and numeric arguments such as `Array<Primitive, 1>` without interpreting rank. |
 | Patterns | Name, wildcard, list, positional site pattern with its enclosing annotation retained, constructor, named components and brace entries, all nesting. |
-| Expressions | Literal number/boolean/string, tagged template, local/qualified name, unary/binary operation, conditional, local/qualified call, indexing, `of` component read, product value, `but` update, `none`, presence default `??`, absence mark `?`, list, named map, map join, configurable constructor/application, range, `periodic`, body, `for` comprehension and `reduce`. |
+| Expressions | Literal number/boolean/string, tagged template, local/qualified name, unary/binary operation, conditional, local/qualified call, indexing, `of` component read, product value, `but` update, `none`, presence default `??`, absence mark `?`, list, named map, map join, configurable constructor/application, range, `periodic`, body, `for` and value-producing `each` comprehensions, and `reduce`. |
 | Body | Ordered `BodyItem::Local` and `BodyItem::Result` entries, with exactly one result. A result need not be last. |
 | Update block | Written guard and ordered writes, preserving target names, subscript keys, values and spans. |
 
@@ -193,6 +193,37 @@ a `struct` alias and decides where a struct is semantically eligible. The
 [structural annotation work](work/structural-annotations.md) records this slice.
 Inline product descriptions such as `(a: Real, b: Real)` remain an
 `UnsupportedConstruct` of kind `component` in annotations.
+
+## Tuples and ordered value walks
+
+Fixed positional annotations `[Int, Real]` use
+`AnnotationKind::Tuple(Vec<Annotation>)`, preserving each written slot in order.
+`[T; width]` uses `TupleRepeat { item, width }`; `TupleWidth::Number` retains a
+`NumberLiteral` and `TupleWidth::Name` retains a `Name`, including `_`. The outer
+annotation span includes the brackets; item and width spans identify the written
+tokens. Normalization never expands the repeated form or converts its width to a
+machine integer. A known grammar ambiguity still refuses a repeated tuple
+annotation on a leading body local, such as `{ y: [Int; 2] := v; y }`, through
+the `ListRepeat` diagnostic; explicit slots `[Int, Int]` work there.
+Graph resolves width names and checks numeric validity and
+eligibility. The existing grammar requires at least one explicit slot and does
+not admit an empty `[]` annotation. `List<T>` remains an ordinary generic `Apply`.
+
+Bracket literals retain `ExprKind::List(Vec<Expr>)` for API compatibility. The
+accepted language contract assigns them fixed positional tuple identity; this
+AST spelling does not classify them as runtime-length Lists. Graph owns the
+migration of its existing literal interpretation. See the workspace
+[pattern contract](../../docs/records/patterns.md).
+
+`each x in xs { value }` uses `ExprKind::Each(Box<Comprehension>)`, distinct from
+`For` and reusing the ordered binder, collection and body expressions. Bare value
+bodies and nested walks retain their original spans. Braced bodies keep their
+ordinary local/result ordering and require exactly one result. Syntax preserves
+collection expressions without deciding their eligibility, element type or
+runtime length; graph owns those checks under the
+[collection contract](../../docs/records/collections.md). Map-producing entry
+bodies remain outside this normalization slice. AST admission does not establish
+portable List storage or execution on any backend.
 
 ## Function-signature parameters
 
@@ -435,7 +466,7 @@ The adapter must explicitly reject orders it cannot represent, rather than
 misclassify them as invalid source syntax. Update bodies currently support
 ordered writes only; other update-body forms are outside this AST subset.
 
-Only named types, generic applications and inline structs, the imports above,
+Only the value annotations described above, the imports above,
 and the listed expression forms are normalized. Default arguments,
 function-header configuration/lock clauses, sum fibers, qualified annotations,
 general `fold`, guard/configuration clauses on reductions and inline-description pattern heads
