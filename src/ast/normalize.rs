@@ -948,6 +948,7 @@ impl Reader<'_> {
                 let operator = field(node, "operator")?;
                 let operator = match self.text(operator).trim() {
                     "-" => UnaryOperator::Negate,
+                    "+" => UnaryOperator::Plus,
                     "not" => UnaryOperator::Not,
                     _ => return Err(unsupported(operator)),
                 };

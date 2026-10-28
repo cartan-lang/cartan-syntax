@@ -2696,3 +2696,63 @@ fn struct_entries_take_an_optional_type() {
     // Fiber components still take a bare fiber type.
     assert!(cartan_syntax::parse_document("fiber P = (a: Real|None, b: Real)").has_errors());
 }
+
+#[test]
+fn unary_plus_reads_as_unary_minus_does() {
+    fn unary(expr: &Expr) -> (UnaryOperator, &Expr) {
+        let ExprKind::Unary { operator, operand } = &expr.kind else {
+            panic!("{expr:?}");
+        };
+        (*operator, operand)
+    }
+    for (plus, minus) in [
+        ("+0.5", "-0.5"),
+        ("+x ^ 2", "-x ^ 2"),
+        ("+x of v", "-x of v"),
+    ] {
+        let (plus, minus) = (expression(plus), expression(minus));
+        let (plus_operator, plus_operand) = unary(&plus);
+        let (minus_operator, minus_operand) = unary(&minus);
+        assert_eq!(
+            (plus_operator, minus_operator),
+            (UnaryOperator::Plus, UnaryOperator::Negate)
+        );
+        assert_eq!(plus_operand, minus_operand);
+    }
+    let source = "[1, -0.5, +0.5]";
+    let ExprKind::List(items) = expression(source).kind else {
+        panic!();
+    };
+    assert_eq!(unary(&items[2]).0, UnaryOperator::Plus);
+    assert_eq!(&source[items[2].span.start..items[2].span.end], "+0.5");
+    // Binary forms are unchanged, and a unary operand follows a binary operator.
+    assert!(matches!(
+        expression("1 +0.5").kind,
+        ExprKind::Binary {
+            operator: BinaryOperator::Add,
+            ..
+        }
+    ));
+    let ExprKind::Binary { right, .. } = expression("1 + +0.5").kind else {
+        panic!();
+    };
+    assert_eq!(unary(&right).0, UnaryOperator::Plus);
+    // A line opening with `+` continues the line above; one opening with `-` does not.
+    let ExprKind::List(items) = expression("[1\n +2]").kind else {
+        panic!();
+    };
+    assert!(matches!(
+        items.as_slice(),
+        [Expr {
+            kind: ExprKind::Binary {
+                operator: BinaryOperator::Add,
+                ..
+            },
+            ..
+        }]
+    ));
+    let ExprKind::List(items) = expression("[1\n -2]").kind else {
+        panic!();
+    };
+    assert_eq!(items.len(), 2);
+}

@@ -18,10 +18,11 @@
 //! leading newlines — `cont("+")` is the pattern `(\n[ \t\r]*)*\+`,
 //! read as `"+"` — so the longest match at a line end takes the
 //! operator rather than the separator. **A token that can begin an
-//! expression never continues the line above**: `-`,
+//! expression never continues the line above**, with one exception: `-`,
 //! `not`, `..` and `..=` are no continuation, so `[1\n -2\n 3]` keeps
-//! its three items and `[0..4\n ..8]` its two axes, and unary `+`,
-//! which would have been the one exception, is retired. A range is
+//! its three items and `[0..4\n ..8]` its two axes, while unary `+`,
+//! which may begin an expression, is read as the binary continuation at
+//! the start of a line, so `[1\n +2]` is the one item `1 + 2`. A range is
 //! complete at its operator, `0..` being the open range, so `..` takes
 //! no newline after it either. A word operator that may open
 //! a line — `with`, `but`, `and`, `or`, `else` — takes one whitespace character
@@ -1444,8 +1445,8 @@ fn build() -> Grammar {
                     prefix("unary_expression", NOT, seq(vec![field("operator", "not"), nl()]), "operand")
                         .doc("`not`, above the comparisons and below `and`"),
                     prefix("unary_expression", NEG, seq(vec![field("operator", "-"), nl()]), "operand"),
-                    prefix("unary_plus_refusal", NEG, refusing("+", Stated::UnaryPlus.label()), "operand")
-                        .doc("unary `+`, retired: it returned its operand unchanged. The refusal\nprints nowhere, so the editors' parser reads no unary `+` either."),
+                    prefix("unary_expression", NEG, seq(vec![field("operator", "+"), nl()]), "operand")
+                        .doc("unary `+`, standing wherever unary `-` does, so `+0.5` and `-0.5`\nread alike. A line opening with `+` still continues the line above,\nthe continuation token taking it as the binary operator."),
                     infix("range_expression", RANGE, Assoc::Left, "left", seq(vec![field("operator", range_op.clone()), not_ahead("{")]), "right")
                         .doc("`a..b` / `a..=b` — the loosest operator there is, Rust's own\nprecedence, so `0..n - 1` reads `0..(n - 1)`. It groups left here,\nand a later analysis stage refuses `a..b..c`: a range states two endpoints.\nAn end reads no brace, which is a header's body after `for i in 3..`.\nThe end stands on the operator's line: `0..` is complete as the open\nrange, so a newline after the operator ends it."),
                     postfix("periodic_expression", RANGE, "axis", PERIODIC)

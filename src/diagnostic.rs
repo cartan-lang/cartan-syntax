@@ -157,8 +157,6 @@ pub enum Rule {
     WhileGuard,
     /// A conditional with no `then`.
     Then,
-    /// A unary `+`, retired.
-    UnaryPlus,
     /// A dot spelling a namespace step.
     NamespaceDot,
     /// A dot reading a value's component.
@@ -246,7 +244,6 @@ impl Rule {
         Rule::UpdateBody,
         Rule::WhileGuard,
         Rule::Then,
-        Rule::UnaryPlus,
         Rule::NamespaceDot,
         Rule::ComponentDot,
         Rule::CallHead,
@@ -333,7 +330,6 @@ impl Rule {
             | Rule::AnnotationAlternative
             | Rule::UpdateBody
             | Rule::WhileGuard
-            | Rule::UnaryPlus
             | Rule::NamespaceDot
             | Rule::ComponentDot
             | Rule::CallHead

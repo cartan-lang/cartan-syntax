@@ -523,6 +523,7 @@ pub enum ConfigureKind {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum UnaryOperator {
     Negate,
+    Plus,
     Not,
 }
 

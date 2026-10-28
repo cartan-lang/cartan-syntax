@@ -408,9 +408,11 @@ dropped. This scoped AST does not imply complete
 language validation, and CST acceptance alone remains weaker evidence.
 
 The grammar's current precedence and newline rules are authoritative for this
-transfer. The parser it replaced in codegen erased newlines, accepted unary `+`
-and used different power associativity; consumers must not recreate those
-differences. The Conway fixture moves its continued subtraction operator to the
+transfer. The parser it replaced in codegen erased newlines and used different
+power associativity; consumers must not recreate those differences. Unary `+`
+is `UnaryOperator::Plus` and stands wherever unary `-` does, so `+0.5` and
+`-0.5` read alike. A line opening with `+` still continues the line above as
+the binary operator, so `[1\n +2]` is one item while `[1\n -2]` is two. The Conway fixture moves its continued subtraction operator to the
 preceding line, as the newline rule requires.
 
 The value body preserves local/result order, including a local after the result.
