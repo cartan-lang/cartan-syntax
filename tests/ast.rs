@@ -2756,3 +2756,178 @@ fn unary_plus_reads_as_unary_minus_does() {
     };
     assert_eq!(items.len(), 2);
 }
+
+fn range_parts(expr: &Expr) -> (Option<&Expr>, Option<&Expr>, bool) {
+    let ExprKind::Range {
+        start,
+        end,
+        inclusive,
+    } = &expr.kind
+    else {
+        panic!("{expr:?}");
+    };
+    (start.as_deref(), end.as_deref(), *inclusive)
+}
+
+fn binding_value(source: &str) -> Expr {
+    let document =
+        ast::parse_document(source).unwrap_or_else(|errors| panic!("{source}: {errors:?}"));
+    let ItemKind::Binding(binding) = &document.items[0].kind else {
+        panic!("{source}");
+    };
+    assert_expr_spans(source, &binding.value);
+    binding.value.clone()
+}
+
+#[test]
+fn open_ranges_are_ordinary_values() {
+    let name = |expr: Option<&Expr>| match expr.map(|expr| &expr.kind) {
+        Some(ExprKind::Name(name)) => Some(name.text.clone()),
+        None => None,
+        other => panic!("{other:?}"),
+    };
+    for (source, start, end, inclusive) in [
+        ("r = ..", None, None, false),
+        ("r = ..e", None, Some("e"), false),
+        ("r = ..=e", None, Some("e"), true),
+        ("r = s..", Some("s"), None, false),
+        ("r = s..e", Some("s"), Some("e"), false),
+        ("r = s..=e", Some("s"), Some("e"), true),
+    ] {
+        let value = binding_value(source);
+        let (written_start, written_end, written_inclusive) = range_parts(&value);
+        assert_eq!(
+            (name(written_start), name(written_end), written_inclusive),
+            (start.map(String::from), end.map(String::from), inclusive),
+            "{source}"
+        );
+        assert_eq!(&source[value.span.start..], &source[4..], "{source}");
+    }
+    // A newline after the operator ends the range.
+    let document = ast::parse_document("r = 0..\ny = 1").unwrap();
+    assert_eq!(document.items.len(), 2);
+    // Arguments, conditional arms, parentheses, boxes and subscripts.
+    let ExprKind::Call { arguments, .. } = binding_value("x = f(.., 2.., ..=3)").kind else {
+        panic!();
+    };
+    let ends: Vec<_> = arguments
+        .iter()
+        .map(|argument| {
+            let (start, end, inclusive) = range_parts(argument);
+            (start.is_some(), end.is_some(), inclusive)
+        })
+        .collect();
+    assert_eq!(
+        ends,
+        [
+            (false, false, false),
+            (true, false, false),
+            (false, true, true)
+        ]
+    );
+    let ExprKind::If {
+        consequence,
+        alternative: Some(alternative),
+        ..
+    } = binding_value("x = if c then s.. else ..").kind
+    else {
+        panic!();
+    };
+    assert_eq!(range_parts(&consequence).1, None);
+    assert_eq!(range_parts(&alternative).0, None);
+    range_parts(&binding_value("x = (..)"));
+    let ExprKind::List(axes) = binding_value("x = [.., 0..n periodic, ..=m]").kind else {
+        panic!();
+    };
+    assert!(matches!(axes[1].kind, ExprKind::Periodic(_)));
+    let ExprKind::Index { indices, .. } = binding_value("x = a[.., 3]").kind else {
+        panic!();
+    };
+    assert_eq!(range_parts(&indices[0]), (None, None, false));
+    // `..` begins no continuation: `[1\n ..8]` keeps two items.
+    let ExprKind::List(items) = binding_value("x = [1\n ..8]").kind else {
+        panic!();
+    };
+    assert_eq!(items.len(), 2);
+}
+
+#[test]
+fn the_range_binds_loosest_and_never_chains() {
+    for (source, start, end) in [
+        ("x = 0..n - 1", "0", "n - 1"),
+        ("x = ..n - 1", "", "n - 1"),
+        ("x = a ?? 0..n or b", "a ?? 0", "n or b"),
+        ("x = i + 1..=j * 2", "i + 1", "j * 2"),
+        ("x = s.. - 1", "s", "- 1"),
+    ] {
+        let value = binding_value(source);
+        let (written_start, written_end, _) = range_parts(&value);
+        let text = |expr: Option<&Expr>| {
+            expr.map(|expr| source[expr.span.start..expr.span.end].trim().to_string())
+                .unwrap_or_default()
+        };
+        assert_eq!(
+            (text(written_start), text(written_end)),
+            (start.into(), end.into()),
+            "{source}"
+        );
+    }
+    for source in [
+        "x = a..b..c",
+        "x = ..a..b",
+        "x = a..b..",
+        "x = ..a..",
+        "x = a.. ..b",
+    ] {
+        let errors = ast::parse_document(source).unwrap_err();
+        assert!(
+            matches!(
+                errors.as_slice(),
+                [Error::Form(FormDiagnostic {
+                    kind: FormDiagnosticKind::RangeChain,
+                    ..
+                })]
+            ),
+            "{source}: {errors:?}"
+        );
+    }
+}
+
+#[test]
+fn writes_take_a_subscript_key_on_the_state() {
+    let source = "while true {\n  u[box] <- e\n  v[lo..hi] <- 1\n  w[i, j] <- 2\n  y[.., 3] <- 3\n  z <- 4\n}";
+    let document = ast::parse_document(source).unwrap_or_else(|errors| panic!("{errors:?}"));
+    let ItemKind::While(update) = &document.items[0].kind else {
+        panic!();
+    };
+    let written: Vec<_> = update
+        .writes
+        .iter()
+        .map(|write| {
+            assert_name_span(source, &write.target);
+            for key in &write.keys {
+                assert_expr_spans(source, key);
+            }
+            assert_expr_spans(source, &write.value);
+            assert!(source[write.span.start..write.span.end].starts_with(&write.target.text));
+            let keys: Vec<_> = write
+                .keys
+                .iter()
+                .map(|key| &source[key.span.start..key.span.end])
+                .collect();
+            (write.target.text.as_str(), keys)
+        })
+        .collect();
+    assert_eq!(
+        written,
+        [
+            ("u", vec!["box"]),
+            ("v", vec!["lo..hi"]),
+            ("w", vec!["i", "j"]),
+            ("y", vec!["..", "3"]),
+            ("z", vec![]),
+        ]
+    );
+    // The `[` stands against the name, as an index's does.
+    assert!(ast::parse_document("while true { u [i] <- e }").is_err());
+}

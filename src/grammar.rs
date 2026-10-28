@@ -1407,6 +1407,9 @@ fn build() -> Grammar {
                     sym("each_expression"),
                     sym("fold_expression"),
                     sym("match_expression"),
+                    // after the prefix `..e`, which takes the end where one
+                    // follows
+                    sym("full_range"),
                 ]),
                 vec![
                     prefix(
@@ -1447,8 +1450,12 @@ fn build() -> Grammar {
                     prefix("unary_expression", NEG, seq(vec![field("operator", "-"), nl()]), "operand"),
                     prefix("unary_expression", NEG, seq(vec![field("operator", "+"), nl()]), "operand")
                         .doc("unary `+`, standing wherever unary `-` does, so `+0.5` and `-0.5`\nread alike. A line opening with `+` still continues the line above,\nthe continuation token taking it as the binary operator."),
+                    prefix("range_to", RANGE, seq(vec![field("operator", range_op.clone()), not_ahead("{")]), "end")
+                        .doc("`..e` / `..=e` — a range with no start, an ordinary value as any\nrange is: `r = ..e`, `f(..=e)`. Its end reads at the range's own\nprecedence, so `..n - 1` is `..(n - 1)`."),
                     infix("range_expression", RANGE, Assoc::Left, "left", seq(vec![field("operator", range_op.clone()), not_ahead("{")]), "right")
                         .doc("`a..b` / `a..=b` — the loosest operator there is, Rust's own\nprecedence, so `0..n - 1` reads `0..(n - 1)`. It groups left here,\nand a later analysis stage refuses `a..b..c`: a range states two endpoints.\nAn end reads no brace, which is a header's body after `for i in 3..`.\nThe end stands on the operator's line: `0..` is complete as the open\nrange, so a newline after the operator ends it."),
+                    postfix("range_from", RANGE, "start", field("operator", range_op.clone()))
+                        .doc("`s..` — a range with no end, where no end follows the operator\n: the range above takes one where it can. A newline after the\noperator ends it, so `r = 0..` is complete."),
                     postfix("periodic_expression", RANGE, "axis", PERIODIC)
                         .doc("`0..n periodic` — the box axis that wraps. It\nstands on a range and nowhere else, so it reads at the range's own\nprecedence and a later analysis stage refuses it on anything but a range: the\nword states an axis of a box, and a box's axis is a range."),
                     infix("binary_expression", OR, Assoc::Left, "left", seq(vec![field("operator", cont_word("or")), nl()]), "right"),
@@ -1720,13 +1727,18 @@ fn build() -> Grammar {
                 choice(vec![sym("open_range"), expr()]),
             ),
             def(
+                "full_range",
+                "`..` — the range with neither end, an ordinary value: `r = ..`,\n\
+                 `f(..)`. It stands where no end follows; `..e` takes one.",
+                field("operator", Rule::from("..")),
+            ),
+            def(
                 "open_range",
-                "An axis open at one end or both. In a subscript\n\
-                 the target's own box bounds the missing end; as an entry of a\n\
-                 `for` header's box literal it states an axis the comprehension\n\
-                 does not bound, and the comprehension is a rule. A later analysis stage\n\
-                 refuses it anywhere else. `..=` with no end has nothing to\n\
-                 reach, which a later analysis stage says.",
+                "An axis open at one end or both, as a List or box entry or a\n\
+                 subscript's selector, where the target's own box bounds the\n\
+                 missing end. Elsewhere the same ranges are ordinary values\n\
+                 through `range_to`, `range_from` and `full_range`. `..=` with no\n\
+                 end has nothing to reach, which a later analysis stage says.",
                 open_range(&range_op, expr, |r| prec(-1, r)),
             ),
             def(
@@ -2137,7 +2149,7 @@ fn build() -> Grammar {
             def(
                 "list",
                 "a List literal, and the box literal a header walks: an entry may\n\
-                 be an open range, which only a `for` header's box admits",
+                 be an open range, as in `[.., 0..n]`",
                 seq(vec![
                     "[".into(),
                     items(seq(vec![
@@ -2338,8 +2350,17 @@ fn build() -> Grammar {
             ),
             def(
                 "write",
-                "`p <- e` — this port takes that expression's value, one batch",
-                seq(vec![field("target", sym("identifier")), "<-".into(), nl(), field("value", expr())]),
+                "`p <- e` — this port takes that expression's value, one batch —\n\
+                 and `u[box] <- e`, `u[lo..hi] <- e`, `u[i, j] <- e`, a write keyed\n\
+                 by a subscript on the state: only the selected sites take the\n\
+                 value. The `[` stands against the name, as an index's does.",
+                seq(vec![
+                    field("target", sym("identifier")),
+                    optional(field("key", sym("subscript"))),
+                    "<-".into(),
+                    nl(),
+                    field("value", expr()),
+                ]),
             ),
             // ---- tokens --------------------------------------------------
             def(

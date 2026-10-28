@@ -201,9 +201,12 @@ pub struct While {
     pub body_span: Span,
 }
 
+/// `p <- e`, or the keyed `u[k, …] <- e` writing only the selected sites.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Write {
     pub target: Name,
+    /// The subscript's selectors in order; empty for a whole-state write.
+    pub keys: Vec<Expr>,
     pub value: Expr,
     pub span: Span,
 }

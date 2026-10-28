@@ -529,9 +529,14 @@ impl Reader<'_> {
                         if write.kind != "write" {
                             return Err(unsupported(write));
                         }
-                        shape(write, &["target", "value"], &[])?;
+                        shape(write, &["target", "key", "value"], &[])?;
                         Ok(Write {
                             target: self.name(field(write, "target")?)?,
+                            keys: write
+                                .child("key")
+                                .map(|key| children(key).map(|node| self.expr(node)).collect())
+                                .transpose()?
+                                .unwrap_or_default(),
                             value: self.expr(field(write, "value")?)?,
                             span: span(write),
                         })
@@ -1142,15 +1147,17 @@ impl Reader<'_> {
                     .map(|node| self.expr(node))
                     .collect::<Result<_>>()?,
             ),
-            "range_expression" | "open_range" | "header_open_range" => {
+            "range_expression" | "open_range" | "header_open_range" | "range_from" | "range_to"
+            | "full_range" => {
                 shape(node, &["left", "right", "start", "end", "operator"], &[])?;
                 let start = node.child("left").or_else(|| node.child("start"));
                 let end = node.child("right").or_else(|| node.child("end"));
-                if start
-                    .into_iter()
-                    .chain(end)
-                    .any(|child| child.kind == "range_expression")
-                {
+                if start.into_iter().chain(end).any(|child| {
+                    matches!(
+                        child.kind.as_str(),
+                        "range_expression" | "range_from" | "range_to" | "full_range"
+                    )
+                }) {
                     return Err(form(node, FormDiagnosticKind::RangeChain));
                 }
                 ExprKind::Range {

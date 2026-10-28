@@ -62,12 +62,27 @@ The source constructs are:
 | Patterns | Name, wildcard, list, positional site pattern with its enclosing annotation retained, constructor, named components and brace entries, all nesting. |
 | Expressions | Literal number/boolean/string, tagged template, local/qualified name, unary/binary operation, conditional, local/qualified call, indexing, `of` component read, product value, `but` update, `none`, presence default `??`, absence mark `?`, list, named map, map join, configurable constructor/application, range, `periodic`, body, `for` comprehension and `reduce`. |
 | Body | Ordered `BodyItem::Local` and `BodyItem::Result` entries, with exactly one result. A result need not be last. |
-| Update block | Written guard and ordered writes, preserving target names, values and spans. |
+| Update block | Written guard and ordered writes, preserving target names, subscript keys, values and spans. |
 
 Operators use enums, while names and number spellings remain strings.
 Indexing retains its source expression and index expressions. A list of periodic
 ranges remains a list containing periodic range expressions; recognizing a
-domain belongs to analysis. Comprehensions retain their pattern, collection and
+domain belongs to analysis.
+
+Under the workspace [domains and reads](../../docs/records/array-fibers.md#domains-and-reads)
+record, ranges are ordinary values. `s..e`, `s..=e`, `s..`, `..e`, `..=e` and
+`..` are each `ExprKind::Range { start, end, inclusive }` wherever an expression
+stands, including bindings, arguments, conditional arms, box literals and
+subscripts. The range binds more loosely than every other operator, so
+`0..n - 1` and `s.. - 1` take the whole operand on each side, and a newline after
+the operator ends an open range. A line opening with `..` begins a new item.
+`..=` with no end is a grammar error outside List entries and subscripts, where
+analysis refuses it.
+
+A write `u <- e` has empty `Write.keys`. A keyed write `u[k, …] <- e`, with the
+`[` against the state's name as for indexing, keeps the subscript's selectors
+in order, open ranges included. Which sites a key selects and whether the
+state admits it are analysis checks. Comprehensions retain their pattern, collection and
 body. Reductions retain accumulator, seed, driver pattern, collection and body.
 Support beyond the listed forms and interfaces below is not implied.
 
@@ -388,8 +403,8 @@ Arity, heads, keys, duplicates and names bound twice are analysis checks.
 
 Grouping parentheses normalize away after form validation, with the outer
 expression span covering the grouping. A comparison refuses an immediately
-nested ungrouped comparison on its left; a range refuses an ungrouped range
-on either side. Checks read the CST before removing grouping. Thus `a < b == c`
+nested ungrouped comparison on its left; a range, open or not, refuses an
+ungrouped range on either side. Checks read the CST before removing grouping. Thus `a < b == c`
 and `a..b..c` fail, while `(a < b) == c` and `a..(b..c)` remain syntax trees
 whose semantic validity is the consumer's responsibility.
 
