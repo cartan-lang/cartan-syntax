@@ -202,9 +202,11 @@ Fixed positional annotations `[Int, Real]` use
 `NumberLiteral` and `TupleWidth::Name` retains a `Name`, including `_`. The outer
 annotation span includes the brackets; item and width spans identify the written
 tokens. Normalization never expands the repeated form or converts its width to a
-machine integer. A known grammar ambiguity still refuses a repeated tuple
-annotation on a leading body local, such as `{ y: [Int; 2] := v; y }`, through
-the `ListRepeat` diagnostic; explicit slots `[Int, Int]` work there.
+machine integer. Leading body locals accept repeated tuple annotations, including
+nested and optional forms. The interpreter recognizes the annotated-local prefix
+through `:=` before trying the competing map-value reading; actual repeated
+literals such as `[1; 2]` still receive `ListRepeat`. Tree-sitter uses its existing
+GLR alternatives; actual generated-parser execution remains unverified.
 Graph resolves width names and checks numeric validity and
 eligibility. The existing grammar requires at least one explicit slot and does
 not admit an empty `[]` annotation. `List<T>` remains an ordinary generic `Apply`.

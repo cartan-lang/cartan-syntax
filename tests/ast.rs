@@ -3085,20 +3085,48 @@ fn tuple_annotations_reach_value_and_signature_slots_without_grammar_widening() 
 }
 
 #[test]
-fn repeated_tuple_annotation_at_leading_body_local_keeps_known_grammar_refusal() {
-    // The competing map-value reading reaches the literal repetition refusal.
-    // Explicit tuple slots work here; fixing the ambiguity is a grammar task.
-    let source = "x = { y: [Int; 2] := [1, 2]\n y }";
-    let errors = ast::parse_document(source).unwrap_err();
-    let [Error::Grammar(diagnostic)] = errors.as_slice() else {
-        panic!()
-    };
+fn repeated_tuple_annotations_on_leading_locals_preserve_nested_types_and_spans() {
+    for ty in [
+        "[Int; 2]",
+        "[[Int; 2]; n]",
+        "[Real; _]",
+        "List<[Int; 2]>",
+        "[Int; 2]|None",
+    ] {
+        let source = format!("label = \"λ\"\nx = {{ y: {ty} := value\n y }}");
+        let document = ast::parse_document(&source).unwrap();
+        let ItemKind::Binding(binding) = &document.items[1].kind else {
+            panic!()
+        };
+        assert_expr_spans(&source, &binding.value);
+        let ExprKind::Body(body) = &binding.value.kind else {
+            panic!()
+        };
+        let BodyItem::Local(local) = &body.items[0] else {
+            panic!()
+        };
+        let annotation = local.annotation.as_ref().unwrap();
+        assert_eq!(&source[annotation.span.start..annotation.span.end], ty);
+    }
     assert!(matches!(
-        diagnostic.kind,
-        cartan_syntax::DiagnosticKind::Stated {
-            rule: cartan_syntax::Rule::ListRepeat,
-            refused: true,
-            ..
-        }
+        expression("{ values: [1, 2] }").kind,
+        ExprKind::Map(_)
     ));
+    for source in ["[1; 2]", "{ values: [1; 2] }", "{ values: [Int; 2] }"] {
+        let errors = ast::parse_expression(source).unwrap_err();
+        let [Error::Grammar(diagnostic)] = errors.as_slice() else {
+            panic!()
+        };
+        assert!(
+            matches!(
+                diagnostic.kind,
+                cartan_syntax::DiagnosticKind::Stated {
+                    rule: cartan_syntax::Rule::ListRepeat,
+                    refused: true,
+                    ..
+                }
+            ),
+            "{source}: {diagnostic:?}"
+        );
+    }
 }

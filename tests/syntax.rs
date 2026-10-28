@@ -314,3 +314,18 @@ fn all_editor_tooling_reads_the_shared_grammar() {
         .check_query("(for_expression binders: (binder_list)) @loop")
         .is_empty());
 }
+
+#[test]
+fn annotated_local_prefix_selects_body_before_list_value_refusal() {
+    let tree = valid_document("x = { y: [[Int; 2]; n] := value\n y }");
+    let locals = nodes(&tree.root, "local");
+    assert_eq!(locals.len(), 1);
+    assert_eq!(
+        tree.text(locals[0].child("type").unwrap()),
+        Some("[[Int; 2]; n]")
+    );
+    assert!(nodes(&tree.root, "map").is_empty());
+    let tree = valid_document("x = { y: [1, 2] }");
+    assert_eq!(nodes(&tree.root, "map").len(), 1);
+    assert!(nodes(&tree.root, "local").is_empty());
+}

@@ -2198,6 +2198,16 @@ fn build() -> Grammar {
                 prec_dynamic(
                     2,
                     seq(vec![
+                        // The interpreter tries a Map before a body. Recognize
+                        // an annotated local before its type can be mistaken
+                        // for a value whose list repetition is a hard refusal.
+                        // Tree-sitter omits lookahead and keeps its GLR readings.
+                        not_ahead(seq(vec![
+                            sym("identifier"),
+                            colon(),
+                            sym("type_annotation"),
+                            ":=".into(),
+                        ])),
                         field("key", choice(vec![sym("identifier"), sym("computed_key")])),
                         colon(),
                         nl(),
