@@ -2199,6 +2199,11 @@ fn build() -> Grammar {
                 prec_dynamic(
                     2,
                     seq(vec![
+                        // A brace-pattern local is a body item, not an
+                        // expression key. Leave it to `local` before the
+                        // speculative expression can read nested pattern
+                        // fields as configuration/type annotations.
+                        not_ahead(seq(vec![sym("map_pattern"), ":=".into()])),
                         // The interpreter tries a Map before a body. Recognize
                         // an annotated local before its type can be mistaken
                         // for a value whose list repetition is a hard refusal.

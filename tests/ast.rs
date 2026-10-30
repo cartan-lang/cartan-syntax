@@ -971,6 +971,30 @@ fn named_maps_preserve_empty_nested_duplicate_entries_and_utf8_spans() {
 }
 
 #[test]
+fn brace_pattern_locals_keep_nested_struct_and_discard_readings() {
+    // Unchanged source forms used by graph's Struct-pattern consumer.
+    let structs = "flag = false\n\
+        t = for [i] in [0..4 periodic] { 1.0 }\n\
+        s = {x: 1.0, n: 2, w: t[1], inner: {scale: 3.0}}\n\
+        other = {x: 5.0, n: 6, w: t[2], inner: {scale: 7.0}}\n";
+    for tail in [
+        "y = {\n    { x, n: k, inner: { scale } } := s\n    x * k + scale\n}",
+        "y = {\n    { x, w: _ } := s\n    x\n}",
+        "y = {\n    { w } := s\n    w\n}",
+        "c = if flag then s else other\ny = {\n    { x } := c\n    x\n}",
+        "f({ n }) = n * 2\ny = f(s)",
+    ] {
+        let source = format!("{structs}{tail}");
+        let document =
+            ast::parse_document(&source).unwrap_or_else(|errors| panic!("{source}: {errors:?}"));
+        let ItemKind::Binding(binding) = &document.items.last().unwrap().kind else {
+            panic!()
+        };
+        assert_expr_spans(&source, &binding.value);
+    }
+}
+
+#[test]
 fn mixed_map_entries_retain_key_forms_source_order_and_utf8_spans() {
     let source = "{# λ\n name: 1, k => value, \"name\" => {nested: \"λ\"}, name: 3}";
     let expr = expression(source);
