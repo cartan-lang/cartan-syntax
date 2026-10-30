@@ -1207,11 +1207,23 @@ impl Reader<'_> {
                         if entry.kind != "map_entry" {
                             return Err(unsupported(entry));
                         }
-                        shape(entry, &["key", "value"], &[])?;
+                        shape(entry, &["key", "value", "separator"], &[])?;
+                        let separator = field(entry, "separator")?;
+                        let written = self.text(separator).trim();
+                        let key = field(entry, "key")?;
+                        let key = match written {
+                            ":" => MapKey::Static(self.name(key)?),
+                            "=>" => MapKey::Computed(self.expr(key)?),
+                            _ => return Err(unsupported(separator)),
+                        };
                         Ok(MapEntry {
-                            key: self.name(field(entry, "key")?)?,
+                            key,
                             value: self.expr(field(entry, "value")?)?,
                             span: span(entry),
+                            separator_span: Span {
+                                start: separator.end - written.len(),
+                                end: separator.end,
+                            },
                         })
                     })
                     .collect::<Result<_>>()?,

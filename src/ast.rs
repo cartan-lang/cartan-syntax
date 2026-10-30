@@ -377,6 +377,8 @@ pub enum ExprKind {
         operator_span: Span,
     },
     List(Vec<Expr>),
+    /// A brace literal, retaining static `name: value` and computed
+    /// `expression => value` entries without classifying its semantic type.
     Map(Vec<MapEntry>),
     MapJoin {
         left: Box<Expr>,
@@ -449,12 +451,22 @@ pub struct ProductEntry {
     pub span: Span,
 }
 
-/// An ordinary named-map entry, preserving order and duplicate keys.
+/// A brace-literal entry, preserving source order and duplicate keys.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MapEntry {
-    pub key: Name,
+    pub key: MapKey,
     pub value: Expr,
     pub span: Span,
+    /// The `:` or `=>` alone, excluding leading newlines and whitespace.
+    pub separator_span: Span,
+}
+
+/// A static field name or a computed key expression. Syntax does not check
+/// that a computed key produces a String or fold it into a static name.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum MapKey {
+    Static(Name),
+    Computed(Expr),
 }
 
 /// Whether a string or template was written with one or three quotation marks.

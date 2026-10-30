@@ -53,6 +53,22 @@ fn value(tree: &SyntaxTree) -> &Node {
 }
 
 #[test]
+fn map_entries_distinguish_static_and_computed_separators_in_the_cst() {
+    let source = "{ static: 1, key => 2 }";
+    let tree = expression(source);
+    let entries = nodes(&tree.root, "map_entry");
+    assert_eq!(entries.len(), 2);
+    assert_eq!(tree.text(entries[0].child("key").unwrap()), Some("static"));
+    assert_eq!(tree.text(entries[0].child("separator").unwrap()), Some(":"));
+    assert_eq!(tree.text(entries[1].child("key").unwrap()), Some("key"));
+    assert_eq!(
+        tree.text(entries[1].child("separator").unwrap()),
+        Some("=>")
+    );
+    assert_eq!(tree.text(entries[1].child("value").unwrap()), Some("2"));
+}
+
+#[test]
 fn parses_all_five_current_lab_fixtures_and_retains_loop_structure() {
     // Owner-supplied kernel-lab examples, copied 2026-10-23. Conway alone
     // normalizes line continuation: its subtraction operator moves from the

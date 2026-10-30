@@ -117,7 +117,8 @@ independent of the Python workspace.
 - Tests cover grammar invariants, five numerical workload
   fixtures, tree structure, source spans, Unicode, errors and tooling.
 - The AST covers the five workload fixtures, ordered body items, list/site
-  patterns, file/namespace imports, qualified values/calls, named maps and joins,
+  patterns, file/namespace imports, qualified values/calls, static and computed
+  Map literal entries and joins,
   configurable constructors and colon/literal-dot application, strings, tagged
   templates with structured format specs, struct declarations, sum rosters,
   constructors and `match`,

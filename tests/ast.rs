@@ -262,7 +262,20 @@ fn assert_expr_spans(source: &str, expr: &Expr) {
         ExprKind::Map(entries) => {
             for entry in entries {
                 assert!(source.get(entry.span.start..entry.span.end).is_some());
-                assert_name_span(source, &entry.key);
+                let separator = match &entry.key {
+                    MapKey::Static(name) => {
+                        assert_name_span(source, name);
+                        ":"
+                    }
+                    MapKey::Computed(key) => {
+                        assert_expr_spans(source, key);
+                        "=>"
+                    }
+                };
+                assert_eq!(
+                    &source[entry.separator_span.start..entry.separator_span.end],
+                    separator
+                );
                 assert_expr_spans(source, &entry.value);
             }
         }
@@ -939,9 +952,15 @@ fn named_maps_preserve_empty_nested_duplicate_entries_and_utf8_spans() {
         panic!()
     };
     assert_eq!(entries.len(), 3);
-    assert_eq!(entries[0].key.text, "a");
-    assert_eq!(entries[1].key.text, "a");
-    assert_ne!(entries[0].key.span, entries[1].key.span);
+    let MapKey::Static(first) = &entries[0].key else {
+        panic!()
+    };
+    let MapKey::Static(second) = &entries[1].key else {
+        panic!()
+    };
+    assert_eq!(first.text, "a");
+    assert_eq!(second.text, "a");
+    assert_ne!(first.span, second.span);
     assert_eq!(
         &source[entries[1].span.start..entries[1].span.end],
         "a: {b: value}"
@@ -949,6 +968,110 @@ fn named_maps_preserve_empty_nested_duplicate_entries_and_utf8_spans() {
     assert!(matches!(entries[1].value.kind, ExprKind::Map(_)));
     assert!(matches!(entries[2].value.kind, ExprKind::Index { .. }));
     assert!(matches!(expression("{value}").kind, ExprKind::Body(_)));
+}
+
+#[test]
+fn mixed_map_entries_retain_key_forms_source_order_and_utf8_spans() {
+    let source = "{# λ\n name: 1, k => value, \"name\" => {nested: \"λ\"}, name: 3}";
+    let expr = expression(source);
+    assert_expr_spans(source, &expr);
+    assert_eq!(&source[expr.span.start..expr.span.end], source);
+    let ExprKind::Map(entries) = &expr.kind else {
+        panic!("{expr:?}")
+    };
+    assert_eq!(entries.len(), 4);
+    assert!(matches!(&entries[0].key, MapKey::Static(name) if name.text == "name"));
+    assert!(
+        matches!(&entries[1].key, MapKey::Computed(Expr {kind: ExprKind::Name(name), ..}) if name.text == "k")
+    );
+    // A constant String key remains computed, even beside the same static name.
+    assert!(
+        matches!(&entries[2].key, MapKey::Computed(Expr {kind: ExprKind::String(key), ..}) if key.value == "name")
+    );
+    assert!(matches!(&entries[3].key, MapKey::Static(name) if name.text == "name"));
+    let written: Vec<_> = entries
+        .iter()
+        .map(|entry| &source[entry.span.start..entry.span.end])
+        .collect();
+    assert_eq!(
+        written,
+        [
+            "name: 1",
+            "k => value",
+            "\"name\" => {nested: \"λ\"}",
+            "name: 3"
+        ]
+    );
+    assert!(matches!(entries[2].value.kind, ExprKind::Map(_)));
+}
+
+#[test]
+fn computed_map_keys_keep_complete_expressions_and_separator_spans() {
+    for key in [
+        "key",
+        "\"λ\"",
+        "\"=>\"",
+        "make(x)",
+        "ns::make(x)",
+        "xs[0]",
+        "(key)",
+        "left + right",
+        "a >= b",
+        "a == b",
+        "if condition then \"a\" else \"b\"",
+        "key: settings",
+        "key: {setting: 1}",
+        "{a: 1}",
+        "{a: 1, key => value}",
+        "{local := key\n local}",
+        "[1, 2]",
+        "1",
+    ] {
+        let source = format!("{{{key}\n =>\n value}}");
+        let expr = expression(&source);
+        assert_expr_spans(&source, &expr);
+        let ExprKind::Map(entries) = expr.kind else {
+            panic!("{key}")
+        };
+        assert_eq!(entries.len(), 1);
+        let MapKey::Computed(computed) = &entries[0].key else {
+            panic!("{key}")
+        };
+        assert_eq!(&source[computed.span.start..computed.span.end], key);
+        assert_eq!(
+            &source[entries[0].separator_span.start..entries[0].separator_span.end],
+            "=>"
+        );
+    }
+    let source = "{name\n :\n value}";
+    let expr = expression(source);
+    assert_expr_spans(source, &expr);
+    let ExprKind::Map(entries) = expr.kind else {
+        panic!()
+    };
+    assert!(matches!(&entries[0].key, MapKey::Static(name) if name.text == "name"));
+}
+
+#[test]
+fn malformed_computed_map_entries_return_grammar_diagnostics() {
+    for source in [
+        "{=> 1}",
+        "{key =>}",
+        "{key = > 1}",
+        "{key => 1 => 2}",
+        "{name: 1, key => 2",
+    ] {
+        let tree = cartan_syntax::parse_expression(source);
+        assert!(tree.has_errors(), "{source}");
+        assert_eq!(
+            ast::parse_expression(source).unwrap_err(),
+            tree.diagnostics
+                .into_iter()
+                .map(Error::Grammar)
+                .collect::<Vec<_>>(),
+            "{source}"
+        );
+    }
 }
 
 #[test]

@@ -364,14 +364,47 @@ result meets and selected-arm demand are analysis checks; an empty or else-only
 
 ## Maps and configurables
 
-The [configurable source work](work/configurable-source-ast.md) supplies the
-interface agreed with graph. Ordinary named
-map literals use `ExprKind::Map(Vec<MapEntry>)`; `{}` is an empty map, while
-`{value}` remains a body. Each entry has `key: Name`, `value: Expr` and its full
-entry `span`. The outer expression span includes braces. Entry order, duplicate
-keys, individual key/value spans and nested supported expressions are preserved.
-Computed keys and map walks remain explicit unsupported forms in normalization;
-this is a bounded named-map subset, not all statically enumerable maps.
+The brace-literal interface agreed with graph uses
+`ExprKind::Map(Vec<MapEntry>)` for static `name: value` entries and computed
+`expression => value` entries, including mixed literals such as
+`{name: 1, k => value}`. The variant name is not a semantic type: under the
+accepted [collection contract](../../docs/records/collections.md#map-entries),
+all-static literals represent Structs and any computed entry makes the literal
+a Map. `{}` retains an empty entry vector; `{value}` remains a body. Syntax
+does not infer a type for either form.
+
+Each `MapEntry` has `key: MapKey`, `value: Expr`, full entry `span` and
+`separator_span`. `MapKey::Static(Name)` retains exactly the written identifier
+and its span. `MapKey::Computed(Expr)` retains the complete expression and its
+span, including any grouping. A String literal before `=>` stays computed;
+normalization neither folds it into a static name nor synthesizes a String
+expression for a static field. Checking the required String key type belongs
+to semantic analysis. Consumers must classify a literal before applying
+Struct-specific checks; syntax acceptance does not establish graph Map support.
+
+The outer expression span includes braces. Entries stay in written order with
+duplicates retained and no evaluation or collision policy inferred. Key/value
+spans and nested supported expressions are preserved. `separator_span` covers
+only the written `:` or `=>`, excluding leading whitespace and newlines. Both
+separators admit line continuation before and after them. The CST's `map_entry`
+node labels `key`, `separator` and `value` for both forms.
+
+The old `(expression): value` spelling remains accepted only by the CST and
+normalizes to `UnsupportedConstruct { kind: "computed_key" }`. Embedded Map
+walks likewise retain their CST reading and normalize to unsupported `map_walk`;
+key-value `each` bodies and merge changes are outside this delivery. String
+typing, Map evaluation, duplicate handling and iteration semantics belong to
+consumers and are not implemented here.
+
+This is a Rust source API change from `MapEntry.key: Name` to `MapKey`, plus
+the separator span field. Static Struct consumers must match `Static` explicitly
+and handle `Computed` before their static-field paths. Graph is the sole direct
+consumer and owns deliberate adoption of the tested supplier. Its existing
+locked revision remains usable until then. The
+[AST tests](../tests/ast.rs) cover mixed entries, unchanged static/empty forms,
+expression keys, UTF-8/order/spans, malformed arrows and retained unsupported
+forms; the [CST tests](../tests/syntax.rs) cover entry field identity. Actual
+Tree-sitter parser generation/execution remains unverified.
 
 `a <> b` uses `ExprKind::MapJoin { left, right, operator_span }`. It retains the
 existing additive precedence and left associativity: `a <> b <> c` means

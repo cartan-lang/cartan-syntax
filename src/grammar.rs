@@ -2180,16 +2180,17 @@ fn build() -> Grammar {
             // ---- braces --------------------------------------------------
             def(
                 "map",
-                "`{ k: v, (e): w, each k in ks { (k): f(k) } }` — a Map literal\n\
-                : a bare key is its own name, a parenthesized key is\n\
-                 an expression returning a Str, and a walk among the entries\n\
-                 yields one entry per element. An empty brace is an empty\n\
-                 Map, which the precedence over `body` states.",
-                prec(1, seq(vec!["{".into(), items(choice(vec![sym("map_entry"), sym("map_walk")])), "}".into()])),
+                "`{ name: v, expression => w }` — a brace literal with static\n\
+                 names and computed keys in source order. An empty brace is\n\
+                 a literal rather than a body. The older `(e): v` and embedded\n\
+                 walk forms remain CST-only; normalization rejects them.",
+                // Keep the existing embedded-walk reading before trying an
+                // arbitrary computed key expression beginning with `each`.
+                prec(1, seq(vec!["{".into(), items(choice(vec![sym("map_walk"), sym("map_entry")])), "}".into()])),
             ),
             def(
                 "map_entry",
-                "`k: v` — one entry of a Map literal. A name, a colon and a value\n\
+                "`name: v` or `expression => v` — one literal entry. A name, a colon and a value\n\
                  is also a body item configuring that name, `{ w: style }`, and\n\
                  the entry's dynamic precedence settles the brace toward the Map\n\
                 . It stands on the entry rather than on the brace so\n\
@@ -2208,10 +2209,23 @@ fn build() -> Grammar {
                             sym("type_annotation"),
                             ":=".into(),
                         ])),
-                        field("key", choice(vec![sym("identifier"), sym("computed_key")])),
-                        colon(),
-                        nl(),
-                        field("value", expr()),
+                        choice(vec![
+                            seq(vec![
+                                field("key", choice(vec![sym("identifier"), sym("computed_key")])),
+                                field("separator", colon()),
+                                nl(),
+                                field("value", expr()),
+                                // A configuration expression may itself be a
+                                // computed key: `key: settings => value`.
+                                not_ahead(cont("=>")),
+                            ]),
+                            seq(vec![
+                                field("key", expr()),
+                                field("separator", cont("=>")),
+                                nl(),
+                                field("value", expr()),
+                            ]),
+                        ]),
                     ]),
                 ),
             ),
