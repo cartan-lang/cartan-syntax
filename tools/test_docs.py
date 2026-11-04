@@ -135,6 +135,81 @@ class DocumentationTests(unittest.TestCase):
                 docs.inventory(self.root)
             self.assertEqual(caught.exception.code, code)
 
+    def test_direction_metadata_and_lifecycle(self):
+        direction = (HEADER.replace("kind: design", "kind: direction")
+                     .replace("implementation: planned", "implementation: not-applicable")
+                     .replace("topics:", "priority: high\nhorizon: near\ntopics:"))
+        accepted = direction.replace("status: draft", "status: accepted").replace(
+            "topics:", "authority: Owner direction\ndecided: 2026-11-04\ntopics:")
+        for valid in (direction, accepted):
+            self.path.write_text(valid)
+            record, = docs.inventory(self.root)
+            self.assertEqual((record["priority"], record["horizon"]), ("high", "near"))
+        for priority in ("high", "moderate", "low"):
+            for horizon in ("now", "near", "far"):
+                with self.subTest(priority=priority, horizon=horizon):
+                    self.path.write_text(direction.replace("priority: high", f"priority: {priority}")
+                                         .replace("horizon: near", f"horizon: {horizon}"))
+                    record, = docs.inventory(self.root)
+                    self.assertEqual((record["priority"], record["horizon"]), (priority, horizon))
+        cases = [
+            (direction.replace("priority: high\n", ""), "missing-fields"),
+            (direction.replace("horizon: near\n", ""), "missing-fields"),
+            (direction.replace("priority: high", "priority: urgent"), "invalid-choice"),
+            (direction.replace("horizon: near", "horizon: next"), "invalid-choice"),
+            (direction.replace("implementation: not-applicable", "implementation: planned"), "invalid-choice"),
+            (direction.replace("implementation: not-applicable", "implementation: partial"), "invalid-choice"),
+            (direction.replace("implementation: not-applicable", "implementation: implemented"), "invalid-choice"),
+            (direction.replace("status: draft", "status: approved"), "invalid-choice"),
+            (accepted.replace("authority: Owner direction\n", ""), "missing-fields"),
+            (accepted.replace("decided: 2026-11-04\n", ""), "missing-fields"),
+            (accepted.replace("2026-11-04", "2026-02-30"), "invalid-date"),
+            (HEADER.replace("topics:", "priority: high\ntopics:"), "unknown-field"),
+            (HEADER.replace("topics:", "horizon: now\ntopics:"), "unknown-field"),
+            (direction.replace("topics:", "direction: other\ntopics:"), "unknown-field"),
+        ]
+        for text, code in cases:
+            with self.subTest(text=text):
+                self.path.write_text(text)
+                with self.assertRaises(docs.DocumentError) as caught:
+                    docs.inventory(self.root)
+                self.assertEqual(caught.exception.code, code)
+
+    def test_work_direction_reference_and_mixed_inventory_filters(self):
+        work = (HEADER.replace("kind: design", "kind: work")
+                .replace("status: draft", "status: planned")
+                .replace("topics:", "owner: supervisor\ndepends: []\ntopics:"))
+        for reference in ("demand-planning", "cartan-lang:demand-planning"):
+            self.path.write_text(work.replace("topics:", f"direction: {reference}\ntopics:"))
+            self.assertEqual(docs.inventory(self.root)[0]["direction"], reference)
+        for reference in ("bad id", "root:a:b", "bad/id", "root:"):
+            self.path.write_text(work.replace("topics:", f"direction: {reference}\ntopics:"))
+            with self.assertRaises(docs.DocumentError) as caught:
+                docs.inventory(self.root)
+            self.assertEqual(caught.exception.code, "invalid-direction")
+        for reference, code in [("", "empty-field"), ("[]", "invalid-scalar"),
+                                ("[demand-planning]", "invalid-scalar")]:
+            with self.subTest(reference=reference):
+                self.path.write_text(work.replace("topics:", f"direction: {reference}\ntopics:"))
+                with self.assertRaises(docs.DocumentError) as caught:
+                    docs.inventory(self.root)
+                self.assertEqual(caught.exception.code, code)
+        self.path.write_text(HEADER.replace("topics:", "direction: demand-planning\ntopics:"))
+        with self.assertRaises(docs.DocumentError) as caught:
+            docs.inventory(self.root)
+        self.assertEqual(caught.exception.code, "unknown-field")
+        self.path.write_text(work)
+        other = (HEADER.replace("id: sample", "id: direction-sample")
+                 .replace("kind: design", "kind: direction")
+                 .replace("implementation: planned", "implementation: not-applicable")
+                 .replace("topics:", "priority: moderate\nhorizon: far\ntopics:"))
+        (self.root / "docs" / "direction.md").write_text(other)
+        command = [sys.executable, str(Path(docs.__file__)), "inventory", "--root", str(self.root)]
+        for args, expected in [(["--priority", "moderate", "--horizon", "far"], ["direction-sample"]),
+                               (["--horizon", "now"], []), (["--kind", "work"], ["sample"])]:
+            result = subprocess.run(command + args, capture_output=True, text=True, check=True)
+            self.assertEqual([r["id"] for r in json.loads(result.stdout)], expected)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -21,6 +21,10 @@ superseded behavior. Historical benchmark observations remain valid data.
 - `HANDOFF.md`: ignored local resume note for the directory's owning agent.
 - `docs/*.md`: current designs, reference material, explanations and how-to guides.
 - `docs/rulings/<id>.md`: one question or decision per file.
+- `docs/direction/<id>.md`: one steering theme, its priority and horizon. Direction
+  states intent and success criteria; it does not authorize implementation or
+  replace a record, ruling or work item. Cross-component direction belongs at
+  the workspace root; components may keep component-local direction.
 - `docs/records/<id>.md`: one agreed contract per file, whether planned, partially
   implemented or implemented; the `implementation` field distinguishes these.
 - `docs/work/<id>.md`: one tracked, disposable delivery plan or bounded task per
@@ -76,7 +80,7 @@ does not accept YAML aliases, multiline values, nested objects or unspecified fi
 | --- | --- |
 | `id` | Stable document identifier; filename changes do not change it. |
 | `title` | Human-readable document title. |
-| `kind` | `design`, `reference`, `explanation`, `howto`, `ruling`, `record`, `work`. |
+| `kind` | `design`, `reference`, `explanation`, `howto`, `ruling`, `record`, `work`, `direction`. |
 | `status` | Kind-specific lifecycle below; approval reflects actual authorization. |
 | `implementation` | `planned`, `partial`, `implemented`, `not-applicable`. |
 | `topics` | Nonempty list of queryable subject identifiers. |
@@ -92,6 +96,15 @@ Designs, references, explanations, how-to guides and records use `draft` or
 `accepted`. An accepted record also requires `authority` (who authorized the
 contract and where that authorization is recorded) and `decided` (`YYYY-MM-DD`).
 Record bodies state scope, the contract, rationale, limits and relevant evidence.
+
+Direction uses `draft` or `accepted` and always has `implementation: not-applicable`.
+It requires `priority` (`high`, `moderate`, `low`) and `horizon` (`now`, `near`, `far`).
+`now` means next work to schedule, `near` means after current commitments, and
+`far` means exploratory. Accepted direction requires `authority` and a valid
+`decided` date. Priority and horizon are exclusive to this kind. Keep decided
+requirements distinct from proposals; adopted contracts belong in records and
+unsettled choices in rulings. Acceptance of a direction is not an implementation
+assignment or evidence that a proposed mechanism has been delivered.
 
 Rulings use `open`, `approved`, `declined` or `withdrawn`. Every ruling requires
 `proposer` and `decision_maker`. Approved or declined rulings also require
@@ -109,6 +122,11 @@ Work uses `planned`, `approved`, `active`, `blocked`, `done` or `dropped`:
 - `blocked`: progress waits on a named condition or dependency.
 - `done`: the stated acceptance criteria have evidence.
 - `dropped`: the work is no longer pursued; state why in the body.
+
+Work may carry an optional `direction` reference using a local ID or a
+repository-qualified ID such as `cartan-lang:demand-planning`. The checker
+validates identifier syntax, not reference existence or kind. The field is
+exclusive to work items and remains visible in generated inventory.
 
 Every work item requires `owner` and `depends`, an inline list of local IDs or
 repository-qualified IDs such as `[cartan-syntax:normalized-ast]`; use `[]` when
@@ -170,6 +188,7 @@ At the workspace root:
 ```sh
 uv run cartdev docs check
 uv run cartdev docs inventory --kind work --status active
+uv run cartdev docs inventory --kind direction --priority high --horizon near
 uv run python -m unittest discover -s tests -p 'test_*.py'
 ```
 
@@ -182,6 +201,7 @@ python3 tools/docs.py inventory --kind design --status draft
 python3 tools/docs.py inventory --topic interface
 python3 tools/docs.py inventory --kind work --status active
 python3 tools/docs.py inventory --kind ruling --status open
+python3 tools/docs.py inventory --kind direction --priority high --horizon near
 ```
 
 The inventory is generated JSON. It is a query result, not a second maintained
