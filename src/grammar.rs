@@ -2207,10 +2207,23 @@ fn build() -> Grammar {
                         // The interpreter tries a Map before a body. Recognize
                         // an annotated local before its type can be mistaken
                         // for a value whose list repetition is a hard refusal.
+                        // First rule out a complete value, such as the body in
+                        // `{a: {v}}`. A type like `[Int; 2]` can fail with a
+                        // value-only diagnostic, so this value probe cannot
+                        // commit. Require an entry boundary rather than a value
+                        // prefix, so `:=` or a generic type's `>` keeps the
+                        // original diagnostic path for malformed typed locals.
                         // Tree-sitter omits lookahead and keeps its GLR readings.
                         not_ahead(seq(vec![
                             sym("identifier"),
                             colon(),
+                            not_ahead_soft(seq(vec![
+                                expr(),
+                                ahead(choice(vec![
+                                    sep(), "}".into(), "=>".into(),
+                                    not_ahead(Rule::Pat(p::not_class("", &[]))),
+                                ])),
+                            ])),
                             sym("type_annotation"),
                             ":=".into(),
                         ])),

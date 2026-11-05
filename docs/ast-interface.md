@@ -511,10 +511,9 @@ or annotation-placement rules are not comprehensively validated. Names, type
 existence, arity, domain/rank restrictions and numeric representability remain
 analysis concerns.
 
-The grammar currently rejects some valid nested value bodies in named entries,
-such as `v = 1` followed by `x = {a: {v}}`. This speculative type-lookahead defect
-is SYN-1 in the [workspace defect register](../../docs/known-defects.md).
-Its bounded repair is scheduled as SYN-PARSE-1; it is not fixed by this contract.
+A named entry may contain an ordinary value body, including one whose result
+is a name. Speculative parsing preserves the structured diagnostics of an
+actual typed local rather than applying type grammar to an entry's value.
 
 ## Adopted source contracts
 

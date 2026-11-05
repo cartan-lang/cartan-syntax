@@ -31,6 +31,6 @@ representation does not imply runtime function values or dynamic calls.
 The [AST tests](../../tests/ast.rs) retain empty/nested/mixed entries, duplicate
 provenance, UTF-8 spans, precedence, continuation punctuation, ordered settings
 and chained application, body errors and unsupported forms. Actual Tree-sitter
-parser generation/execution is unverified. The contract records the open SYN-1
-nested-value-body parser defect; this completed delivery item does not imply a
-repair or complete grammar coverage.
+parser generation/execution is unverified. The AST regression also distinguishes
+nested entry value bodies from genuinely malformed typed locals; this evidence
+does not establish complete grammar coverage.

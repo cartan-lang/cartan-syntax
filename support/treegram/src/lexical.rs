@@ -156,6 +156,7 @@ fn collect(r: &Rule, out: &mut Vec<String>) {
         | Rule::Pat(_)
         | Rule::Sym(_)
         | Rule::NotAhead(_)
+        | Rule::NotAheadSoft(_)
         | Rule::Ahead(_)
         | Rule::Refuse(..)
         | Rule::Without(..) => {}
@@ -197,7 +198,11 @@ fn rule_regex(r: &Rule, g: &Grammar, depth: usize, d: Dialect) -> Option<String>
         | Rule::Alias(r, _)
         | Rule::Expect(r, _)
         | Rule::Recover(r, _) => rule_regex(r, g, depth, d)?,
-        Rule::NotAhead(_) | Rule::Ahead(_) | Rule::Refuse(..) | Rule::Without(..) => String::new(),
+        Rule::NotAhead(_)
+        | Rule::NotAheadSoft(_)
+        | Rule::Ahead(_)
+        | Rule::Refuse(..)
+        | Rule::Without(..) => String::new(),
     })
 }
 

@@ -9,7 +9,7 @@
 //! `conflicts` list, which are how tree-sitter's GLR parser settles an
 //! ambiguity the ordered-choice interpreter settles by the order the
 //! alternatives are written in. **The interpreter alone reads**
-//! `NotAhead`, `Expect`, `Refuse` and `Without`, which are lookahead,
+//! `NotAhead`, `NotAheadSoft`, `Expect`, `Refuse` and `Without`, which are lookahead,
 //! diagnostics and an exclusion tree-sitter states through precedence
 //! or through recovery. Each variant says which reader it belongs to.
 
@@ -54,6 +54,10 @@ pub enum Rule {
     /// Interpreter only: succeeds, consuming nothing, where the rule
     /// does not match here. The printer omits it.
     NotAhead(Box<Rule>),
+    /// Interpreter only: negative lookahead whose diagnostic failures count
+    /// as nonmatches rather than committing an error. Diagnostic state is
+    /// restored after the probe. The printer omits it.
+    NotAheadSoft(Box<Rule>),
     /// Interpreter only: succeeds, consuming nothing, where the rule
     /// matches here. The printer omits it.
     Ahead(Box<Rule>),
@@ -242,6 +246,7 @@ fn literals(r: &Rule, out: &mut Vec<String>) {
         | Rule::Field(_, r)
         | Rule::Alias(r, _)
         | Rule::NotAhead(r)
+        | Rule::NotAheadSoft(r)
         | Rule::Ahead(r)
         | Rule::Expect(r, _)
         | Rule::Refuse(r, _)
@@ -322,6 +327,10 @@ pub fn alias(r: impl Into<Rule>, name: &str) -> Rule {
 
 pub fn not_ahead(r: impl Into<Rule>) -> Rule {
     Rule::NotAhead(Box::new(r.into()))
+}
+
+pub fn not_ahead_soft(r: impl Into<Rule>) -> Rule {
+    Rule::NotAheadSoft(Box::new(r.into()))
 }
 
 pub fn ahead(r: impl Into<Rule>) -> Rule {

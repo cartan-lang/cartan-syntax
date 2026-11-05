@@ -266,7 +266,12 @@ impl Grammar {
             | Rule::PrecDynamic(_, inner)
             | Rule::Expect(inner, _)
             | Rule::Recover(inner, _) => self.walk(inner, out, seen),
-            Rule::Blank | Rule::Pat(_) | Rule::NotAhead(_) | Rule::Ahead(_) | Rule::Refuse(..) => {}
+            Rule::Blank
+            | Rule::Pat(_)
+            | Rule::NotAhead(_)
+            | Rule::NotAheadSoft(_)
+            | Rule::Ahead(_)
+            | Rule::Refuse(..) => {}
         }
     }
 }
@@ -304,7 +309,7 @@ fn op_prints(r: &Rule) -> bool {
 /// Whether a rule prints as anything at all.
 fn prints(r: &Rule) -> bool {
     match r {
-        Rule::NotAhead(_) | Rule::Ahead(_) | Rule::Refuse(..) => false,
+        Rule::NotAhead(_) | Rule::NotAheadSoft(_) | Rule::Ahead(_) | Rule::Refuse(..) => false,
         Rule::Choice(rs) => rs.iter().any(prints),
         Rule::Repeat(r)
         | Rule::Repeat1(r)

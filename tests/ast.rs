@@ -995,6 +995,51 @@ fn brace_pattern_locals_keep_nested_struct_and_discard_readings() {
 }
 
 #[test]
+fn nested_value_bodies_do_not_commit_speculative_type_errors() {
+    let source = "v = 1\nx = {a: {v}}";
+    let document = ast::parse_document(source).unwrap();
+    let ItemKind::Binding(binding) = &document.items[1].kind else {
+        panic!()
+    };
+    assert_expr_spans(source, &binding.value);
+    let ExprKind::Map(entries) = &binding.value.kind else {
+        panic!()
+    };
+    assert!(matches!(entries[0].value.kind, ExprKind::Body(_)));
+
+    // The generic case must not mistake a value prefix ending before `>` for
+    // a complete entry. The first local also exercises a discarded value error.
+    for source in [
+        "x = {t: [Int; 2] := values\n y: {field} := value\n y}",
+        "x = {t: [Int; 2] := values\n y: Map<{field}> := value\n y}",
+    ] {
+        let errors = ast::parse_document(source).unwrap_err();
+        let [Error::Grammar(diagnostic)] = errors.as_slice() else {
+            panic!("{errors:?}")
+        };
+        assert!(
+            matches!(
+                diagnostic.kind,
+                cartan_syntax::DiagnosticKind::Stated {
+                    rule: cartan_syntax::Rule::StructEntryType,
+                    refused: false,
+                    ..
+                }
+            ),
+            "{diagnostic:?}"
+        );
+        let closing = source.find('}').unwrap();
+        assert_eq!(
+            diagnostic.span,
+            Span {
+                start: closing,
+                end: closing + 1
+            }
+        );
+    }
+}
+
+#[test]
 fn mixed_map_entries_retain_key_forms_source_order_and_utf8_spans() {
     let source = "{# λ\n name: 1, k => value, \"name\" => {nested: \"λ\"}, name: 3}";
     let expr = expression(source);

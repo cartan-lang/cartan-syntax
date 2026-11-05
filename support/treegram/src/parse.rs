@@ -664,6 +664,24 @@ impl<'g, 's> Engine<'g, 's> {
                     None => None,
                 }
             }
+            Rule::NotAheadSoft(r) => {
+                let recording = self.recording;
+                let hard = self.hard.take();
+                let furthest = self.furthest;
+                let expected = std::mem::take(&mut self.expected);
+                let diagnostics = self.diags.len();
+                self.recording = false;
+                let hit = self.rule(r, pos, ctx, None, scope);
+                self.recording = recording;
+                self.hard = hard;
+                self.furthest = furthest;
+                self.expected = expected;
+                self.diags.truncate(diagnostics);
+                match hit {
+                    Ok(Some(_)) => None,
+                    Ok(None) | Err(Hard) => Some((Vec::new(), pos)),
+                }
+            }
             Rule::NotAhead(r) | Rule::Ahead(r) => {
                 let recording = self.recording;
                 self.recording = false;

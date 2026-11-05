@@ -141,6 +141,7 @@ fn withouts(r: &Rule, f: &mut impl FnMut(&str, &[String], bool)) {
         | Rule::Field(_, r)
         | Rule::Alias(r, _)
         | Rule::NotAhead(r)
+        | Rule::NotAheadSoft(r)
         | Rule::Ahead(r)
         | Rule::Expect(r, _)
         | Rule::Refuse(r, _)
@@ -412,7 +413,9 @@ fn js(r: &Rule) -> Option<Js> {
         Rule::Immediate(r) => Js::call("token.immediate", vec![js(r)?]),
         Rule::Field(f, r) => Js::call("field", vec![Js::str(f), js(r)?]),
         Rule::Alias(r, name) => Js::call("alias", vec![js(r)?, Js::str(name)]),
-        Rule::NotAhead(_) | Rule::Ahead(_) | Rule::Refuse(..) => return None,
+        Rule::NotAhead(_) | Rule::NotAheadSoft(_) | Rule::Ahead(_) | Rule::Refuse(..) => {
+            return None
+        }
         Rule::Expect(r, _) | Rule::Recover(r, _) => js(r)?,
     })
 }

@@ -130,9 +130,6 @@ independent of the Python workspace.
   Graph implements bounded static named-function arguments and owns configurable
   semantics and execution limits under the
   [workspace language scope](../docs/records/language-scope.md).
-- Some valid nested value bodies in named entries are rejected by a known
-  grammar ambiguity (SYN-1). The
-  [workspace defect register](../docs/known-defects.md) tracks its scheduled repair.
 - The generated Tree-sitter JavaScript passes a syntax check. Building and
   executing the actual Tree-sitter parser remains untested here.
 - Graph is the only direct AST consumer and owns its adapter and locked local
