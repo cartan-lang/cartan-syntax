@@ -8,51 +8,27 @@ topics: [syntax, interface, frontend]
 owner: cartan-syntax-agent
 depends: [normalized-ast, use-source-ast]
 authority: Owner started source value work and added string interpolation on 2026-10-27; Codex lead delegated this slice and graph's struct prerequisite through codex:cartan-syntax
-evidence: src/ast.rs; src/ast/text.rs; src/ast/normalize.rs; tests/ast.rs; verification below
+evidence: tests/ast.rs; src/ast/normalize.rs; maintained AST contract
 ---
 
 # Normalize strings, tagged templates and struct declarations
 
-The workspace [value work](../../../docs/work/source-values-and-configurables.md#first-checkpoint-semantic-resolutions)
-governs this slice and settles its string semantics. The [AST contract](../ast-interface.md)
-owns the final data structures and adopted rules.
+The [AST contract](../ast-interface.md#strings-templates-and-structs) owns quoted
+and triple-quoted strings, tagged templates and Struct declarations. Raw source
+spelling stays beside decoded text; templates preserve ordered text/hole pieces,
+ordinary hole expressions and structured precision/notation fields. Import paths
+remain `PathLiteral` values. String decoding is syntax-only; formatting, type
+checking and precision policy belong to consumers.
 
-Scope: quoted and triple-quoted string expressions; tagged `f"…"`/`f"""…"""`
-templates with ordered pieces, ordinary hole expressions and a purely syntactic
-format specification; typed format-spec errors; and graph's prerequisite
-`struct` declaration item with ordered, duplicate-preserving entries. Syntax
-performs no join desugaring, typing, formatting, precision-range validation or
-execution. Import paths remain `PathLiteral`, not string values. Inline nested
-struct entry types and tuple annotations remain unsupported.
-
-Agreed with `claude:cartan-graph`: one template node without desugaring; no empty
-text pieces; raw spelling beside decoded text; standalone triple-string doc items
-keep their structured rejection; a struct declaration is a structural alias,
-not a nominal constructor or identity, and the brace value stays a map expression.
-
-Acceptance: empty, no-hole and adjacent-hole templates; Unicode; escaped braces;
-quoted and raw multiline strings; nested hole expressions; digits and notation;
-invalid formats as typed errors; struct entry order, duplicates and spans;
-documented Rust, docs-tool and Python checks.
+Struct declarations preserve duplicate entries and their order for analysis.
+Inline nested Struct and Tuple annotations are supported through the shared
+annotation interface. Standalone triple-quoted documentation items retain their
+explicit unsupported-form diagnostic.
 
 ## Verification
 
-- `claude:cartan-graph` accepted the template, string and struct shapes before
-  edits; graph pins the tested supplier commit and owns its adapter.
-- Three decoding unit tests in `src/ast/text.rs` and eight new AST tests in
-  `tests/ast.rs` (26 in all) cover Unicode spans, quoted/raw strings, merged text
-  and empty pieces, adjacent/nested holes, raw dedent across holes, U+0001 beside
-  holes, raw backslashes and quotes beside holes and closers, quote/doubled-brace
-  adjacency, all malformed precision/notation shapes, doc-declaration rejection,
-  and struct order, duplicates, named annotations and inline-nesting refusal.
-  The five workload fixtures normalize unchanged; `ir` prints the new nodes.
-- Offline check, strict Clippy and rustdoc, rustfmt, diff whitespace,
-  12-document validation, seven documentation-tool tests, the generated
-  Tree-sitter grammar syntax check and 28 Python app tests pass; 58 Rust
-  workspace tests pass in all. The existing Starlette deprecation warning remains.
-- The grammar changes only inside `f"""…"""`: raw chunks admit backslashes,
-  `raw_quote` covers one or two quotation marks before a brace, and
-  `brace_escape` replaces the backslash escape there. Quoted `f"…"` and untagged
-  literals are unchanged. No CLI, dependency or execution change. Precision
-  range validation, formatting, desugaring and struct semantics remain with
-  consumers.
+[Decoding tests](../../src/ast/text.rs) and [AST tests](../../tests/ast.rs) retain
+quoted escapes, raw multiline indentation, Unicode spans, adjacent/nested holes,
+raw text across hole boundaries, control characters, malformed format fields and
+Struct entry provenance. These are the maintained acceptance evidence; actual
+Tree-sitter parser generation/execution remains unverified.

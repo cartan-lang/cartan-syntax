@@ -21,9 +21,10 @@ and broader grammar inspection.
 ## Boundary
 
 Syntax owns source parsing, normalization, source locations and syntax-form
-errors. Graph owns configurable semantics and its source adapter; their semantic
-implementation is deferred under the workspace's
-[language scope](../../docs/records/language-scope.md). Retained configurable
+errors. Graph owns configurable semantics and its source adapter. Its
+[semantic graph contract](../../cartan-graph/docs/records/semantic-graph.md)
+and the workspace [language scope](../../docs/records/language-scope.md) describe
+current semantic support and limits. Retained configurable
 syntax does not imply runtime function values, returned functions or dynamic
 callees. Syntax normalizes function-signature parameter annotations; overload
 resolution and static function-argument binding belong to graph.
@@ -237,9 +238,9 @@ ordinary type, or `ParameterAnnotation::Signature(Signature { arguments, result,
 arrow_span, span })` for `g: (T1, …, Tn) -> R`, including `() -> R` and
 `(T) -> R`. One argument may also be written without parentheses, `g: T -> R`,
 which yields the same `Signature` with one argument. Argument and result slots
-are ordinary `Annotation`s: named types, generic applications and inline structs.
-Optional and sum annotations remain unsupported, and `(x: Real) -> R` reads as an
-inline product argument, which is unsupported; there are no named signature
+are ordinary `Annotation`s, including named types, generic applications, inline
+Structs, Tuples, Sums and `T|None`. `(x: Real) -> R` reads as an inline product
+argument, which is unsupported; there are no named signature
 formals. `span` covers what was written through the result,
 `arrow_span` covers `->`, every slot keeps its own span, and the parameter span
 covers the whole `g: (…) -> R`. Unannotated and value-annotated parameters are
@@ -503,12 +504,17 @@ ordered writes only; other update-body forms are outside this AST subset.
 
 Only the value annotations described above, the imports above,
 and the listed expression forms are normalized. Default arguments,
-function-header configuration/lock clauses, sum fibers, qualified annotations,
+function-header configuration/lock clauses, qualified annotations,
 general `fold`, guard/configuration clauses on reductions and inline-description pattern heads
 return unsupported errors. Broader syntax restrictions such as periodic operands
 or annotation-placement rules are not comprehensively validated. Names, type
 existence, arity, domain/rank restrictions and numeric representability remain
 analysis concerns.
+
+The grammar currently rejects some valid nested value bodies in named entries,
+such as `v = 1` followed by `x = {a: {v}}`. This speculative type-lookahead defect
+is SYN-1 in the [workspace defect register](../../docs/known-defects.md).
+Its bounded repair is scheduled as SYN-PARSE-1; it is not fixed by this contract.
 
 ## Adopted source contracts
 

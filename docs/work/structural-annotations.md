@@ -8,32 +8,26 @@ topics: [syntax, interface, frontend]
 owner: cartan-syntax-agent
 depends: [static-signatures, string-interpolation]
 authority: Owner clarified inline structural annotations and the unary arrow on 2026-10-27; Codex lead started this bounded checkpoint through codex:cartan-syntax
-evidence: src/ast.rs; src/ast/normalize.rs; tests/ast.rs; verification below
+evidence: tests/ast.rs; src/ast/normalize.rs; maintained AST contract
 ---
 
 # Normalize inline struct annotations and unary signatures
 
-The [AST contract](../ast-interface.md) owns the adopted shapes: inline
-`AnnotationKind::Struct` entries and the unary `T -> R` signature spelling, as
-agreed with `claude:cartan-graph`. Every form already parsed, so the grammar is
-unchanged; only normalization changed.
+The [AST contract](../ast-interface.md#strings-templates-and-structs) owns inline
+`AnnotationKind::Struct` entries; its
+[signature contract](../ast-interface.md#function-signature-parameters) owns
+unary `T -> R` and parenthesized signatures. These forms preserve names, entry
+order, nested annotations and written spans. Optional and Sum annotations compose
+through the existing annotation representation. Graph decides type identity,
+eligibility and signature resolution.
 
-Lead rulings for this slice: inline product descriptions stay unsupported (not a
-final policy), named fiber aliases are graph semantics, there are no named
-signature formals such as `(x: Real) -> R`, and graph decides where an inline
-struct is semantically eligible. No runtime function values, returned function
-types or field reordering.
+Inline product descriptions and named signature formals such as `(x: Real) -> R`
+remain unsupported. Ordinary value signatures do not introduce runtime function
+values, returned function types or field reordering.
 
 ## Verification
 
-- Two new AST tests and two adapted ones (31 in `tests/ast.rs`) cover:
-  - the owner's `f(x: Real, g: Real -> {a: Real, b: Real})`, with written spans;
-  - the same shape for unary and parenthesized spellings with named, generic and
-    inline-struct arguments;
-  - nested, duplicate and empty inline structs with brace spans at UTF-8 offsets,
-    inside `Array<…>` and struct entries;
-  - admission in bindings, locals, fiber components and `List<…>`;
-  - unary arrows refused in bindings, locals and chained results;
-  - unsupported inline products, `(x: Real) -> R` and optional arguments.
-- The five workloads and the string, struct and signature tests are unchanged;
-  `ir` prints the new nodes. `UnparenthesizedSignature` is retired.
+The [AST tests](../../tests/ast.rs) retain unary/parenthesized equivalence, nested,
+duplicate and empty inline Structs, generic arguments, Unicode spans, Optional
+Struct fields and signature composition. Located errors distinguish forbidden
+signature positions and unsupported inline product descriptions.
