@@ -548,10 +548,23 @@ impl Reader<'_> {
                     body_span: span(body),
                 })
             }
+            "require_statement" => ItemKind::Require(self.require(node)?),
             _ => return Err(unsupported(node)),
         };
         Ok(Item {
             kind,
+            span: span(node),
+        })
+    }
+
+    fn require(&self, node: &Node) -> Result<Require> {
+        shape(node, &["condition", "message"], &[])?;
+        Ok(Require {
+            condition: self.expr(field(node, "condition")?)?,
+            message: node
+                .child("message")
+                .map(|message| self.expr(message))
+                .transpose()?,
             span: span(node),
         })
     }
@@ -947,6 +960,8 @@ impl Reader<'_> {
                     value: self.expr(field(child, "value")?)?,
                     span: span(child),
                 }));
+            } else if child.kind == "require_statement" {
+                items.push(BodyItem::Require(self.require(child)?));
             } else {
                 items.push(BodyItem::Result(self.expr(child)?));
                 results += 1;

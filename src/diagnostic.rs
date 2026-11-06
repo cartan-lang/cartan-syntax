@@ -207,6 +207,10 @@ pub enum Rule {
     TemplateHole,
     /// A tagged literal's hole with no closing `}`.
     TemplateClose,
+    /// A `require` with no parenthesized condition.
+    RequireCondition,
+    /// A `require` message other than a string or tagged literal.
+    RequireMessage,
 }
 
 impl Rule {
@@ -269,6 +273,8 @@ impl Rule {
         Rule::StateLocal,
         Rule::TemplateHole,
         Rule::TemplateClose,
+        Rule::RequireCondition,
+        Rule::RequireMessage,
     ];
 
     /// The label the grammar gives this rule: its position in
@@ -344,7 +350,9 @@ impl Rule {
             | Rule::WalkBody
             | Rule::LocalParam
             | Rule::ClauseComprehension
-            | Rule::TemplateHole => &[],
+            | Rule::TemplateHole
+            | Rule::RequireCondition
+            | Rule::RequireMessage => &[],
         }
     }
 }

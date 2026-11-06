@@ -119,8 +119,17 @@ fn assert_body_spans(source: &str, body: &Body) {
                 assert_pattern_spans(source, &local.pattern);
                 assert_expr_spans(source, &local.value);
             }
+            BodyItem::Require(require) => assert_require_spans(source, require),
             BodyItem::Result(expr) => assert_expr_spans(source, expr),
         }
+    }
+}
+
+fn assert_require_spans(source: &str, require: &Require) {
+    assert!(source[require.span.start..require.span.end].starts_with("require"));
+    assert_expr_spans(source, &require.condition);
+    if let Some(message) = &require.message {
+        assert_expr_spans(source, message);
     }
 }
 
@@ -391,6 +400,7 @@ fn normalizes_all_five_workloads_and_retains_document_items() {
                 }
                 ItemKind::Struct(_) => panic!("workloads declare no structs"),
                 ItemKind::Sum(_) => panic!("workloads declare no sums"),
+                ItemKind::Require(_) => panic!("workloads state no requirements"),
             }
         }
         assert_eq!(
@@ -3321,4 +3331,69 @@ fn repeated_tuple_annotations_on_leading_locals_preserve_nested_types_and_spans(
             "{source}: {diagnostic:?}"
         );
     }
+}
+
+#[test]
+fn requirements_are_items_and_body_items_but_never_results() {
+    let source = "require(a and b, \"both\")\nf(x) = {\n  require(x > 0, f\"x = {x}\")\n  require(\n    x < 10\n  )\n  x * 2\n}\n";
+    let document = ast::parse_document(source).unwrap_or_else(|errors| panic!("{errors:?}"));
+    let ItemKind::Require(top) = &document.items[0].kind else {
+        panic!("{:?}", document.items[0]);
+    };
+    assert_eq!(
+        &source[top.span.start..top.span.end],
+        "require(a and b, \"both\")"
+    );
+    assert_eq!(
+        &source[top.condition.span.start..top.condition.span.end],
+        "a and b"
+    );
+    assert!(
+        matches!(&top.message, Some(Expr { kind: ExprKind::String(s), .. }) if s.value == "both")
+    );
+    let ItemKind::Function(function) = &document.items[1].kind else {
+        panic!("{:?}", document.items[1]);
+    };
+    let ExprKind::Body(body) = &function.body.kind else {
+        panic!("{:?}", function.body);
+    };
+    let [BodyItem::Require(first), BodyItem::Require(second), BodyItem::Result(_)] =
+        body.items.as_slice()
+    else {
+        panic!("{:?}", body.items);
+    };
+    assert!(matches!(
+        &first.message,
+        Some(Expr {
+            kind: ExprKind::Template(_),
+            ..
+        })
+    ));
+    assert_eq!(
+        &source[second.condition.span.start..second.condition.span.end],
+        "x < 10"
+    );
+    assert!(second.message.is_none());
+    assert_expr_spans(source, &function.body);
+}
+
+#[test]
+fn a_requirement_message_must_be_a_string_literal() {
+    let source = "require(a, 3)";
+    let errors = ast::parse_document(source).unwrap_err();
+    let [Error::Grammar(diagnostic)] = errors.as_slice() else {
+        panic!("{errors:?}")
+    };
+    assert!(
+        matches!(
+            diagnostic.kind,
+            cartan_syntax::DiagnosticKind::Stated {
+                rule: cartan_syntax::Rule::RequireMessage,
+                refused: false,
+                ..
+            }
+        ),
+        "{diagnostic:?}"
+    );
+    assert_eq!(diagnostic.span.start, source.find('3').unwrap());
 }

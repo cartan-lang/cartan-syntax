@@ -666,6 +666,7 @@ fn build() -> Grammar {
                     // it, a newline or the end of the text required after
                     // it — is what keeps every one of them the item it is
                     //
+                    sym("require_statement"),
                     sym("bare_expression"),
                     sym("pattern_binding"),
                     sym("function_definition"),
@@ -1095,6 +1096,38 @@ fn build() -> Grammar {
                     expecting("=", Stated::BindingValue.label()),
                     nl(),
                     field("value", expr()),
+                ]),
+            ),
+            def(
+                "require_statement",
+                "`require(a and b)` and `require(n > 0, f\"n = {n}\")` — a stated\n\
+                 requirement standing alone, as a document's item or a body's.\n\
+                 It binds no name and is no body's result. The optional message\n\
+                 is a quoted, triple-quoted or tagged literal. Whether and when\n\
+                 the condition is checked, a later analysis stage states.",
+                seq(vec![
+                    "require".into(),
+                    expecting("(", Stated::RequireCondition.label()),
+                    nl(),
+                    field("condition", expr()),
+                    nl(),
+                    optional(seq(vec![
+                        ",".into(),
+                        nl(),
+                        expecting(
+                            field(
+                                "message",
+                                choice(vec![
+                                    sym("template_string"),
+                                    sym("triple_string"),
+                                    sym("string"),
+                                ]),
+                            ),
+                            Stated::RequireMessage.label(),
+                        ),
+                        nl(),
+                    ])),
+                    ")".into(),
                 ]),
             ),
             def(
@@ -2337,7 +2370,13 @@ fn build() -> Grammar {
                             ]),
                             Stated::ComponentWrite.label(),
                         ),
-                        choice(vec![sym("local"), sym("state_local"), sym("write"), expr()]),
+                        choice(vec![
+                            sym("require_statement"),
+                            sym("local"),
+                            sym("state_local"),
+                            sym("write"),
+                            expr(),
+                        ]),
                     ])),
                     "}".into(),
                 ]),

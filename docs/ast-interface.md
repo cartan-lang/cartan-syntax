@@ -56,13 +56,13 @@ The source constructs are:
 
 | Area | Supported source representation |
 | --- | --- |
-| Items | Imports, ordinary and `param` bindings, `state` declarations, fiber declarations, struct declarations, function equations, and guarded `while` update blocks. |
+| Items | Imports, ordinary and `param` bindings, `state` declarations, fiber declarations, struct declarations, function equations, guarded `while` update blocks and `require` statements. |
 | Functions | Name, ordered parameters with patterns and optional value or function-signature annotations, and expression body. |
 | Fibers | Name, written base annotation such as `Module`, and ordered named components with annotations. |
 | Annotations | Named types, generic applications, inline struct types and fixed positional tuple annotations, preserving names and numeric arguments such as `Array<Primitive, 1>` without interpreting rank. |
 | Patterns | Name, wildcard, list, positional site pattern with its enclosing annotation retained, constructor, named components and brace entries, all nesting. |
 | Expressions | Literal number/boolean/string, tagged template, local/qualified name, unary/binary operation, conditional, local/qualified call, indexing, `of` component read, product value, `but` update, `none`, presence default `??`, absence mark `?`, list, named map, map join, configurable constructor/application, range, `periodic`, body, `for` and value-producing `each` comprehensions, and `reduce`. |
-| Body | Ordered `BodyItem::Local` and `BodyItem::Result` entries, with exactly one result. A result need not be last. |
+| Body | Ordered `BodyItem::Local`, `BodyItem::Require` and `BodyItem::Result` entries, with exactly one result. A result need not be last. |
 | Update block | Written guard and ordered writes, preserving target names, subscript keys, values and spans. |
 
 Operators use enums, while names and number spellings remain strings.
@@ -175,6 +175,16 @@ spanning the point and digits. Remaining text other than `sci`/`eng` yields
 `FormatNotation { written }` spanning that text. The precision range, which
 values a format applies to, desugaring into joins, conversion and formatting
 belong to graph, codegen and runtime. Syntax provides no runtime template parser.
+
+`require(condition)` and `require(condition, message)` are statements, not
+expressions. `require` is a reserved word. At document level the statement is
+`ItemKind::Require(Require { condition, message, span })`; in a body it is
+`BodyItem::Require` with the same fields, and it never counts as the body's
+result. The optional message is a quoted, triple-quoted or tagged template
+literal; any other message is the grammar diagnostic `Rule::RequireMessage`,
+and a missing parenthesized condition is `Rule::RequireCondition`. Syntax
+states no checking semantics; whether and when a requirement is checked
+belongs to graph and later stages.
 
 `ItemKind::Struct(Struct { name, entries })` covers `struct P = {x: Real, …}`.
 Each `StructEntry` retains `name`, `annotation` and the entry span in source

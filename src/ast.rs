@@ -36,6 +36,7 @@ pub enum ItemKind {
     Struct(Struct),
     Function(Function),
     While(While),
+    Require(Require),
 }
 
 /// A written import, without path lookup, name binding or export resolution.
@@ -199,6 +200,17 @@ pub struct While {
     pub guard: Expr,
     pub writes: Vec<Write>,
     pub body_span: Span,
+}
+
+/// `require(condition)` or `require(condition, message)`, as an item or a
+/// body item. The message is a string or tagged template literal. Syntax
+/// states no checking semantics; the requirement binds nothing and is never a
+/// body's result.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Require {
+    pub condition: Expr,
+    pub message: Option<Expr>,
+    pub span: Span,
 }
 
 /// `p <- e`, or the keyed `u[k, …] <- e` writing only the selected sites.
@@ -588,6 +600,7 @@ pub struct Body {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BodyItem {
     Local(Local),
+    Require(Require),
     Result(Expr),
 }
 
