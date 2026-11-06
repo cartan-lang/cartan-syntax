@@ -41,3 +41,86 @@ fn stated_rules_and_related_spans_keep_their_identity() {
     let first = &report.related[0].location.span;
     assert_eq!(&text[first.start..first.end], "else 2");
 }
+
+/// The owner-approved wording for a representative error of each family. A
+/// token-set summary that stops matching the grammar falls back to
+/// `unexpected …` and fails here rather than printing a wrong expectation.
+#[test]
+fn messages_name_what_was_expected_and_found() {
+    for (text, code, message, notes) in [
+        (
+            "main =\n",
+            "syntax.expected",
+            "expected an expression, found end of file",
+            0,
+        ),
+        (
+            "x = = 2",
+            "syntax.expected",
+            "expected an expression, found `=`",
+            0,
+        ),
+        (
+            "x = [1, 2)",
+            "syntax.expected",
+            "expected `,` or `]`, found `)`",
+            0,
+        ),
+        (
+            "x = for\n",
+            "syntax.expected",
+            "expected a name or pattern, found end of file",
+            0,
+        ),
+        (
+            "x = \"abc\n",
+            "syntax.expected",
+            "expected `\"`, found end of line",
+            1,
+        ),
+        ("é = 1", "syntax.expected", "unexpected `é`", 0),
+        (
+            "x = 1 2",
+            "syntax.item_end",
+            "expected end of line, found `2`",
+            0,
+        ),
+        (
+            "x = if a\n",
+            "syntax.then",
+            "expected `then` after the condition",
+            1,
+        ),
+        (
+            "b = a < 2 < 3",
+            "syntax.comparison_chain",
+            "comparisons cannot be chained",
+            1,
+        ),
+        (
+            "f(x) = { y := x }",
+            "syntax.body_result_count",
+            "this body has no result expression",
+            1,
+        ),
+        (
+            "y = g(1) { 2 }",
+            "syntax.unsupported_construct",
+            "payload expressions are not supported",
+            0,
+        ),
+    ] {
+        let errors = ast::parse_document(text).unwrap_err();
+        let report = syntax(&errors[0], 0);
+        assert_eq!(
+            (report.code, report.message.as_str()),
+            (code, message),
+            "{text:?}"
+        );
+        assert_eq!(report.notes.len(), notes, "{text:?}: {:?}", report.notes);
+        assert_eq!(
+            report.primary.unwrap().location.span.start,
+            errors[0].span().start
+        );
+    }
+}

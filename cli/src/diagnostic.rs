@@ -100,6 +100,6 @@ mod tests {
         assert!(rendered.starts_with("error[syntax."));
         assert_eq!(rendered.matches("error[").count(), count);
         assert!(rendered.contains("source.cart:1:"));
-        assert!(rendered.contains("note: the source ends before this construct is complete"));
+        assert!(rendered.contains("found end of file"));
     }
 }

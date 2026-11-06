@@ -65,6 +65,20 @@ in two support packages that the parser library does not depend on:
   and form errors to `syntax.*` codes, wording and fields. It reads no files;
   `source` is the caller's table index.
 
+Wording follows one policy, owned by that adapter. A headline reads
+`expected X, found Y` where X can be stated reliably, and otherwise
+`unexpected Y`. Y is a quoted found token, `end of line` or `end of file`.
+For a grammar error X summarizes only the tokens the parser tried at that
+position: closing tokens are named exactly, "an expression" appears only where a
+number literal could begin, "a name or pattern" only at a binder, continuation
+operators are dropped, and any unrecognized token gives up the summary rather
+than guessing. Stated and form rules state the problem; at most one note gives a
+repair the rule proves. The end-of-file note is omitted when the headline already
+says `end of file`. Codes, spans, the complete `expected` list, `found`,
+`incomplete` and captures remain unchanged in report fields; prose is never a
+machine interface. Context the error does not carry, such as the enclosing
+construct or an opening delimiter's position, is never invented.
+
 Downstream tools and this CLI use the same adapter and renderer, so the same
 malformed bytes under the same source name print the same diagnostic. Callers
 own color and streams. The CLI carries file-read, parse and stdout failures as

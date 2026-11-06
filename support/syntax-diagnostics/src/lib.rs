@@ -19,19 +19,19 @@ pub fn syntax(error: &ast::Error, source: usize) -> Report {
     );
     match error {
         ast::Error::Grammar(error) => {
+            let found = found_text(error.found.as_deref());
             match &error.kind {
                 DiagnosticKind::Expected { expected } => {
                     report.code = "syntax.expected";
-                    report.message = if expected.is_empty() {
-                        "expected an expression".into()
-                    } else {
-                        format!("expected {}", expected.join(" or "))
+                    report.message = match expectation(expected) {
+                        Some(expected) => format!("expected {expected}, found {found}"),
+                        None => format!("unexpected {found}"),
                     };
                     report.fields = json!({"expected":expected});
                 }
                 DiagnosticKind::Unexpected => {
                     report.code = "syntax.unexpected";
-                    report.message = "unexpected input".into();
+                    report.message = format!("unexpected {found}");
                 }
                 DiagnosticKind::Stated {
                     rule,
@@ -40,13 +40,28 @@ pub fn syntax(error: &ast::Error, source: usize) -> Report {
                 } => {
                     let (code, message) = rule_message(*rule);
                     report.code = code;
-                    report.message = message.into();
+                    report.message = match (rule, &error.found) {
+                        (Rule::ItemEnd, Some(_)) => format!("expected end of line, found {found}"),
+                        _ => message.into(),
+                    };
+                    if let Rule::NamespaceDot = rule {
+                        report
+                            .notes
+                            .push("write `::` to select a namespace member".into());
+                    }
                     report.fields = json!({"refused":refused,"captures":fields.iter().map(|field|json!({"name":field.name,"span":{"start":field.span.start,"end":field.span.end}})).collect::<Vec<_>>()});
                 }
             }
             report.fields["found"] = json!(error.found);
             report.fields["incomplete"] = json!(error.incomplete);
-            if error.incomplete {
+            // An expected or unexpected headline already names the end of
+            // the file; a stated rule's headline does not.
+            let headline_names_end = error.found.is_none()
+                && matches!(
+                    error.kind,
+                    DiagnosticKind::Expected { .. } | DiagnosticKind::Unexpected
+                );
+            if error.incomplete && !headline_names_end {
                 report
                     .notes
                     .push("the source ends before this construct is complete".into());
@@ -59,27 +74,40 @@ pub fn syntax(error: &ast::Error, source: usize) -> Report {
                     report.fields = json!({"construct":kind});
                     (
                         "syntax.unsupported_construct",
-                        format!("`{kind}` is outside the supported syntax subset"),
+                        format!("{} are not supported", construct_plural(kind)),
                     )
                 }
                 UseAliasAndImports => (
                     "syntax.use_alias_imports",
                     "a use declaration cannot combine an alias and imported selectors".into(),
                 ),
-                ComparisonChain => (
-                    "syntax.comparison_chain",
-                    "write each comparison separately".into(),
-                ),
+                ComparisonChain => {
+                    report
+                        .notes
+                        .push("join them with `and`, as in `a < b and b < c`".into());
+                    (
+                        "syntax.comparison_chain",
+                        "comparisons cannot be chained".into(),
+                    )
+                }
                 RangeChain => (
                     "syntax.range_chain",
                     "a range must have only two endpoints".into(),
                 ),
                 BodyResultCount { found } => {
                     report.fields = json!({"found":found});
-                    (
-                        "syntax.body_result_count",
-                        format!("a body requires one result expression; found {found}"),
-                    )
+                    let (message, note) = match found {
+                        0 => (
+                            "this body has no result expression".to_string(),
+                            "end the body with the value it produces",
+                        ),
+                        found => (
+                            format!("this body has {found} result expressions"),
+                            "bind all but one of them with `:=`",
+                        ),
+                    };
+                    report.notes.push(note.into());
+                    ("syntax.body_result_count", message)
                 }
                 FormatPrecision { written } => {
                     report.fields = json!({"written":written});
@@ -254,7 +282,7 @@ fn rule_message(rule: Rule) -> (&'static str, &'static str) {
         Then => ("syntax.then", "expected `then` after the condition"),
         NamespaceDot => (
             "syntax.namespace_dot",
-            "use `::` to select a namespace member",
+            "`.` cannot select a namespace member",
         ),
         ComponentDot => ("syntax.component_dot", "use `of` to read a component"),
         CallHead => (
@@ -343,5 +371,154 @@ fn location(source: usize, span: cartan_syntax::Span) -> SourceLocation {
             start: span.start,
             end: span.end,
         },
+    }
+}
+
+/// What the parser found where it stopped, as a headline names it.
+fn found_text(found: Option<&str>) -> String {
+    match found {
+        None => "end of file".into(),
+        Some(text) if text.starts_with(['\n', '\r']) => "end of line".into(),
+        Some(text) => format!("`{}`", text.escape_debug()),
+    }
+}
+
+/// The number literal's token: only an expression can begin with it.
+const NUMBER: &str = "/[0-9][_0-9]*/";
+
+/// Tokens that close or separate what came before, named exactly.
+const CLOSING: &[&str] = &[
+    "`)`", "`]`", "`}`", "`,`", "`then`", "`in`", "`else`", "`=`", "`:=`",
+];
+
+/// Tokens that can begin an expression.
+const EXPRESSION_START: &[&str] = &[
+    "identifier",
+    NUMBER,
+    "`(`",
+    "`[`",
+    "`{`",
+    "`:`",
+    "`\"`",
+    "`\"\"\"`",
+    "`f\"`",
+    "`f\"\"\"`",
+    "`true`",
+    "`false`",
+    "`none`",
+    "`if`",
+    "`not`",
+    "`-`",
+    "`+`",
+    "`..`",
+    "`..=`",
+    "`texture`",
+    "`periodic`",
+    "`locked`",
+    "`tap`",
+    "`for`",
+    "`each`",
+    "`fold`",
+    "`reduce`",
+    "`match`",
+];
+
+/// Tokens that can begin a name or pattern.
+const PATTERN_START: &[&str] = &["identifier", "`(`", "`[`", "`{`"];
+
+/// Tokens that would continue the construct before them: an operator, a
+/// postfix or a zone.
+const CONTINUATION: &[&str] = &[
+    "`of`",
+    "`..=`",
+    "`..`",
+    "`periodic`",
+    "`or`",
+    "`and`",
+    "`==`",
+    "`!=`",
+    "`<=`",
+    "`>=`",
+    "`<`",
+    "`>`",
+    "`??`",
+    "`+`",
+    "`<>`",
+    "`-`",
+    "`*`",
+    "`//`",
+    "`/`",
+    "`@`",
+    "`^`",
+    "`with`",
+    "`but`",
+    "`?`",
+    "`(`",
+    "`[`",
+    "`:`",
+    "`.`",
+    "`{`",
+];
+
+/// **A short statement of what the parser expected**, or `None` where the
+/// tokens it tried establish nothing reliable. The tokens are the union of
+/// every alternative tried at one position, so the summary names closing
+/// tokens exactly, says "an expression" only where a number could begin,
+/// drops tokens that would merely continue what came before, and gives up on
+/// any token it does not recognize. A newline is layout, never an expectation.
+fn expectation(expected: &[String]) -> Option<String> {
+    let tokens: Vec<&str> = expected
+        .iter()
+        .map(String::as_str)
+        .filter(|token| *token != "newline")
+        .collect();
+    let value = tokens.contains(&NUMBER);
+    // A quotation mark closes a string only where no value could begin.
+    let closing = |token: &str| CLOSING.contains(&token) || (!value && token == "`\"`");
+    let mut named: Vec<&str> = tokens.iter().copied().filter(|t| closing(t)).collect();
+    let rest: Vec<&str> = tokens.iter().copied().filter(|t| !closing(t)).collect();
+    if value {
+        if !rest.iter().all(|token| EXPRESSION_START.contains(token)) {
+            return None;
+        }
+        named.push("an expression");
+    } else if rest.contains(&"identifier") {
+        if !named.is_empty() || !rest.iter().all(|token| PATTERN_START.contains(token)) {
+            return None;
+        }
+        named.push("a name or pattern");
+    } else if named.is_empty()
+        || !rest
+            .iter()
+            // A pattern other than a number's start reads the rest of a literal.
+            .all(|token| CONTINUATION.contains(token) || token.starts_with('/'))
+    {
+        return None;
+    }
+    match named.as_slice() {
+        [one] => Some(one.to_string()),
+        [first, second] => Some(format!("{first} or {second}")),
+        [first, second, third] => Some(format!("{first}, {second} or {third}")),
+        _ => None,
+    }
+}
+
+/// A CST construct kind as plural prose: `payload_expression` reads
+/// "payload expressions".
+fn construct_plural(kind: &str) -> String {
+    let words = kind.trim_start_matches('_').replace('_', " ");
+    if words.ends_with('s')
+        || words.ends_with('x')
+        || words.ends_with("ch")
+        || words.ends_with("sh")
+    {
+        format!("{words}es")
+    } else if let Some(stem) = words
+        .strip_suffix('y')
+        .filter(|stem| !stem.ends_with(['a', 'e', 'i', 'o', 'u']))
+    {
+        format!("{stem}ies")
+    } else {
+        format!("{words}s")
     }
 }
