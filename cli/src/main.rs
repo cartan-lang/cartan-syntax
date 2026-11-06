@@ -3,7 +3,13 @@ mod diagnostic;
 mod metadata;
 
 use diagnostic::CliError;
-use std::{env, fs, io, io::IsTerminal, io::Write, path::PathBuf, process::ExitCode};
+use std::{
+    env, fs, io,
+    io::IsTerminal,
+    io::Write,
+    path::{Path, PathBuf},
+    process::ExitCode,
+};
 
 fn output(value: impl std::fmt::Display) -> Result<(), CliError> {
     match writeln!(io::stdout().lock(), "{value}") {
@@ -13,14 +19,25 @@ fn output(value: impl std::fmt::Display) -> Result<(), CliError> {
     }
 }
 
-fn run(path: PathBuf) -> Result<(), CliError> {
-    let source = fs::read_to_string(&path).map_err(|source| CliError::Read {
-        path: path.clone(),
+fn parse(path: &Path) -> Result<cartan_syntax::ast::Document, CliError> {
+    let text = fs::read_to_string(path).map_err(|source| CliError::Read {
+        path: path.to_owned(),
         source,
     })?;
-    let document = cartan_syntax::ast::parse_document(&source)
-        .map_err(|errors| CliError::Parse { path, errors })?;
-    output(format_args!("{:#?}", document.items))
+    cartan_syntax::ast::parse_document(&text).map_err(|errors| CliError::Parse {
+        path: path.to_owned(),
+        text,
+        errors,
+    })
+}
+
+fn ir(path: &Path) -> Result<(), CliError> {
+    output(format_args!("{:#?}", parse(path)?.items))
+}
+
+fn check(path: &Path) -> Result<(), CliError> {
+    parse(path)?;
+    output(format_args!("{}: valid syntax", path.display()))
 }
 
 fn main() -> ExitCode {
@@ -44,8 +61,13 @@ fn main() -> ExitCode {
     };
     let result = if matches.get_flag("describe-cli") {
         output(metadata::describe(&mut command))
-    } else if let Some(("ir", matches)) = matches.subcommand() {
-        run(matches.get_one::<PathBuf>("source").unwrap().clone())
+    } else if let Some((name @ ("ir" | "check"), matches)) = matches.subcommand() {
+        let path = matches.get_one::<PathBuf>("source").unwrap();
+        if name == "ir" {
+            ir(path)
+        } else {
+            check(path)
+        }
     } else {
         match command.print_help() {
             Err(source) if source.kind() == io::ErrorKind::BrokenPipe => Ok(()),

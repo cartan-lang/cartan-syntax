@@ -1,0 +1,12 @@
+[package]
+name = "cartan-syntax-diagnostics"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+publish = false
+description = "Diagnostic reports for Cartan syntax errors"
+
+[dependencies]
+cartan-syntax = { path = "../.." }
+cartan-diagnostics = { path = "../diagnostics" }
+serde_json = "1.0"

@@ -8,8 +8,10 @@ pub(crate) enum CliError {
         path: PathBuf,
         source: io::Error,
     },
+    /// `text` is the exact source the errors' byte spans index.
     Parse {
         path: PathBuf,
+        text: String,
         errors: Vec<cartan_syntax::ast::Error>,
     },
     Output {
@@ -21,7 +23,19 @@ impl fmt::Display for CliError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Read { path, source } => write!(formatter, "{}: {source}", path.display()),
-            Self::Parse { path, errors } => write!(formatter, "{}: {errors:#?}", path.display()),
+            Self::Parse { path, text, errors } => {
+                let sources = [cartan_diagnostics::Source { name: path, text }];
+                let reports: Vec<String> = errors
+                    .iter()
+                    .map(|error| {
+                        cartan_diagnostics::render(
+                            &sources,
+                            &cartan_syntax_diagnostics::syntax(error, 0),
+                        )
+                    })
+                    .collect();
+                formatter.write_str(&reports.join("\n"))
+            }
             Self::Output { source } => write!(formatter, "stdout: {source}"),
         }
     }
@@ -36,12 +50,16 @@ impl Error for CliError {
     }
 }
 
-/// Render domain errors only at the application's presentation boundary.
+/// Render domain errors only at the application's presentation boundary. A
+/// rendered report already names its severity and code, as downstream tools
+/// print it; other errors take an `error:` prefix.
 pub(crate) fn print(error: &CliError, colored: bool) {
-    if colored {
-        eprintln!("\x1b[1;31merror:\x1b[0m {error}");
-    } else {
-        eprintln!("error: {error}");
+    let text = error.to_string();
+    match (text.strip_prefix("error["), colored) {
+        (Some(rest), true) => eprintln!("\x1b[1;31merror\x1b[0m[{rest}"),
+        (Some(_), false) => eprintln!("{text}"),
+        (None, true) => eprintln!("\x1b[1;31merror:\x1b[0m {text}"),
+        (None, false) => eprintln!("error: {text}"),
     }
 }
 
@@ -69,16 +87,19 @@ mod tests {
     }
 
     #[test]
-    fn formats_structured_parser_facts_at_the_boundary() {
-        let errors = cartan_syntax::ast::parse_document("param n =").unwrap_err();
+    fn renders_each_parser_error_as_a_located_report() {
+        let text = "param n =";
+        let errors = cartan_syntax::ast::parse_document(text).unwrap_err();
+        let count = errors.len();
         let error = CliError::Parse {
             path: PathBuf::from("source.cart"),
+            text: text.into(),
             errors,
         };
-        let text = error.to_string();
-        assert!(text.starts_with("source.cart: "));
-        assert!(text.contains("Grammar("));
-        assert!(text.contains("incomplete: true"));
-        assert!(text.contains("Span {"));
+        let rendered = error.to_string();
+        assert!(rendered.starts_with("error[syntax."));
+        assert_eq!(rendered.matches("error[").count(), count);
+        assert!(rendered.contains("source.cart:1:"));
+        assert!(rendered.contains("note: the source ends before this construct is complete"));
     }
 }

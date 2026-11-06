@@ -7,7 +7,7 @@ publish = false
 description = "Cartan concrete syntax parsing and shared grammar tooling"
 
 [workspace]
-members = ["cli", "support/treegram"]
+members = ["cli", "support/treegram", "support/diagnostics", "support/syntax-diagnostics"]
 default-members = ["cli"]
 resolver = "2"
 

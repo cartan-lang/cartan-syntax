@@ -51,19 +51,71 @@ fn file_inspection_prints_ast_items_and_spans() {
 }
 
 #[test]
-fn parse_and_io_failures_emit_diagnostics_without_ast_output() {
-    let path = std::env::temp_dir().join(format!("cartan-syntax-cli-{}.cart", std::process::id()));
-    fs::write(&path, "param n =").unwrap();
-    let output = cli().arg("ir").arg(&path).output().unwrap();
-    fs::remove_file(&path).unwrap();
-    assert!(!output.status.success());
-    assert!(output.stdout.is_empty());
-    assert!(!output.stderr.is_empty());
+fn check_reports_valid_syntax_or_the_shared_rendered_diagnostic() {
+    let directory =
+        std::env::temp_dir().join(format!("cartan-syntax-check-{}", std::process::id()));
+    fs::create_dir_all(&directory).unwrap();
+    let valid = directory.join("valid.cart");
+    fs::write(&valid, "param n = 32\nrequire(n > 0)\n").unwrap();
+    let output = cli().arg("check").arg(&valid).output().unwrap();
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        format!("{}: valid syntax\n", valid.display())
+    );
 
-    let output = cli().arg("ir").arg(&path).output().unwrap();
-    assert!(!output.status.success());
+    // The same bytes render the same report a downstream tool builds with the
+    // shared adapter and renderer, for `check` and `ir` alike.
+    let invalid = directory.join("invalid λ.cart");
+    let text = "s = \"naïve\"\nt = s < 1 < 2\n";
+    fs::write(&invalid, text).unwrap();
+    let expected: Vec<String> = cartan_syntax::ast::parse_document(text)
+        .unwrap_err()
+        .iter()
+        .map(|error| {
+            cartan_diagnostics::render(
+                &[cartan_diagnostics::Source {
+                    name: &invalid,
+                    text,
+                }],
+                &cartan_syntax_diagnostics::syntax(error, 0),
+            )
+        })
+        .collect();
+    let expected = format!("{}\n", expected.join("\n"));
+    assert!(expected.starts_with("error[syntax.comparison_chain]"));
+    for command in ["check", "ir"] {
+        let output = cli()
+            .args(["--color", "never", command])
+            .arg(&invalid)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(1));
+        assert!(output.stdout.is_empty());
+        assert_eq!(String::from_utf8(output.stderr).unwrap(), expected);
+    }
+    let output = cli()
+        .args(["--color", "always", "check"])
+        .arg(&invalid)
+        .env_remove("NO_COLOR")
+        .output()
+        .unwrap();
+    let colored = String::from_utf8(output.stderr).unwrap();
+    assert_eq!(colored.matches('\u{1b}').count(), 2);
+    assert_eq!(
+        colored.replace("\u{1b}[1;31m", "").replace("\u{1b}[0m", ""),
+        expected
+    );
+
+    let missing = directory.join("missing.cart");
+    let output = cli().arg("check").arg(&missing).output().unwrap();
+    assert_eq!(output.status.code(), Some(1));
     assert!(output.stdout.is_empty());
-    assert!(!output.stderr.is_empty());
+    assert!(String::from_utf8(output.stderr)
+        .unwrap()
+        .starts_with("error: "));
+    fs::remove_dir_all(directory).unwrap();
 }
 
 #[test]

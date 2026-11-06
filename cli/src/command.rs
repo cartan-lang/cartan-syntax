@@ -37,6 +37,18 @@ fn tree() -> Command {
                 .help("Print versioned command metadata as JSON"),
         )
         .subcommand(
+            Command::new("check")
+                .about("Check that a source file has valid syntax")
+                .long_about("Parse and normalize a source file. Success reports valid syntax only; it performs no name resolution, type checking or execution. Failures print the same syntax diagnostics downstream tools report.")
+                .arg(
+                    Arg::new("source")
+                        .value_name("SOURCE")
+                        .required(true)
+                        .value_parser(PathBufValueParser::new())
+                        .help("Cartan source file"),
+                ),
+        )
+        .subcommand(
             Command::new("ir")
                 .about("Print the normalized source AST and byte spans")
                 .long_about("Print the normalized source AST and byte spans as indented Rust debug output. This inspection format is not typed computational IR or a stable interchange format.")

@@ -49,12 +49,31 @@ identity rather than diagnostic prose. Wording assertions belong only to formatt
 tests. Other tests check structured identity, payload, location, cause and status.
 External process streams remain opaque output, not a source for string classification.
 
-The Rust CST/AST APIs already retain structured diagnostics. The standalone Rust
-CLI carries file-read, parse and stdout failures as `CliError` variants;
-I/O variants retain the original `io::Error`, and parse failures retain their path
-and complete AST errors/spans. Only [the CLI formatter](../cli/src/diagnostic.rs)
-implements diagnostic presentation, called by the top-level CLI exit boundary.
-AST debug output remains an inspection format, not a diagnostic protocol.
+The Rust CST/AST APIs already retain structured diagnostics. Presentation lives
+in two support packages that the parser library does not depend on:
+
+- `cartan-diagnostics` (`support/diagnostics`) is source-independent. A `Report`
+  holds a stable `code`, severity, message, primary and related `Label`s at a
+  `SourceLocation` (an index into the caller's source snapshot table plus a byte
+  span), notes and JSON `fields`. `render` prints ANSI-free text with source
+  excerpts; columns count Unicode scalar values and tabs expand to four-column
+  stops, while invalid spans print their byte range rather than a guessed caret.
+  `to_json` gives a stable envelope with exact byte spans and source names,
+  marking non-UTF-8 names lossy. It has no Syntax, Graph or CLI dependency.
+- `cartan-syntax-diagnostics` (`support/syntax-diagnostics`) provides
+  `syntax(&ast::Error, source) -> Report`, the one mapping from Syntax grammar
+  and form errors to `syntax.*` codes, wording and fields. It reads no files;
+  `source` is the caller's table index.
+
+Downstream tools and this CLI use the same adapter and renderer, so the same
+malformed bytes under the same source name print the same diagnostic. Callers
+own color and streams. The CLI carries file-read, parse and stdout failures as
+`CliError` variants; I/O variants retain the original `io::Error`, and parse
+failures retain their path, exact source text and complete AST errors.
+[The CLI formatter](../cli/src/diagnostic.rs) renders each parse error through
+the shared packages, joined by newlines on stderr; with color it highlights only
+a report's leading `error`. Other failures take an `error:` prefix. AST debug
+output remains an inspection format, not a diagnostic protocol.
 
 The Python development app is not yet fully migrated: its process service embeds
 launch/timeout messages in `stderr`, configuration failures use message-bearing
@@ -77,7 +96,9 @@ library's documentation; CLI usage lives in its help and the README.
 See the [README](../README.md) for source inspection and library-example commands.
 
 The [Clap builder tree](../cli/src/command.rs) is the sole command definition.
-`ir SOURCE` is the sole inspection command and prints the normalized AST.
+`check SOURCE` parses and normalizes a file. On success it prints
+`SOURCE: valid syntax` to stdout and exits 0; this claims syntax only, with no
+name resolution, typing or execution. `ir SOURCE` prints the normalized AST.
 The former `ast` spelling is rejected with usage status 2.
 Every command takes `-h` for concise help and `--help` for help followed by a
 full command outline generated from the tree; there is no `help` subcommand. Help

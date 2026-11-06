@@ -21,17 +21,22 @@ workload subset into a source AST with full byte spans and structured errors.
 The [AST contract](docs/ast-interface.md) states its supported constructs,
 form checks and boundary with semantic analysis.
 
-Inspect a `.cart` file's normalized AST, including source spans:
+Check a `.cart` file's syntax, or inspect its normalized AST and source spans:
 
 ```sh
+cargo run --offline -- check tests/fixtures/diffusion.cart
 cargo run --offline -- ir tests/fixtures/diffusion.cart | less
 ```
 
-This prints Rust's indented debug representation of source items, not typed
+`check` prints `SOURCE: valid syntax` or the same located syntax diagnostics
+downstream tools report, rendered by the `support/diagnostics` and
+`support/syntax-diagnostics` packages.
+
+`ir` prints Rust's indented debug representation of source items, not typed
 computational IR or generated target code. Errors go to stderr with a nonzero
 exit status. The inspection format is not a stable interchange format.
 With no arguments, `cargo run` prints concise help to stdout and exits
-successfully. `ir` is the sole inspection command. At any command, `-h` prints
+successfully. At any command, `-h` prints
 concise help and `--help` adds the full command outline generated from the Clap
 tree; there is no `help` subcommand. `--version` prints the version and
 `--describe-cli` prints version-one JSON discovery derived from the same tree. Usage errors exit 2;
@@ -98,9 +103,10 @@ cargo run -p cartan-syntax --offline --example grammar > out/grammar.js
 node --check out/grammar.js
 ```
 
-The root library uses the local `support/treegram` package. The `cli` workspace
-member supplies the `cartan-syntax` binary and is the default member, so ordinary
-`cargo run` selects it. Use `-p cartan-syntax` for library examples or library-only
+The root library uses the local `support/treegram` package; the CLI also uses
+the diagnostic support packages, which the library does not depend on. The
+`cli` workspace member supplies the `cartan-syntax` binary and is the default
+member, so ordinary `cargo run` selects it. Use `-p cartan-syntax` for library examples or library-only
 checks; use `--workspace` to check all packages. All packages have publication
 disabled and require no adjacent repository. Offline builds require cached
 Clap and JSON dependencies for the CLI; the parser library gains no registry
