@@ -273,8 +273,8 @@ is unavailable in this environment. There is no full editor-conformance claim.
 
 ## Licensing
 
-All packages declare `MIT OR Apache-2.0` in their manifests and have publication
-disabled.
+All packages are licensed under the MIT License; see [LICENSE](../LICENSE).
+Manifests declare `MIT` and disable crates.io publication.
 
 ## Consumer integration
 

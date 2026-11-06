@@ -2,6 +2,6 @@
 name = "treegram"
 version = "0.1.0"
 edition = "2021"
-license = "MIT OR Apache-2.0"
+license = "MIT"
 publish = false
 description = "Dependency-free grammar interpreter and editor tooling"

@@ -1,6 +1,6 @@
 //! String literal decoding.
 //!
-//! Copyright (c) 2026 Jonathan Zrake. Licensed MIT OR Apache-2.0.
+//! Copyright (c) 2026 Jonathan Zrake. Licensed under the MIT License; see LICENSE.
 
 /// Quoted text: `\n` and `\t` spell control characters and a backslash before
 /// any other character spells that character. `None` for a trailing backslash,
