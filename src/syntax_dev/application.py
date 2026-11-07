@@ -64,11 +64,12 @@ def create_cli(*, repo_root: Path, rust_command: tuple[str, ...] | None = None) 
         name="syntax", cls=RustGroup, invoke_without_command=True,
         rust_command=rust_command or (str(root / "target/debug/cartan-syntax"),),
         context_settings={"help_option_names": []},
-        epilog="Rust commands come from the configured CLI's --describe-cli metadata and receive their arguments unchanged; use -h or --help after a command for its Rust help. -h is concise; --help adds the full command outline. Rust must be built explicitly.",
+        subcommand_metavar="SOURCE [--ast] [--json] | serve [OPTIONS]",
+        epilog="SOURCE checks a file's syntax; --ast prints its syntax tree and --json prints JSON. These arguments reach the configured Rust CLI unchanged; --help adds them to the full command outline. Rust must be built explicitly.",
     )
     @click.pass_context
     def cli(ctx):
-        """Inspect syntax and browse component documentation."""
+        """Check and inspect source syntax, and browse component documentation."""
         if ctx.invoked_subcommand is None:
             click.echo(ctx.command.help_text(ctx, full=False))
 
