@@ -15,6 +15,7 @@ pub mod ast;
 pub mod diagnostic;
 pub mod grammar;
 mod lexer;
+pub mod selection;
 
 pub use diagnostic::{Comprehension, Diagnostic, DiagnosticKind, Field, Rule, Span, Unclosed};
 pub use lexer::{KEYWORDS, LOCKED, NAMESPACE, PARAM, PERIODIC, WHEN};

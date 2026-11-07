@@ -377,6 +377,86 @@ fn location(source: usize, span: cartan_syntax::Span) -> SourceLocation {
     }
 }
 
+/// The report for a selector that names no single item of a valid document.
+/// `source` indexes the document in the caller's source table.
+pub fn selection(error: &cartan_syntax::selection::SelectionError, source: usize) -> Report {
+    use cartan_syntax::selection::SelectionError::*;
+    match error {
+        UnknownBinding { name, available } => {
+            let mut report = Report::error(
+                "syntax.selection_unknown",
+                format!("no top-level binding `{name}`"),
+                None,
+            );
+            report.notes.push(if available.is_empty() {
+                "this document has no top-level bindings".into()
+            } else {
+                const SHOWN: usize = 8;
+                let mut names: Vec<String> = available
+                    .iter()
+                    .take(SHOWN)
+                    .map(|name| format!("`{name}`"))
+                    .collect();
+                if available.len() > SHOWN {
+                    names.push(format!("and {} more", available.len() - SHOWN));
+                }
+                format!("top-level bindings: {}", names.join(", "))
+            });
+            report.fields = json!({"selector": name, "kind": "binding", "available": available});
+            report
+        }
+        UnknownUpdate { index, count } => {
+            let mut report = Report::error(
+                "syntax.selection_unknown",
+                format!("no update block `update:{index}`"),
+                None,
+            );
+            report.notes.push(match count {
+                0 => "this document has no update blocks".into(),
+                1 => "this document has one update block, `update:0`".into(),
+                count => format!(
+                    "this document has {count} update blocks, `update:0` to `update:{}`",
+                    count - 1
+                ),
+            });
+            report.fields = json!({"selector": format!("update:{index}"), "kind": "update",
+                "index": index, "update_count": count});
+            report
+        }
+        AmbiguousBinding { name, candidates } => {
+            let mut report = Report::error(
+                "syntax.selection_ambiguous",
+                format!("`{name}` is bound by {} top-level items", candidates.len()),
+                candidates.first().map(|span| location(source, *span)),
+            );
+            for span in candidates.iter().skip(1) {
+                report.related.push(Label {
+                    location: location(source, *span),
+                    message: "also bound here".into(),
+                });
+            }
+            report.fields = json!({"selector": name, "kind": "binding",
+                "candidates": candidates.iter().map(|span| json!({"start": span.start, "end": span.end})).collect::<Vec<_>>()});
+            report
+        }
+    }
+}
+
+/// The report for a selector spelled as neither a binding nor an update block.
+pub fn selector(error: &cartan_syntax::selection::SelectorError) -> Report {
+    let cartan_syntax::selection::SelectorError::Malformed { written } = error;
+    let mut report = Report::error(
+        "syntax.selection_malformed",
+        format!("`{written}` is not a binding name or update block"),
+        None,
+    );
+    report.notes.push(
+        "select a top-level binding by name, or an update block as `update` or `update:N`".into(),
+    );
+    report.fields = json!({"written": written});
+    report
+}
+
 /// Explain a bracket the parse left open. Where the text ends, or a
 /// different closing bracket stands, the open bracket is certainly the
 /// defect and the headline says so. Elsewhere the token found may instead

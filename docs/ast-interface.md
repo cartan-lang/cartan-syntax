@@ -525,6 +525,36 @@ A named entry may contain an ordinary value body, including one whose result
 is a name. Speculative parsing preserves the structured diagnostics of an
 actual typed local rather than applying type grammar to an entry's value.
 
+## Selecting one item
+
+`selection::Selector` is the one spelling of an inspection selector, shared by
+Syntax and its consumers: `Binding(name)` or `Update(index)`. `Selector::parse`
+reads `update` as `update:0`, `update:N` with decimal digits only, and any other
+text without whitespace, `:` or `=` as a binding name; everything else is
+`SelectorError::Malformed`. `update` is a selector spelling, not a language
+keyword. `Display` writes `name` or `update:N`, and the default is `main`.
+
+`selection::select(&Document, &Selector)` returns the one top-level item of the
+root document that the selector names, reading written syntax only:
+
+- A binding name matches a top-level binding whose pattern binds it (ordinary,
+  `param` or `state`, including a name inside a pattern) or a function equation
+  of that name. Imports, type declarations, update blocks and `require`
+  statements bind no selectable name. Several matches are
+  `SelectionError::AmbiguousBinding` with each candidate's span; none is
+  `UnknownBinding` with the names that are written, in source order.
+- `update:N` is the Nth top-level `while` block in source order, from zero: the
+  whole authored block, guard and every write, never one write. A missing index
+  is `UnknownUpdate` with the block count. `selection::updates` lists them.
+
+Selection resolves no imports, scopes or types and plans no updates; whether a
+selected item is a meaningful program value belongs to graph. Only `while`
+blocks normalize as update blocks, namespace bodies are not normalized and
+imported documents are never searched. Selection wording lives in
+`cartan-syntax-diagnostics` (`selection`, `selector`), with codes
+`syntax.selection_unknown`, `syntax.selection_ambiguous` and
+`syntax.selection_malformed`.
+
 ## Adopted source contracts
 
 These form rules are adopted design. List patterns stay distinct from site

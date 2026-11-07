@@ -150,3 +150,37 @@ fn unclosed_brackets_point_at_their_opener() {
         assert!(report.notes.is_empty());
     }
 }
+
+#[test]
+fn selection_failures_name_what_the_document_offers() {
+    use cartan_syntax::selection::{select, Selector};
+    use cartan_syntax_diagnostics::{selection, selector};
+    let document = ast::parse_document("a = 1\nmain = 2\nmain = 3\n").unwrap();
+    for (selected, code, message, note) in [
+        (
+            Selector::Binding("b".into()),
+            "syntax.selection_unknown",
+            "no top-level binding `b`",
+            Some("top-level bindings: `a`, `main`, `main`"),
+        ),
+        (
+            Selector::Update(0),
+            "syntax.selection_unknown",
+            "no update block `update:0`",
+            Some("this document has no update blocks"),
+        ),
+        (
+            Selector::default(),
+            "syntax.selection_ambiguous",
+            "`main` is bound by 2 top-level items",
+            None,
+        ),
+    ] {
+        let report = selection(&select(&document, &selected).unwrap_err(), 0);
+        assert_eq!((report.code, report.message.as_str()), (code, message));
+        assert_eq!(report.notes.first().map(String::as_str), note);
+    }
+    let report = selector(&Selector::parse("update:x").unwrap_err());
+    assert_eq!(report.code, "syntax.selection_malformed");
+    assert_eq!(report.fields["written"], "update:x");
+}
