@@ -1,111 +1,37 @@
 # cartan-syntax
 
-Standalone Cartan grammar parsing and syntax-based editor tooling. The shared
-grammar produces both concrete syntax trees and editor grammar definitions.
-A concrete syntax tree (CST) preserves grammar nodes, punctuation, comments,
-field labels and source spans. It does not resolve names or construct a
-semantic computation graph.
+Cartan's grammar, parser and source syntax tree. One grammar produces concrete
+syntax trees (CSTs), a normalized source abstract syntax tree (AST) for the
+numerical workload subset, and editor grammar definitions. Syntax performs no
+name resolution, typing, graph construction or evaluation.
 
-```rust
-let tree = cartan_syntax::parse_document("param n = 32\n");
-assert!(!tree.has_errors());
-```
+## Entry points
 
-`parse_expression` parses an individual expression. Both functions return a
-`SyntaxTree` containing owned source text, the root node and structured grammar
-diagnostics. Errors retain rule identity, byte spans and incomplete-input facts.
-See the [component contract](docs/component.md) for API details and limitations.
+- Library: `cartan_syntax::parse_document` returns a CST with structured grammar
+  diagnostics; `cartan_syntax::ast::parse_document` returns the source AST or
+  typed errors with byte spans; `cartan_syntax::selection` picks one top-level
+  binding or update block. Contracts: [component](docs/component.md) and
+  [AST interface](docs/ast-interface.md).
+- Diagnostics: `support/diagnostics` (`cartan-diagnostics`) renders reports;
+  `support/syntax-diagnostics` (`cartan-syntax-diagnostics`) is the one home of
+  Syntax wording. The parser library depends on neither.
+- CLI: `cartan-syntax SOURCE [BINDING|UPDATE] [--ast] [--json]`.
 
-`ast::parse_document` and `ast::parse_expression` normalize the numerical
-workload subset into a source AST with full byte spans and structured errors.
-The [AST contract](docs/ast-interface.md) states its supported constructs,
-form checks and boundary with semantic analysis.
+  ```sh
+  cargo run --offline -- tests/fixtures/diffusion.cart
+  cargo run --offline -- tests/fixtures/diffusion.cart update --ast
+  cargo run --offline -- tests/fixtures/diffusion.cart ni --json
+  ```
 
-Check a `.cart` file's syntax, or print one item's source syntax tree:
+  `SOURCE` checks the whole document. A selector (a top-level binding, or
+  `update:N`; `update` means `update:0`) must name exactly one item; `--ast`
+  prints the selected item's syntax tree, `main` by default; `--json` prints the
+  same result as JSON. Usage errors exit 2 and failures exit 1. Details:
+  [syntax tooling](docs/component.md#syntax-tooling).
+- Python app: `cartdev-syntax`, the same arguments plus `serve`; see the
+  [development application](docs/component.md#development-application).
 
-```sh
-cargo run --offline -- tests/fixtures/diffusion.cart
-cargo run --offline -- tests/fixtures/diffusion.cart update --ast
-cargo run --offline -- tests/fixtures/diffusion.cart ni --json
-cargo run --offline -- tests/fixtures/diffusion.cart update:0 --ast --json
-```
-
-Usage is `cartan-syntax SOURCE [BINDING|UPDATE] [--ast] [--json]`.
-
-- `SOURCE` alone checks the whole document and prints `SOURCE: valid syntax`,
-  or the same located syntax diagnostics downstream tools report on stderr with
-  status 1. Success claims syntax only, with no name resolution, typing or
-  execution.
-- `BINDING` names a top-level binding or function; `UPDATE` is `update:N`, the
-  Nth top-level `while` block from zero, and `update` means `update:0`. The
-  whole document is still checked, and the selection must name exactly one
-  item: `SOURCE: valid syntax; energy at 3:1-15`. An unknown or ambiguous
-  selection fails with status 1, and a malformed one is a usage error (status
-  2).
-- `--ast` prints the selected item's source syntax tree, `main` by default, as
-  an indented outline: each node's variant, written text and `line:column`
-  range. It describes written constructs; it is not typed computational IR.
-- `--json` prints a result object: `source`, `valid` and `diagnostics`, each
-  diagnostic in the shared JSON envelope with exact byte spans. A selection adds
-  `selection` (`selector`, `kind`, `index` for an update, `span`), and `--ast`
-  adds `item`, the same item the outline shows. Invalid syntax or a failed
-  selection prints the same object with its diagnostic and exits 1; stderr stays
-  empty.
-
-Diagnostics come from the `support/diagnostics` and
-`support/syntax-diagnostics` packages. With no arguments the CLI prints concise
-help to stdout and exits successfully. `-h` prints concise help and `--help`
-adds the full command outline generated from the Clap tree; there is no `help`
-command. `--version` prints the version and `--describe-cli` prints version-one
-JSON discovery derived from the same tree. Usage errors exit 2; execution
-failures exit 1. `--color auto|always|never` controls help, diagnostics and the
-outline; `NO_COLOR` disables automatic color unless an explicit option overrides
-it. Color changes only escapes, never text, and JSON is never colored. Write
-`--` before a source path that begins with `-`.
-
-The Python development app provides the composable `cartdev-syntax` commands
-and a documentation/diagnostics web app. In an independent clone, run these
-from this repository; uv uses its own `uv.lock` and `.venv`:
-
-```sh
-uv sync --locked
-uv run cartdev-syntax
-uv run cartdev-syntax tests/fixtures/diffusion.cart
-uv run cartdev-syntax tests/fixtures/diffusion.cart update --ast
-uv run cartdev-syntax --help
-uv run cartdev-syntax --describe-cli
-uv run cartdev-syntax serve --port 8000
-```
-
-In this parent Python workspace, uv uses the shared root `uv.lock` and `.venv`.
-After the workspace owner runs `uv sync --locked --all-packages` at
-the workspace root, run these from this component directory:
-
-```sh
-uv run --no-sync --package cartan-syntax-dev cartdev-syntax
-uv run --no-sync --package cartan-syntax-dev cartdev-syntax tests/fixtures/diffusion.cart
-uv run --no-sync --package cartan-syntax-dev pytest -q tests/python
-```
-
-The component lockfile remains for independent clones; it does not select
-dependencies inside the parent workspace. Coordinate shared environment changes
-with the workspace owner. Use `--no-sync` for checks and commands against the
-prepared environment; `--locked` alone can still change installed packages.
-
-Python derives its Rust commands, descriptions and `--help` outline from the
-configured binary's `--describe-cli` metadata, with no handwritten command
-registrations. Their arguments still reach Rust unchanged, preserving the
-invocation directory, streams and exit status. `serve` and its help need no Rust
-process; group help reports a missing or incompatible binary without building. The former Python-only
-`ir --json` and `--timeout` options are removed: Rust validates its own options.
-The web diagnostics API retains its bounded version-one result envelope.
-
-IR inspection invokes the existing debug binary; build it explicitly with
-`cargo build --offline` when needed. Help and documentation browsing do not need
-Rust. See the [development app contract](docs/component.md#development-application)
-for configuration, installed factories and mounted use.
-
-## Checks and tooling
+## Checks
 
 ```sh
 cargo fmt --check
@@ -114,52 +40,30 @@ cargo test --workspace --offline
 cargo clippy --workspace --all-targets --offline -- -D warnings
 RUSTDOCFLAGS=-Dwarnings cargo doc --workspace --no-deps --offline
 python3 tools/docs.py check
-python3 tools/docs.py inventory
 python3 -m unittest discover -s tools -p 'test_*.py'
-
-mkdir -p out
-cargo run -p cartan-syntax --offline --example grammar > out/grammar.js
-node --check out/grammar.js
+uv run --no-sync --package cartan-syntax-dev pytest -q tests/python
+cargo run -p cartan-syntax --offline --example grammar > out/grammar.js && node --check out/grammar.js
 ```
 
-The root library uses the local `support/treegram` package; the CLI also uses
-the diagnostic support packages, which the library does not depend on. The
-`cli` workspace member supplies the `cartan-syntax` binary and is the default
-member, so ordinary `cargo run` selects it. Use `-p cartan-syntax` for library examples or library-only
-checks; use `--workspace` to check all packages. All packages have publication
-disabled and require no adjacent repository. Offline builds require cached
-Clap and JSON dependencies for the CLI; the parser library gains no registry
-dependency.
-For Python tests in an independent clone, run
-`uv run --locked pytest -q tests/python`; in the parent workspace use the
-package-selected command above. Cargo packages and build directories remain
-independent of the Python workspace.
+In this parent workspace the Python checks use the root environment after the
+workspace owner's `uv sync --locked --all-packages`; an independent clone uses
+`uv run --locked pytest -q tests/python`. `out/` is ignored scratch space.
 
-## Current scope and next work
+## Current limitations
 
-- Shared grammar parsing, workload AST normalization and editor-source
-  generation are implemented.
-- Tests cover grammar invariants, five numerical workload
-  fixtures, tree structure, source spans, Unicode, errors and tooling.
-- The AST covers the five workload fixtures, ordered body items, list/site
-  patterns, file/namespace imports, qualified values/calls, static and computed
-  Map literal entries and joins,
-  configurable constructors and colon/literal-dot application, strings, tagged
-  templates with structured format specs, struct declarations, sum rosters,
-  constructors and `match`,
-  function-signature parameter annotations, tuple annotations, value-producing
-  `each` walks, `require` statements, and source-form checks. Import paths retain raw text, decoded strings and byte spans; syntax
-  performs no file loading, name resolution or formatting. Other constructs may parse into
-  a CST but return a structured unsupported-form error during normalization.
-  Neither API performs semantic validation or verifies execution support.
-  Graph implements bounded static named-function arguments and owns configurable
-  semantics and execution limits under the
-  [workspace language scope](../docs/records/language-scope.md).
-- The generated Tree-sitter JavaScript passes a syntax check. Building and
-  executing the actual Tree-sitter parser remains untested here.
-- Graph is the only direct AST consumer and owns its adapter and locked local
-  Git dependency. Codegen consumes graph's typed representation without a
-  syntax dependency; integration and device execution are verified downstream.
+- Only `while` blocks normalize as update blocks; `every` blocks, namespace
+  bodies, default arguments, qualified annotations, function-header
+  configuration and Tap bodies parse to a CST but are unsupported in the AST.
+- An unclosed call such as `f(1` reports a call-head or positional-argument
+  rule instead of the missing `)`.
+- Generated Tree-sitter JavaScript passes a syntax check; building and running a
+  Tree-sitter parser is untested here.
+- The Python app's own failures are not yet structured; see
+  [diagnostic formatting](docs/work/diagnostic-formatting.md).
 
-The [documentation conventions](docs/documentation.md) define the queryable
-Markdown format used in this repository.
+## Consumers and next work
+
+Graph consumes the source AST and selection; Graph, Codegen and Compile use the
+diagnostic packages. Their `Cargo.lock` files record the revision each one
+consumes. Next: the unclosed-call fix and the Runtime prompt's input
+classification, highlight classes and keyword list.

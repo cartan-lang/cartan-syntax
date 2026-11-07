@@ -170,25 +170,17 @@ choices are derived through Clap introspection. Custom validation/relationships
 remain Rust responsibilities. The local exporter and Python adapter introduce no
 component dependency; peers agreed the schema and maintain their own adapters.
 
-The CLI alone depends on Clap 4.6.6 with default features disabled and
-`std`, `help`, `usage`, `error-context`, `color` enabled, plus `serde_json`.
-The parser library dependency graph is unchanged. On the existing local build
-cache, the initial offline CLI dependency check completed in about 1.8 seconds
-and build in about 2.0 seconds; these are observed incremental build costs, not
-clean-build benchmarks or cross-machine estimates.
+The CLI alone depends on Clap (default features off; `std`, `help`, `usage`,
+`error-context` and `color` on) and `serde_json`; `Cargo.lock` records the
+versions. The parser library's dependencies are unchanged by the CLI.
 
-[CLI process tests](../cli/tests/cli.rs) exercise sole-command enforcement,
-concise versus full help, the absent `help` subcommand, version, usage failures,
-OS path operands, termination, color (including options after a help flag) and
-JSON discovery. [Python tests](../tests/python/test_application.py) cover
-nested/standalone forwarding, terminal color precedence and process-free command
-help. [Metadata tests](../tests/python/test_metadata.py) show fixture commands
-added or removed in metadata appearing or disappearing without Python edits,
-typed discovery failures, single discovery, and the actual binary's commands and
-outline matching Rust's own `--help`. The installed
-entrypoint preserves statuses 0/1/2 outside the repository and matches Rust output
-for all five workload fixtures. The existing Starlette warning remains; actual
-Tree-sitter parser generation/execution is outside this CLI change's verification.
+[CLI process tests](../cli/tests/cli.rs) cover help and usage statuses, checks
+against the shared renderer, selection, JSON results, the readable tree, color
+and OS path operands. [Python tests](../tests/python/test_application.py) cover
+forwarding, color precedence and process-free help, and
+[metadata tests](../tests/python/test_metadata.py) cover discovery from the
+binary's `--describe-cli`. Tree-sitter parser generation and execution are
+untested.
 
 `grammar::grammar()` returns the shared grammar value. The same value drives:
 
@@ -207,8 +199,7 @@ generators do not provide a language server or semantic completion features.
 The installable `cartan-syntax-dev` distribution supplies `syntax_dev` and the
 unique `cartdev-syntax` executable. It composes with the workspace development
 app through the version-one `cartan.dev.components` entry point named `syntax`.
-The component owner maintains the implementation under the
-[Python app task](work/python-app.md) and the workspace's
+The component owner maintains it under the workspace's
 [application contract](../../docs/records/component-apps.md).
 
 `syntax_dev.application.component()` returns `api_version`, `id`, `title`,
@@ -260,7 +251,8 @@ wrapper. A source file literally named `serve` is written `./serve`. Web
 diagnostics invoke `--ast -- SOURCE`, so they show the document's `main`, with
 repository-relative paths and a default 30-second bound. Their version-one result envelope preserves opaque
 child streams and status; it is not command metadata or structured Rust IR.
-The asynchronous web service kills its POSIX process group and reaps the child
+The asynchronous web service kills its POSIX process group (other operating
+systems are untested) and reaps the child
 on timeout or cancellation; cancellation propagates after cleanup.
 
 The web app serves `/`, `/docs/`, `/diagnostics/` and locally packaged CSS and
@@ -343,9 +335,9 @@ Manifests declare `MIT` and disable crates.io publication.
 
 ## Consumer integration
 
-Graph is the only direct consumer. It owns its adapter and locked syntax Git
-dependency, following the [local dependency contract](ast-interface.md#local-dependency-delivery).
-Name resolution, overload selection, type checking and graph construction remain
-outside syntax. Codegen consumes graph's typed representation without a
-dependency on this crate. Integration and execution evidence belongs to the
+Graph consumes the source AST and `selection`; Graph, Codegen and Compile use
+the diagnostic packages. Each owns its adapter and locked Git dependency,
+following the [local dependency contract](ast-interface.md#local-dependency-delivery);
+its `Cargo.lock` is the record of the revision it consumes. Name resolution,
+overload selection, type checking and graph construction remain outside syntax. Integration and execution evidence belongs to the
 consuming components.

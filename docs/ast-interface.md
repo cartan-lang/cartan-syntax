@@ -32,7 +32,7 @@ resolution and static function-argument binding belong to graph.
 Graph is the only direct consumer of this AST. It owns its source adapter, name
 resolution, type checking, overload selection, constants, domain interpretation
 and graph construction. Codegen consumes graph's typed computational
-representation, does not depend on this crate, and owns array composition and
+representation, using only the diagnostic packages from this repository, and owns array composition and
 numerical lowering. The syntax AST therefore contains no inferred types,
 selected update target, resource references or chosen computational units. It
 preserves declarations and imports instead of assuming a document has exactly one
@@ -89,8 +89,7 @@ Support beyond the listed forms and interfaces below is not implied.
 
 ## Imports and qualified names
 
-The owner-authorized [import AST work](work/use-source-ast.md) extends normalization
-without changing the grammar. `Use` contains `source: UseSource`, optional
+Import normalization, authorized by the owner, adds no grammar change. `Use` contains `source: UseSource`, optional
 `selection: ImportSelection` and optional `alias: Name`. `UseSource::Namespace`
 carries a written bare `Name`; `UseSource::File` carries `PathLiteral` with the raw
 quoted spelling, decoded string and full quoted-literal span. `alias` records only
@@ -131,16 +130,14 @@ head and absence of explicit alias so graph analysis can apply its adopted defau
 namespace binding; this AST does not synthesize bindings, resolve names or decide
 exports, collisions, cycles or builtin availability.
 
-The revised `Use` fields and call head type required deliberate consumer
-adapter updates. When this seam was introduced, graph and codegen's provisional
-frontend both accepted it before edits. Graph is now the sole consumer and owns
-its adapter and locked revision. Accepting a form in syntax does not promise
+Changes to the `Use` fields or call head type need a deliberate update in
+graph's adapter and lockfile. Accepting a form in syntax does not promise
 execution support.
 
 ## Strings, templates and structs
 
-The [string interpolation work](work/string-interpolation.md) supplies the
-interface agreed with graph under the workspace's
+String and template normalization is the interface agreed with graph under the
+workspace's
 [settled string semantics](../../docs/work/source-values-and-configurables.md#first-checkpoint-semantic-resolutions).
 `ExprKind::String(StringLiteral { form, raw, value })` covers `"…"` and, in
 expression position, `"""…"""`; `form` is `StringForm::Quoted` or `Triple`, `raw`
@@ -200,8 +197,7 @@ declaration: source order, duplicate keys and an empty `{}` are preserved, and
 entry types nest. The annotation span covers the braces. It is admitted wherever
 a value annotation stands, including signature slots and results, struct entries,
 fiber components and generic type arguments. Graph interns an inline struct like
-a `struct` alias and decides where a struct is semantically eligible. The
-[structural annotation work](work/structural-annotations.md) records this slice.
+a `struct` alias and decides where a struct is semantically eligible.
 Inline product descriptions such as `(a: Real, b: Real)` remain an
 `UnsupportedConstruct` of kind `component` in annotations.
 
@@ -240,8 +236,7 @@ portable List storage or execution on any backend.
 
 ## Function-signature parameters
 
-The [static signature work](work/static-signatures.md) supplies the interface
-agreed with graph; graph's [resolution table](../../cartan-graph/docs/work/static-dispatch.md)
+Function-signature parameters are the interface agreed with graph; graph's [resolution table](../../cartan-graph/docs/work/static-dispatch.md)
 owns overload semantics. `Parameter.annotation` is
 `Option<ParameterAnnotation>`: `ParameterAnnotation::Value(Annotation)` for an
 ordinary type, or `ParameterAnnotation::Signature(Signature { arguments, result,
@@ -279,8 +274,7 @@ this alternative.
 
 ## Component reads and updates
 
-The [members and patterns work](work/members-and-patterns.md) supplies this
-interface under the workspace
+Component reads, updates and patterns follow the workspace
 [component reads and updates](../../docs/records/components-and-updates.md) record.
 `key of value` is `ExprKind::Projection { key, value }`, where `key` is a
 `ComponentKey`: `Name`, `Position(NumberLiteral)` or `Pair { row, column, span }`.
@@ -308,8 +302,7 @@ product entry.
 
 ## Optional values
 
-The [optional surface work](work/optional-surface.md) supplies this interface
-under the workspace [optional values](../../docs/records/optional-values.md)
+Optional surface syntax follows the workspace [optional values](../../docs/records/optional-values.md)
 record. `T|None` in an annotation or type argument is
 `AnnotationKind::Optional { value, none_span }`, and composes with parameter
 signatures as an ordinary annotation. It is the only union: any other
@@ -330,8 +323,7 @@ whether a mark has an operation to lift through are analysis checks.
 
 ## Sum fibers
 
-The [sum fiber work](work/sum-fibers.md) supplies this interface under the
-workspace [sum fibers](../../docs/records/sum-fibers.md) record. `fiber Name =
+Sum declarations follow the workspace [sum fibers](../../docs/records/sum-fibers.md) record. `fiber Name =
 (A: T | B)` is `ItemKind::Sum(Sum { name, variants })`; a product declaration
 remains `ItemKind::Fiber`. Each `Variant { name, payload, span }` keeps declared
 order and duplicate names, and a unit variant has `payload: None`. An inline
