@@ -37,6 +37,22 @@ pub struct Diagnostic {
     pub found: Option<String>,
     pub incomplete: bool,
     pub kind: DiagnosticKind,
+    /// The innermost bracket left open where the parse stopped, when its
+    /// closer was among the tokens expected there.
+    pub unclosed: Option<Box<Unclosed>>,
+}
+
+/// An opening bracket a failed parse left open.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Unclosed {
+    /// The opening bracket's span.
+    pub span: Span,
+    /// The opening bracket as written, such as `[`.
+    pub open: String,
+    /// The bracket that closes it, such as `]`.
+    pub close: String,
+    /// The grammar node kind whose sequence opened it, such as `list`.
+    pub construct: Option<String>,
 }
 
 impl Diagnostic {
@@ -71,6 +87,17 @@ impl Diagnostic {
             found: raw.found,
             incomplete: raw.incomplete,
             kind,
+            unclosed: raw.unclosed.map(|open| {
+                Box::new(Unclosed {
+                    span: Span {
+                        start: open.start,
+                        end: open.end,
+                    },
+                    open: open.text,
+                    close: open.close,
+                    construct: open.rule,
+                })
+            }),
         }
     }
 }

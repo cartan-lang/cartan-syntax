@@ -28,6 +28,9 @@ pub fn syntax(error: &ast::Error, source: usize) -> Report {
                         None => format!("unexpected {found}"),
                     };
                     report.fields = json!({"expected":expected});
+                    if let Some(open) = &error.unclosed {
+                        unclosed(&mut report, open, error.found.as_deref(), &found, source);
+                    }
                 }
                 DiagnosticKind::Unexpected => {
                     report.code = "syntax.unexpected";
@@ -374,6 +377,48 @@ fn location(source: usize, span: cartan_syntax::Span) -> SourceLocation {
     }
 }
 
+/// Explain a bracket the parse left open. Where the text ends, or a
+/// different closing bracket stands, the open bracket is certainly the
+/// defect and the headline says so. Elsewhere the token found may instead
+/// lack a separator before it, so the headline stays and the label points
+/// at the opener; a line break between the two is not evidence either way.
+fn unclosed(
+    report: &mut Report,
+    open: &cartan_syntax::Unclosed,
+    found: Option<&str>,
+    found_text: &str,
+    source: usize,
+) {
+    let noun = match open.construct.as_deref() {
+        Some("list") => "List".to_string(),
+        Some("map") => "Map".to_string(),
+        Some("body") => "body".to_string(),
+        Some("subscript") => "subscript".to_string(),
+        Some("parenthesized_expression") => "parenthesized expression".to_string(),
+        _ => format!("`{}`", open.open),
+    };
+    if found.is_none_or(|found| CLOSERS.contains(&found)) {
+        report.code = "syntax.unclosed_delimiter";
+        report.message = format!(
+            "expected `{}` to close this {noun}, found {found_text}",
+            open.close
+        );
+    }
+    report.related.push(Label {
+        location: location(source, open.span),
+        message: format!("{noun} opened here"),
+    });
+    report.fields["unclosed"] = json!({
+        "open": open.open,
+        "close": open.close,
+        "construct": open.construct,
+        "span": {"start": open.span.start, "end": open.span.end},
+    });
+}
+
+/// The grammar's closing brackets as written.
+const CLOSERS: &[&str] = &[")", "]", "}"];
+
 /// What the parser found where it stopped, as a headline names it.
 fn found_text(found: Option<&str>) -> String {
     match found {
@@ -430,6 +475,7 @@ const PATTERN_START: &[&str] = &["identifier", "`(`", "`[`", "`{`"];
 /// postfix or a zone.
 const CONTINUATION: &[&str] = &[
     "`of`",
+    "`::`",
     "`..=`",
     "`..`",
     "`periodic`",

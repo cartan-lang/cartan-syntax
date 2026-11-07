@@ -62,8 +62,8 @@ fn messages_name_what_was_expected_and_found() {
         ),
         (
             "x = [1, 2)",
-            "syntax.expected",
-            "expected `,` or `]`, found `)`",
+            "syntax.unclosed_delimiter",
+            "expected `]` to close this List, found `)`",
             0,
         ),
         (
@@ -122,5 +122,31 @@ fn messages_name_what_was_expected_and_found() {
             report.primary.unwrap().location.span.start,
             errors[0].span().start
         );
+    }
+}
+
+/// An open bracket is named in the headline only where it is certainly the
+/// defect; elsewhere it is a related label, and always a structured field.
+#[test]
+fn unclosed_brackets_point_at_their_opener() {
+    for (text, code, message) in [
+        (
+            "main = [1, 2, 3\n",
+            "syntax.unclosed_delimiter",
+            "expected `]` to close this List, found end of file",
+        ),
+        (
+            "a = [1, 3\nb = \"Hi\"\nmain = [1, 2, 3]\n",
+            "syntax.expected",
+            "expected `,` or `]`, found `=`",
+        ),
+    ] {
+        let report = syntax(&ast::parse_document(text).unwrap_err()[0], 0);
+        assert_eq!((report.code, report.message.as_str()), (code, message));
+        let opener = &report.related[0];
+        assert_eq!(opener.message, "List opened here");
+        assert_eq!(opener.location.span.start, text.find('[').unwrap());
+        assert_eq!(report.fields["unclosed"]["close"], "]");
+        assert!(report.notes.is_empty());
     }
 }

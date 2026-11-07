@@ -345,3 +345,18 @@ fn annotated_local_prefix_selects_body_before_list_value_refusal() {
     assert_eq!(nodes(&tree.root, "map").len(), 1);
     assert!(nodes(&tree.root, "local").is_empty());
 }
+
+#[test]
+fn a_failure_inside_brackets_reports_the_innermost_open_one() {
+    let text = "x = [1, (2\n";
+    let tree = cartan_syntax::parse_document(text);
+    let [diagnostic] = tree.diagnostics.as_slice() else {
+        panic!("{:?}", tree.diagnostics)
+    };
+    let open = diagnostic.unclosed.as_ref().unwrap();
+    assert_eq!(open.span.start, text.find('(').unwrap());
+    assert_eq!((open.open.as_str(), open.close.as_str()), ("(", ")"));
+    assert_eq!(open.construct.as_deref(), Some("parenthesized_expression"));
+    // Brackets closed on later lines leave nothing open.
+    valid_document("x = [\n  1,\n  (2 + 3),\n]\nm = {a: [1, 2]}\n");
+}

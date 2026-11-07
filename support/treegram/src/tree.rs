@@ -98,6 +98,26 @@ pub struct Diag {
     /// a typed line ends the item.
     pub incomplete: bool,
     pub said: Said,
+    /// **The bracket left open where the parse stopped**: the innermost
+    /// of the grammar's brackets opened on the parse path whose closer
+    /// was among the tokens looked for at the furthest position. `None`
+    /// where no such closer was looked for, and for a rule's own
+    /// diagnostic.
+    pub unclosed: Option<Opener>,
+}
+
+/// An opening bracket a parse path matched and had not yet closed.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Opener {
+    pub start: usize,
+    pub end: usize,
+    /// The opening bracket as written, `[`.
+    pub text: String,
+    /// The bracket that closes it, `]`.
+    pub close: String,
+    /// The nearest named, unhidden rule whose sequence opened it, where
+    /// one encloses it.
+    pub rule: Option<String>,
 }
 
 /// **Why a parse stopped.**

@@ -36,9 +36,14 @@ malformed or incomplete input so an editor can inspect the remaining structure.
 ## Diagnostics
 
 `Diagnostic` preserves a byte `Span`, found text, whether input is incomplete,
-and `DiagnosticKind`. A kind is an expected-token set, an unexpected token, or
+`DiagnosticKind` and `unclosed`. A kind is an expected-token set, an unexpected token, or
 a stated grammar rule with its refusal flag and captured fields. A captured
-field has a name and span; it is not a rendered error sentence.
+field has a name and span; it is not a rendered error sentence. `unclosed` is
+the innermost bracket open on the parse path at the furthest failure when its
+closer was among the expected tokens: the opener's span, the opening and closing
+text and the grammar node kind that opened it, such as `list`. The parser keeps
+these brackets per sequence, so a remembered rule's match never leaks one, and
+acceptance is unaffected. A rule's own stated diagnostic carries none.
 
 The owner requires diagnostics and errors to remain typed variants with payloads,
 source spans and underlying causes until one top-level formatter in a central
@@ -72,12 +77,17 @@ For a grammar error X summarizes only the tokens the parser tried at that
 position: closing tokens are named exactly, "an expression" appears only where a
 number literal could begin, "a name or pattern" only at a binder, continuation
 operators are dropped, and any unrecognized token gives up the summary rather
-than guessing. Stated and form rules state the problem; at most one note gives a
+than guessing. An `unclosed` bracket adds a related label at its opener, such as
+"List opened here", and an `unclosed` field. Where the text ends or a different
+closing bracket stands, the code becomes `syntax.unclosed_delimiter` and the
+headline reads "expected `]` to close this List, found end of file". Elsewhere
+the token found may instead lack a separator, so the headline stays. Stated and
+form rules state the problem; at most one note gives a
 repair the rule proves. The end-of-file note is omitted when the headline already
 says `end of file`. Codes, spans, the complete `expected` list, `found`,
 `incomplete` and captures remain unchanged in report fields; prose is never a
 machine interface. Context the error does not carry, such as the enclosing
-construct or an opening delimiter's position, is never invented.
+binding, is never invented.
 
 Downstream tools and this CLI use the same adapter and renderer, so the same
 malformed bytes under the same source name print the same diagnostic. Callers

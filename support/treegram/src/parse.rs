@@ -32,7 +32,7 @@ use std::hash::{BuildHasherDefault, Hasher};
 
 use crate::pattern::Pat;
 use crate::rule::{is_hidden, Assoc, Body, Climb, Form, Grammar, Label, Rule};
-use crate::tree::{Diag, Field, Node, Said};
+use crate::tree::{Diag, Field, Node, Opener, Said};
 
 /// **The hash the parser's tables use.** A packrat parse asks its memo
 /// a question at every rule and every position, and looks a rule name
@@ -261,6 +261,15 @@ struct Engine<'g, 's> {
     /// what was looked for there.
     furthest: usize,
     expected: Vec<String>,
+    /// The brackets open on the current parse path, innermost last. A
+    /// sequence that opens one closes it or drops it on leaving, so a
+    /// remembered rule's match leaves this as it found it.
+    open: Vec<Opener>,
+    /// The innermost bracket whose closer was looked for at the furthest
+    /// position ([`Diag::unclosed`]).
+    unclosed: Option<Opener>,
+    /// The named, unhidden rules being read, innermost last.
+    names: Vec<&'g str>,
     /// Whether failures are being recorded (off inside lookahead).
     recording: bool,
     hard: Option<HardDiag>,
@@ -301,6 +310,9 @@ impl<'g, 's> Engine<'g, 's> {
             extras_at: FxMap::with_capacity_and_hasher(src.len() / 4, Default::default()),
             furthest: 0,
             expected: Vec::new(),
+            open: Vec::new(),
+            unclosed: None,
+            names: Vec::new(),
             recording: true,
             hard: None,
             diags: Vec::new(),
@@ -327,8 +339,19 @@ impl<'g, 's> Engine<'g, 's> {
         if pos > self.furthest {
             self.furthest = pos;
             self.expected.clear();
+            self.unclosed = None;
         }
-        if pos == self.furthest && !self.expected.contains(&what) {
+        if pos != self.furthest {
+            return;
+        }
+        if let Some(open) = self.open.last() {
+            let closes =
+                what.strip_prefix('`').and_then(|w| w.strip_suffix('`')) == Some(&open.close);
+            if closes && self.unclosed.as_ref().is_none_or(|u| u.start < open.start) {
+                self.unclosed = Some(open.clone());
+            }
+        }
+        if !self.expected.contains(&what) {
             self.expected.push(what);
         }
     }
@@ -356,6 +379,7 @@ impl<'g, 's> Engine<'g, 's> {
             found,
             incomplete,
             said,
+            unclosed: None,
         }
     }
 
@@ -373,7 +397,9 @@ impl<'g, 's> Engine<'g, 's> {
         // a token looked for past the last character of the text is one
         // the writer has not typed yet
         let incomplete = self.at_end(pos) && !self.expected.is_empty();
-        self.stuck_at(pos, None, incomplete, Said::Expected(self.expected.clone()))
+        let mut diag = self.stuck_at(pos, None, incomplete, Said::Expected(self.expected.clone()));
+        diag.unclosed = self.unclosed.clone();
+        diag
     }
 
     /// The furthest-failure rule applied to a hard diagnostic: where an
@@ -572,22 +598,10 @@ impl<'g, 's> Engine<'g, 's> {
                 return self.sym(name, pos, inner, field, scope);
             }
             Rule::Seq(rs) => {
-                let mut nodes: Vec<Node> = Vec::new();
-                let mut p = pos;
-                for r in rs {
-                    let inner = Scope {
-                        nodes: &nodes,
-                        parent: scope,
-                    };
-                    match self.rule(r, p, ctx, field, Some(&inner))? {
-                        Some((ns, e)) => {
-                            nodes.extend(ns);
-                            p = e;
-                        }
-                        None => return Ok(None),
-                    }
-                }
-                Some((nodes, p))
+                let depth = self.open.len();
+                let outcome = self.seq(rs, pos, ctx, field, scope);
+                self.open.truncate(depth);
+                return outcome;
             }
             Rule::Choice(rs) => {
                 for r in rs {
@@ -669,6 +683,7 @@ impl<'g, 's> Engine<'g, 's> {
                 let hard = self.hard.take();
                 let furthest = self.furthest;
                 let expected = std::mem::take(&mut self.expected);
+                let unclosed = self.unclosed.take();
                 let diagnostics = self.diags.len();
                 self.recording = false;
                 let hit = self.rule(r, pos, ctx, None, scope);
@@ -676,6 +691,7 @@ impl<'g, 's> Engine<'g, 's> {
                 self.hard = hard;
                 self.furthest = furthest;
                 self.expected = expected;
+                self.unclosed = unclosed;
                 self.diags.truncate(diagnostics);
                 match hit {
                     Ok(Some(_)) => None,
@@ -723,6 +739,53 @@ impl<'g, 's> Engine<'g, 's> {
 
     /// `r` as many times as it matches, at least `least` times; an
     /// iteration that consumes nothing ends the run.
+    /// A sequence's members in order, tracking the grammar's brackets
+    /// it opens and closes ([`Engine::open`]); the caller drops what it
+    /// leaves open.
+    fn seq(
+        &mut self,
+        rs: &[Rule],
+        pos: usize,
+        ctx: Ctx,
+        field: Option<&str>,
+        scope: Option<&Scope>,
+    ) -> Outcome {
+        let mut nodes: Vec<Node> = Vec::new();
+        let mut p = pos;
+        for r in rs {
+            let inner = Scope {
+                nodes: &nodes,
+                parent: scope,
+            };
+            match self.rule(r, p, ctx, field, Some(&inner))? {
+                Some((ns, e)) => {
+                    nodes.extend(ns);
+                    if let Some(s) = bracket_literal(r) {
+                        self.track_bracket(s, e);
+                    }
+                    p = e;
+                }
+                None => return Ok(None),
+            }
+        }
+        Ok(Some((nodes, p)))
+    }
+
+    /// Opens or closes a bracket the sequence just matched, ending at `end`.
+    fn track_bracket(&mut self, s: &str, end: usize) {
+        if self.open.last().is_some_and(|open| open.close == s) {
+            self.open.pop();
+        } else if let Some((open, close)) = self.g.brackets.iter().find(|(open, _)| open == s) {
+            self.open.push(Opener {
+                start: end - open.len(),
+                end,
+                text: open.clone(),
+                close: close.clone(),
+                rule: self.names.last().map(|name| name.to_string()),
+            });
+        }
+    }
+
     fn repeat(
         &mut self,
         r: &Rule,
@@ -815,7 +878,17 @@ impl<'g, 's> Engine<'g, 's> {
                         };
                         self.pattern(p, pos, true, inner, None, label)
                     }
-                    r => self.rule(r, pos, inner, None, scope)?,
+                    r => {
+                        let named = !is_hidden(&def.name);
+                        if named {
+                            self.names.push(&def.name);
+                        }
+                        let outcome = self.rule(r, pos, inner, None, scope);
+                        if named {
+                            self.names.pop();
+                        }
+                        outcome?
+                    }
                 };
                 let hit = hit.map(|(nodes, end)| {
                     let nodes = if ctx.in_token || is_hidden(&def.name) {
@@ -1031,6 +1104,7 @@ impl<'g, 's> Engine<'g, 's> {
         // region is no longer what the parse is looking for
         self.furthest = end;
         self.expected.clear();
+        self.unclosed = None;
         Ok(Some((vec![error_node(start, end)], end)))
     }
 
@@ -1087,6 +1161,16 @@ impl<'g, 's> Engine<'g, 's> {
         }
         self.recording = recording;
         p.min(self.src.len())
+    }
+}
+
+/// The literal a rule matches when it is one token, through the
+/// wrappers that leave the token's text as written.
+fn bracket_literal(r: &Rule) -> Option<&str> {
+    match r {
+        Rule::Str(s) => Some(s),
+        Rule::Immediate(r) | Rule::Field(_, r) | Rule::Expect(r, _) => bracket_literal(r),
+        _ => None,
     }
 }
 

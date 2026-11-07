@@ -16,7 +16,7 @@ pub mod diagnostic;
 pub mod grammar;
 mod lexer;
 
-pub use diagnostic::{Comprehension, Diagnostic, DiagnosticKind, Field, Rule, Span};
+pub use diagnostic::{Comprehension, Diagnostic, DiagnosticKind, Field, Rule, Span, Unclosed};
 pub use lexer::{KEYWORDS, LOCKED, NAMESPACE, PARAM, PERIODIC, WHEN};
 pub use treegram::Node;
 
