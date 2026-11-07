@@ -360,3 +360,30 @@ fn a_failure_inside_brackets_reports_the_innermost_open_one() {
     // Brackets closed on later lines leave nothing open.
     valid_document("x = [\n  1,\n  (2 + 3),\n]\nm = {a: [1, 2]}\n");
 }
+
+#[test]
+fn an_unfinished_call_waits_for_its_paren_rather_than_refusing() {
+    for text in ["x = f(1", "x = f(1, 2\ny = 3\n"] {
+        let tree = parse_document(text);
+        let diagnostic = &tree.diagnostics[0];
+        assert!(
+            !matches!(diagnostic.kind, DiagnosticKind::Stated { .. }),
+            "{text:?}: {diagnostic:?}"
+        );
+        let open = diagnostic.unclosed.as_ref().unwrap();
+        assert_eq!(open.span.start, text.find('(').unwrap());
+    }
+    assert!(parse_document("x = f(1").diagnostics[0].incomplete);
+    // Complete misuse is still refused by name.
+    for (text, rule) in [
+        ("x = f(y = 3)", Rule::PositionalArgument),
+        ("x = (a)(1)", Rule::CallHead),
+    ] {
+        let tree = parse_document(text);
+        assert!(
+            matches!(tree.diagnostics[0].kind, DiagnosticKind::Stated { rule: r, .. } if r == rule),
+            "{text:?}: {:?}",
+            tree.diagnostics
+        );
+    }
+}

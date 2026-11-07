@@ -85,7 +85,7 @@ pub fn print_textmate() -> String {
 
 /// The word tokens that are values rather than keywords, which every
 /// lexical printer colors as constants.
-const CONSTANTS: &[&str] = &["true", "false", "none"];
+pub(crate) const CONSTANTS: &[&str] = &["true", "false", "none"];
 
 /// The grammar's lexical layer as a Vim syntax file
 /// (`editors/vim/syntax/cartan.vim`), read off the same value.
@@ -1584,7 +1584,15 @@ fn build() -> Grammar {
                         "parenthesized_expression",
                         "dot_refusal",
                     ]),
-                    postfix("call_refusal", POSTFIX, "target", refusing(immediate("("), Stated::CallHead.label())),
+                    // Only a complete argument list is refused: an unclosed
+                    // `f(1` is a call waiting for its `)`, which the call's
+                    // own failure states, not a misplaced call.
+                    postfix(
+                        "call_refusal",
+                        POSTFIX,
+                        "target",
+                        refusing(sym("argument_list"), Stated::CallHead.label()),
+                    ),
                 ],
             ),
             def(
@@ -1721,11 +1729,15 @@ fn build() -> Grammar {
                 seq(vec![
                     immediate("("),
                     items(seq(vec![
+                        // Refused only where the call closes after it: in an
+                        // unclosed call, `y = 3` on the next line is the next
+                        // binding, and the open `(` is the defect.
                         refusing(
                             seq(vec![
                                 field("key", sym("identifier")),
                                 "=".into(),
                                 not_ahead("="),
+                                ahead(sym("_argument_rest")),
                             ]),
                             Stated::PositionalArgument.label(),
                         ),
@@ -1734,6 +1746,28 @@ fn build() -> Grammar {
                             expr(),
                         ]),
                     ])),
+                    ")".into(),
+                ]),
+            ),
+            def(
+                "_argument_rest",
+                "the rest of an argument list from a value through its `)`, each\n\
+                 further argument a value, optionally written after a misplaced\n\
+                 `key =`",
+                seq(vec![
+                    nl(),
+                    expr(),
+                    repeat(seq(vec![
+                        repeat1(sep()),
+                        optional(seq(vec![
+                            sym("identifier"),
+                            "=".into(),
+                            not_ahead("="),
+                        ])),
+                        nl(),
+                        expr(),
+                    ])),
+                    repeat(sep()),
                     ")".into(),
                 ]),
             ),

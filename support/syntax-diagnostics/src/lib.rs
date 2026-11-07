@@ -471,6 +471,7 @@ fn unclosed(
 ) {
     let noun = match open.construct.as_deref() {
         Some("list") => "List".to_string(),
+        Some("argument_list") => "call".to_string(),
         Some("map") => "Map".to_string(),
         Some("body") => "body".to_string(),
         Some("subscript") => "subscript".to_string(),
