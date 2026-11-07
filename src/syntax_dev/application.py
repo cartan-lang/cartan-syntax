@@ -69,15 +69,15 @@ def create_cli(*, repo_root: Path, rust_command: tuple[str, ...] | None = None) 
     )
     @click.pass_context
     def cli(ctx):
-        """Check and inspect source syntax, and browse component documentation."""
+        """Check and inspect Cartan source syntax"""
         if ctx.invoked_subcommand is None:
             click.echo(ctx.command.help_text(ctx, full=False))
 
     @cli.command(context_settings={"help_option_names": ["-h", "--help"]})
-    @click.option("--host", default="127.0.0.1", show_default=True, help="Interface to bind.")
-    @click.option("--port", type=click.IntRange(1, 65535), default=8000, show_default=True, help="Port to bind.")
+    @click.option("--host", metavar="HOST", default="127.0.0.1", show_default=True, help="Interface to bind.")
+    @click.option("--port", metavar="PORT", type=click.IntRange(1, 65535), default=8000, show_default=True, help="Port to bind.")
     def serve(host, port):
-        """Serve documentation and explicit local diagnostics."""
+        """Serve documentation and diagnostics"""
         import uvicorn
         Console(stderr=True).print(f"Syntax development app: http://{host}:{port}")
         uvicorn.run(create_app(repo_root=root, rust_command=rust_command), host=host, port=port)
