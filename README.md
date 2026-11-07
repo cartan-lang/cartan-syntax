@@ -65,5 +65,5 @@ workspace owner's `uv sync --locked --all-packages`; an independent clone uses
 
 Graph consumes the source AST and selection; Graph, Codegen and Compile use the
 diagnostic packages, and Runtime's interactive prompt uses `prompt`. Their
-`Cargo.lock` files record the revision each one consumes. Next: merging the
-diagnostics-move branch that current consumers pin back into main.
+`Cargo.lock` files record the revision each one consumes; all of them pin
+`main`. Next: structured failures in the Python development app.
