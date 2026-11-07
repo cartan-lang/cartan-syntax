@@ -140,8 +140,10 @@ each node's variant, written text and `line:column` range, with columns counting
 Unicode scalar values; the JSON keeps exact byte spans and declaration field
 order. Color adds escapes only, and JSON is never colored. The check result's
 diagnostics use the shared `cartan_diagnostics::to_json` envelope through the
-CLI formatter. An unreadable file is an ordinary CLI error on stderr, also in
-JSON mode.
+CLI formatter. In JSON mode an unreadable file is also a result on stdout: `valid: false`
+with one `source.read` diagnostic whose fields carry the path, the I/O error
+`kind` and any OS error code; the status is 1 and stderr stays empty. In text
+mode it is an ordinary CLI error on stderr.
 
 The command takes `-h` for concise help and `--help` for help followed by a
 full command outline generated from the tree; there is no `help` subcommand. Help

@@ -168,6 +168,14 @@ fn json_results_carry_validity_diagnostics_and_the_source_ast() {
         assert_eq!(diagnostic["related"][0]["span"]["start"], 7);
         assert!(failed.get("item").is_none());
     }
+
+    // An unreadable source is a JSON result too, with the same status.
+    let (status, unread) = run(&directory.join("missing.cart"), false);
+    assert_eq!(status, Some(1));
+    assert_eq!(unread["valid"], false);
+    let diagnostic = &unread["diagnostics"][0];
+    assert_eq!(diagnostic["code"], "source.read");
+    assert_eq!(diagnostic["fields"]["kind"], "NotFound");
     fs::remove_dir_all(directory).unwrap();
 }
 

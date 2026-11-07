@@ -39,7 +39,15 @@ fn run(
     json: bool,
     colored: bool,
 ) -> Result<ExitCode, CliError> {
-    let text = read(path)?;
+    let text = match read(path) {
+        Ok(text) => text,
+        // JSON mode reports an unreadable source as its result, not on stderr.
+        Err(CliError::Read { path, source }) if json => {
+            output(json_text(&diagnostic::read_json(&path, &source)))?;
+            return Ok(ExitCode::FAILURE);
+        }
+        Err(error) => return Err(error),
+    };
     let document = match cartan_syntax::ast::parse_document(&text) {
         Ok(document) => document,
         Err(errors) if json => {

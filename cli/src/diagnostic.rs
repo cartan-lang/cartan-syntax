@@ -103,6 +103,31 @@ pub(crate) fn parse_json(
     })
 }
 
+/// The JSON result for a source that could not be read: not valid, with one
+/// `source.read` diagnostic carrying the path and the I/O error kind.
+pub(crate) fn read_json(path: &std::path::Path, error: &io::Error) -> serde_json::Value {
+    let mut report = cartan_diagnostics::Report::error(
+        "source.read",
+        format!("cannot read `{}`: {error}", path.display()),
+        None,
+    );
+    report.fields = serde_json::json!({
+        "path": path.to_string_lossy(),
+        "path_lossy": path.to_str().is_none(),
+        "kind": format!("{:?}", error.kind()),
+        "os_error": error.raw_os_error(),
+    });
+    let sources = [cartan_diagnostics::Source {
+        name: path,
+        text: "",
+    }];
+    serde_json::json!({
+        "source": path.to_string_lossy(),
+        "valid": false,
+        "diagnostics": [cartan_diagnostics::to_json(&sources, &report)],
+    })
+}
+
 /// The JSON result for a valid document whose selector names no single item:
 /// the syntax is valid, and the selection diagnostic is the result.
 pub(crate) fn selection_json(
