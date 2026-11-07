@@ -138,7 +138,7 @@ execution support.
 
 String and template normalization is the interface agreed with graph under the
 workspace's
-[settled string semantics](../../docs/work/source-values-and-configurables.md#first-checkpoint-semantic-resolutions).
+[settled string semantics](../../docs/records/collections.md#structs-tuples-lists-and-strings).
 `ExprKind::String(StringLiteral { form, raw, value })` covers `"…"` and, in
 expression position, `"""…"""`; `form` is `StringForm::Quoted` or `Triple`, `raw`
 is the written spelling including delimiters, and the expression span covers it.
