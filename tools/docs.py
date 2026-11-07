@@ -1,12 +1,20 @@
 #!/usr/bin/env python3
-"""Validate the small documentation header schema and emit a JSON inventory."""
+"""Validate documentation metadata and content, and emit a JSON inventory.
+
+This file is the canonical validator. The workspace imports it as
+cartan_dev.docs; each component vendors a byte-identical copy as
+tools/docs.py, which runs standalone with only the standard library.
+"""
 
 import argparse
+from dataclasses import asdict, dataclass
 from datetime import date
 import json
+import os
 from pathlib import Path
 import re
 import sys
+from urllib.parse import unquote
 
 
 BASE_FIELDS = {"id", "title", "kind", "status", "implementation", "topics"}
@@ -36,6 +44,36 @@ CHOICES = {
 }
 IDENTIFIER = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*\Z")
 
+# Path of the vendored copy inside each component repository.
+VENDORED_PATH = "tools/docs.py"
+WORK_LINE_LIMIT = 300
+
+ERROR, WARNING, INFO = "error", "warning", "info"
+SEVERITY = {
+    "broken-link": ERROR,
+    "broken-anchor": ERROR,
+    "broken-external-link": WARNING,
+    "broken-external-anchor": WARNING,
+    "commit-sha": WARNING,
+    "ignored-output": WARNING,
+    "done-work": WARNING,
+    "long-work": WARNING,
+    "external-unavailable": INFO,
+}
+
+FENCE = re.compile(r" {0,3}(`{3,}|~{3,})")
+HEADING = re.compile(r" {0,3}#{1,6}(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*$")
+HTML_ANCHOR = re.compile(r"<a\s[^>]*?\b(?:name|id)=[\"']([^\"']+)[\"']")
+INLINE_CODE = re.compile(r"(`+)(.+?)\1")
+LINK = re.compile(r"\[(?:[^\[\]]|\[[^\[\]]*\])*\]\(\s*(<[^>]*>|[^\s()]+(?:\([^\s()]*\)[^\s()]*)*)"
+                  r"(?:\s+(?:\"[^\"]*\"|'[^']*'))?\s*\)")
+DEFINITION = re.compile(r" {0,3}\[[^\]]+\]:\s*(<[^>]*>|\S+)")
+SCHEME = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*:")
+# Commit-like hexadecimal: 7-40 lowercase hex characters with a digit and a letter,
+# excluding decimal fractions and exponents such as 1.48416483839398e-38.
+COMMIT = re.compile(r"(?<!\.)\b(?=[0-9a-f]*[0-9])(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}\b(?![-+.]\d)")
+OUTPUT_PATH = re.compile(r"(?:^|(?<=[\s`(\[\"'/]))(out/[^\s`()\[\]\"'<>]+)")
+
 
 class DocumentError(Exception):
     def __init__(self, path, code, detail):
@@ -45,6 +83,35 @@ class DocumentError(Exception):
 
     def __str__(self):
         return f"{self.path}: {self.code}: {self.detail}"
+
+
+@dataclass(frozen=True)
+class Finding:
+    """A content lint fact; `severity` follows from the stable `code`."""
+
+    code: str
+    path: str
+    line: int = None
+    target: str = None
+    count: int = None
+
+    @property
+    def severity(self):
+        return SEVERITY[self.code]
+
+    def to_json(self):
+        data = {key: value for key, value in asdict(self).items() if value is not None}
+        data["severity"] = self.severity
+        return data
+
+
+@dataclass(frozen=True)
+class CopyStatus:
+    """Whether one repository's copy matches the canonical file."""
+
+    repository: str
+    path: str
+    state: str  # identical, different or missing
 
 
 def read_document(path, root):
@@ -174,23 +241,225 @@ def inventory(root):
     return records
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+def prose_lines(lines):
+    """Yield (number, line) outside front matter and fenced code blocks."""
+    start = 0
+    if lines and lines[0] == "---" and "---" in lines[1:]:
+        start = lines.index("---", 1) + 1
+    fence = None
+    for number, line in enumerate(lines[start:], start + 1):
+        match = FENCE.match(line)
+        if fence is None:
+            if match:
+                fence = match.group(1)
+            else:
+                yield number, line
+        elif (match and match.group(1)[0] == fence[0] and len(match.group(1)) >= len(fence)
+              and not line[match.end():].strip()):
+            fence = None
+
+
+def slug(heading):
+    """GitHub-style heading anchor, before duplicate numbering."""
+    text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", heading)
+    text = re.sub(r"<[^>]+>", "", text).strip().lower()
+    return re.sub(r"[^\w\- ]", "", text).replace(" ", "-")
+
+
+def anchors(lines):
+    found, counts = set(), {}
+    for _, line in prose_lines(lines):
+        match = HEADING.match(line)
+        if match:
+            base = slug(match.group(1) or "")
+            count = counts.get(base, 0)
+            counts[base] = count + 1
+            found.add(base if count == 0 else f"{base}-{count}")
+        found.update(HTML_ANCHOR.findall(line))
+    return found
+
+
+def nested_repositories(root):
+    """Submodule paths, which are separate repositories inside this checkout."""
+    try:
+        text = (root / ".gitmodules").read_text(encoding="utf-8")
+    except OSError:
+        return []
+    return [Path(path) for path in re.findall(r"^\s*path\s*=\s*(.+?)\s*$", text, re.M)]
+
+
+def external_root(root, target, nested):
+    """Return the other repository's entry point, or None for this repository."""
+    try:
+        relative = target.relative_to(root)
+    except ValueError:
+        common = Path(os.path.commonpath([root, target]))
+        parts = target.relative_to(common).parts
+        return common / parts[0] if parts else common
+    for path in nested:
+        if relative.parts[:len(path.parts)] == path.parts:
+            return root / path
+    return None
+
+
+def link_targets(line):
+    text = INLINE_CODE.sub(lambda match: " " * len(match.group(0)), line)
+    targets = [match.group(1) for match in LINK.finditer(text)]
+    definition = DEFINITION.match(text)
+    if definition:
+        targets.append(definition.group(1))
+    return [target[1:-1] if target.startswith("<") else target for target in targets]
+
+
+def check_links(root, path, relative, prose, nested, cache):
+    def anchors_of(file):
+        if file not in cache:
+            cache[file] = anchors(file.read_text(encoding="utf-8").splitlines())
+        return cache[file]
+
+    findings = []
+    for number, line in prose:
+        for target in link_targets(line):
+            if not target or SCHEME.match(target) or target.startswith("//"):
+                continue
+            location, _, fragment = target.partition("#")
+            location = unquote(location.partition("?")[0])
+            if location.startswith("/"):
+                resolved = root / location.lstrip("/")
+            else:
+                resolved = path.parent / location if location else path
+            resolved = Path(os.path.normpath(resolved))
+            other = external_root(root, resolved, nested)
+            if other is not None and not (other.is_file() or other.is_dir() and any(other.iterdir())):
+                findings.append(Finding("external-unavailable", relative, number, target))
+                continue
+            prefix = "broken-external-" if other is not None else "broken-"
+            if not resolved.exists():
+                findings.append(Finding(prefix + "link", relative, number, target))
+            elif (fragment and resolved.suffix == ".md" and resolved.is_file()
+                  and unquote(fragment) not in anchors_of(resolved)):
+                findings.append(Finding(prefix + "anchor", relative, number, target))
+    return findings
+
+
+def lint(root, records=None):
+    """Return content findings for README, top-level guidance and docs/."""
+    root = Path(root).resolve()
+    if records is None:
+        records = inventory(root)
+    work = {record["path"]: record for record in records if record["kind"] == "work"}
+    nested = nested_repositories(root)
+    files = [path for path in sorted(root.glob("*.md")) if path.name != "HANDOFF.md"]
+    files += sorted((root / "docs").rglob("*.md"))
+    findings, cache = [], {}
+    for path in files:
+        relative = path.relative_to(root).as_posix()
+        lines = path.read_text(encoding="utf-8").splitlines()
+        prose = list(prose_lines(lines))
+        if relative == "README.md" or relative.startswith(("docs/records/", "docs/work/")):
+            for number, line in prose:
+                findings.extend(Finding("commit-sha", relative, number, sha)
+                                for sha in COMMIT.findall(line))
+        if relative == "README.md" or relative.startswith("docs/"):
+            for number, line in prose:
+                findings.extend(Finding("ignored-output", relative, number, path_text)
+                                for path_text in OUTPUT_PATH.findall(line))
+        record = work.get(relative)
+        if record is not None:
+            if record["status"] == "done":
+                findings.append(Finding("done-work", relative))
+            if len(lines) > WORK_LINE_LIMIT:
+                findings.append(Finding("long-work", relative, count=len(lines)))
+        findings.extend(check_links(root, path, relative, prose, nested, cache))
+    return findings
+
+
+def failed(findings, strict=False):
+    failing = {ERROR, WARNING} if strict else {ERROR}
+    return any(finding.severity in failing for finding in findings)
+
+
+def compare_copies(reference, repositories):
+    """Compare each repository's copies with canonical files.
+
+    `reference` maps a repository-relative path to its canonical file;
+    `repositories` maps a repository name to its checkout directory.
+    """
+    statuses = []
+    for name, directory in repositories.items():
+        for relative, canonical in reference.items():
+            copy = Path(directory) / relative
+            if not copy.is_file():
+                state = "missing"
+            else:
+                state = "identical" if copy.read_bytes() == Path(canonical).read_bytes() else "different"
+            statuses.append(CopyStatus(name, relative, state))
+    return statuses
+
+
+def render_finding(finding):
+    """Human presentation of one finding; the only place lint prose is written."""
+    location = finding.path if finding.line is None else f"{finding.path}:{finding.line}"
+    code = finding.code
+    if code in {"broken-link", "broken-external-link"}:
+        message = f"link target does not exist: {finding.target}"
+    elif code in {"broken-anchor", "broken-external-anchor"}:
+        message = f"link anchor does not exist: {finding.target}"
+    elif code == "external-unavailable":
+        message = f"repository not present, link not checked: {finding.target}"
+    elif code == "commit-sha":
+        message = f"commit-like hash in prose may go stale: {finding.target}"
+    elif code == "ignored-output":
+        message = f"cites ignored output path: {finding.target}"
+    elif code == "done-work":
+        message = "work item is done; consolidate its results and delete it"
+    elif code == "long-work":
+        message = f"work item has {finding.count} lines (limit {WORK_LINE_LIMIT}); split or consolidate it"
+    else:
+        message = finding.target or ""
+    return f"{finding.severity}: {location}: {code}: {message}"
+
+
+def default_root():
+    """The nearest ancestor of this file holding docs/, independent of cwd."""
+    for directory in Path(__file__).resolve().parents:
+        if (directory / "docs").is_dir():
+            return directory
+    return Path.cwd()
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("command", choices=("check", "inventory"))
-    parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument("--root", type=Path, default=None)
+    parser.add_argument("--strict", action="store_true", help="check: fail on warnings too")
+    parser.add_argument("--json", action="store_true", help="check: print findings as JSON")
     for field, choices in CHOICES.items():
         parser.add_argument(f"--{field}", choices=sorted(choices))
     parser.add_argument("--topic")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+    root = (args.root or default_root()).resolve()
     try:
-        records = inventory(args.root.resolve())
+        records = inventory(root)
+        findings = lint(root, records) if args.command == "check" else []
     except (DocumentError, OSError, UnicodeError) as error:
         print(error, file=sys.stderr)
         return 1
 
     if args.command == "check":
-        print(f"Validated {len(records)} documents.")
-        return 0
+        status = 1 if failed(findings, args.strict) else 0
+        if args.json:
+            report = {"documents": len(records), "findings": [f.to_json() for f in findings]}
+            print(json.dumps(report, indent=2, ensure_ascii=False))
+            return status
+        for finding in findings:
+            if finding.severity != INFO:
+                print(render_finding(finding))
+        counts = {severity: sum(f.severity == severity for f in findings)
+                  for severity in (ERROR, WARNING, INFO)}
+        print(f"Validated {len(records)} documents: {counts[ERROR]} errors, "
+              f"{counts[WARNING]} warnings, {counts[INFO]} external links not checked.")
+        return status
     for field in CHOICES:
         wanted = getattr(args, field)
         if wanted:

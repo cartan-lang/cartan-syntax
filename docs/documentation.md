@@ -48,9 +48,11 @@ contracts and task evidence remain in structured docs. The handoff is outside
 `docs/` and does not require document metadata or enter the generated inventory.
 The supervisor coordinates updates to this schema and equivalent validation
 behavior/tests in each repository; standalone clones need no adjacent checkout.
-The workspace validator is `cartan_dev.docs` with tests under `tests/`; components
-retain their independent `tools/docs.py` and tooling tests until locally migrated.
-Different entry-point locations must not change metadata semantics.
+One validator serves every repository: the workspace module `cartan_dev.docs`
+is the canonical, standard-library-only source, and each component vendors a
+byte-identical copy as `tools/docs.py` so standalone clones stay usable.
+`cartdev docs drift` reports copies of the validator or of this file that differ
+from the workspace. Components keep their own validator tests.
 Design documents may state approved behavior that is not yet implemented, but
 must identify the gap. Reference material describes implemented behavior.
 
@@ -166,6 +168,12 @@ blocked_on: Module interface decision remains open
 ---
 ```
 
+The schema separates decisions, work status, ownership and completion
+criteria through YAML metadata and a generated inventory, not manual status
+tables or append-only logs. Material migrated from earlier work is reviewed
+individually and restated as current design with its rationale and current
+authority; documents do not cite the earlier codebase.
+
 ## Content and vocabulary
 
 - Begin with purpose and scope. State the current contract, examples and limits.
@@ -192,7 +200,12 @@ uv run cartdev docs inventory --kind direction --priority high --horizon near
 uv run python -m unittest discover -s tests -p 'test_*.py'
 ```
 
-In components retaining the standalone validator:
+```sh
+uv run cartdev docs check --strict
+uv run cartdev docs drift
+```
+
+In a component, with its vendored validator:
 
 ```sh
 python3 tools/docs.py check
@@ -201,11 +214,16 @@ python3 tools/docs.py inventory --kind design --status draft
 python3 tools/docs.py inventory --topic interface
 python3 tools/docs.py inventory --kind work --status active
 python3 tools/docs.py inventory --kind ruling --status open
-python3 tools/docs.py inventory --kind direction --priority high --horizon near
 ```
 
 The inventory is generated JSON. It is a query result, not a second maintained
 catalogue. The checker validates header fields, kind-specific statuses, required
-decision/blocker/completion metadata, dates and unique IDs. It does not establish
-actual authority, prose correctness, implementation truth or link/dependency
-resolution. Cross-repository references must not require adjacent builds.
+decision/blocker/completion metadata, dates and unique IDs, and resolves relative
+links and anchors: a broken link or anchor inside the repository is an error.
+It also reports content that tends to go stale, as warnings that `--strict`
+turns into failures: links into a sibling repository that do not resolve,
+commit-like hexadecimal hashes in README, records and work prose, citations of
+ignored `out/` paths, `done` work items still present, and work items over 300
+lines. Links into an absent sibling are skipped, so standalone clones need no
+adjacent checkout. The checker does not establish actual authority, prose
+correctness or implementation truth.
