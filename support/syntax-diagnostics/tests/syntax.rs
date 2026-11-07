@@ -184,3 +184,25 @@ fn selection_failures_name_what_the_document_offers() {
     assert_eq!(report.code, "syntax.selection_malformed");
     assert_eq!(report.fields["written"], "update:x");
 }
+
+#[test]
+fn set_values_render_in_place_with_typed_codes() {
+    use cartan_diagnostics::{render, Source};
+    use cartan_syntax::literal::parse_assignment;
+    use cartan_syntax_diagnostics::assignment;
+    let text = "nx=2147483648";
+    let reports = assignment(&parse_assignment(text).unwrap_err(), 0);
+    assert_eq!(reports[0].code, "syntax.literal_int_range");
+    let rendered = render(
+        &[Source {
+            name: Path::new("--set"),
+            text,
+        }],
+        &reports[0],
+    );
+    assert!(rendered.contains("--set:1:4"), "{rendered}");
+    let reports = assignment(&parse_assignment("dt=n * 2").unwrap_err(), 0);
+    assert_eq!(reports[0].code, "syntax.literal_expected");
+    let reports = assignment(&parse_assignment("dt").unwrap_err(), 0);
+    assert_eq!(reports[0].code, "syntax.assignment_equals");
+}

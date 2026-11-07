@@ -377,6 +377,70 @@ fn location(source: usize, span: cartan_syntax::Span) -> SourceLocation {
     }
 }
 
+/// The reports for text that is not one literal. Spans index the text the
+/// caller registered as `source`; a syntax failure yields its own reports.
+pub fn literal(error: &cartan_syntax::literal::LiteralError, source: usize) -> Vec<Report> {
+    use cartan_syntax::literal::LiteralError::*;
+    let (code, message, span, note, written) = match error {
+        Syntax(errors) => return errors.iter().map(|error| syntax(error, source)).collect(),
+        NotLiteral { span } => (
+            "syntax.literal_expected",
+            "expected a literal value".to_string(),
+            span,
+            "write a number, `true`, `false`, `none` or a quoted string",
+            None,
+        ),
+        IntRange { written, span } => (
+            "syntax.literal_int_range",
+            format!("`{written}` is outside the Int range"),
+            span,
+            "Int values are signed 32-bit, from -2147483648 to 2147483647",
+            Some(written),
+        ),
+        RealRange { written, span } => (
+            "syntax.literal_real_range",
+            format!("`{written}` is not a finite Real"),
+            span,
+            "Real values are 32-bit floating point",
+            Some(written),
+        ),
+    };
+    let mut report = Report::error(code, message, Some(location(source, *span)));
+    report.notes.push(note.into());
+    report.fields = json!({"written": written});
+    vec![report]
+}
+
+/// The reports for text that is not one `NAME=VALUE` assignment. A value
+/// error's spans index the whole assignment text registered as `source`.
+pub fn assignment(error: &cartan_syntax::literal::AssignmentError, source: usize) -> Vec<Report> {
+    use cartan_syntax::literal::AssignmentError::*;
+    match error {
+        MissingEquals { written } => {
+            let mut report = Report::error(
+                "syntax.assignment_equals",
+                format!("`{written}` is not a NAME=VALUE assignment"),
+                None,
+            );
+            report
+                .notes
+                .push("write a name, `=` and a literal value, as in `nx=64`".into());
+            report.fields = json!({"written": written});
+            vec![report]
+        }
+        InvalidName { name } => {
+            let mut report = Report::error(
+                "syntax.assignment_name",
+                format!("`{name}` is not a name"),
+                None,
+            );
+            report.fields = json!({"name": name});
+            vec![report]
+        }
+        Value { error, .. } => literal(error, source),
+    }
+}
+
 /// The report for a selector that names no single item of a valid document.
 /// `source` indexes the document in the caller's source table.
 pub fn selection(error: &cartan_syntax::selection::SelectionError, source: usize) -> Report {

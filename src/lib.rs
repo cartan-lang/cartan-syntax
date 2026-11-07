@@ -15,6 +15,7 @@ pub mod ast;
 pub mod diagnostic;
 pub mod grammar;
 mod lexer;
+pub mod literal;
 pub mod prompt;
 pub mod selection;
 

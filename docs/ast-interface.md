@@ -517,6 +517,30 @@ A named entry may contain an ordinary value body, including one whose result
 is a name. Speculative parsing preserves the structured diagnostics of an
 actual typed local rather than applying type grammar to an entry's value.
 
+## Literals for command lines
+
+`literal::parse_literal(text)` reads text as exactly one literal, spelled as in
+source, so every component's `--set NAME=VALUE` gives params values the same
+way. It returns `Literal::Int(i32)`, `Real(f32)`, `Bool`, `String` (the decoded
+text of a quoted or triple-quoted string) or `None`. A number containing `.`,
+`e` or `E` is a Real, any other an Int; `_` digit separators are allowed, and a
+leading `-` or `+` applies to a number. Errors are typed: `Syntax` with the
+ordinary parse errors (an incomplete value is flagged as in source), `NotLiteral`
+for any other expression, including tagged templates, and `IntRange` or
+`RealRange` for a number outside signed 32-bit Int or finite f32 Real, the
+current widths in the workspace integer and Real record.
+
+`literal::parse_assignment(text)` splits `NAME=VALUE` at the first `=`. The name
+must be a word that is not a reserved word. Errors are `MissingEquals`,
+`InvalidName` and `Value`, whose literal-error spans index the whole assignment
+text. `cartan_syntax_diagnostics::literal` and `assignment` word them, with
+codes `syntax.literal_expected`, `syntax.literal_int_range`,
+`syntax.literal_real_range`, `syntax.assignment_equals` and
+`syntax.assignment_name`; register the assignment text as a source (for example
+named `--set`) to show the value in place. Whether a value specializes code or
+is passed at run time, and checking it against a param's declared type, belong
+to the consumer.
+
 ## Selecting one item
 
 `selection::Selector` is the one spelling of an inspection selector, shared by
