@@ -20,7 +20,8 @@ pub(crate) fn command() -> Command {
 fn tree() -> Command {
     Command::new("cartan-syntax")
         .version(env!("CARGO_PKG_VERSION"))
-        .about("Inspect Cartan source syntax")
+        .about("Check and inspect Cartan source syntax")
+        .long_about("Check a Cartan source file's syntax, or print its source syntax tree. The syntax tree describes written constructs with byte spans; it is not typed computational IR. Success claims syntax only, with no name resolution, typing or execution.")
         .arg(
             Arg::new("color")
                 .long("color")
@@ -36,29 +37,25 @@ fn tree() -> Command {
                 .action(ArgAction::SetTrue)
                 .help("Print versioned command metadata as JSON"),
         )
-        .subcommand(
-            Command::new("check")
-                .about("Check that a source file has valid syntax")
-                .long_about("Parse and normalize a source file. Success reports valid syntax only; it performs no name resolution, type checking or execution. Failures print the same syntax diagnostics downstream tools report.")
-                .arg(
-                    Arg::new("source")
-                        .value_name("SOURCE")
-                        .required(true)
-                        .value_parser(PathBufValueParser::new())
-                        .help("Cartan source file"),
-                ),
+        .arg(
+            Arg::new("source")
+                .value_name("SOURCE")
+                .value_parser(PathBufValueParser::new())
+                .help("Cartan source file to check"),
         )
-        .subcommand(
-            Command::new("ir")
-                .about("Print the normalized source AST and byte spans")
-                .long_about("Print the normalized source AST and byte spans as indented Rust debug output. This inspection format is not typed computational IR or a stable interchange format.")
-                .arg(
-                    Arg::new("source")
-                        .value_name("SOURCE")
-                        .required(true)
-                        .value_parser(PathBufValueParser::new())
-                        .help("Cartan source file"),
-                ),
+        .arg(
+            Arg::new("ast")
+                .long("ast")
+                .action(ArgAction::SetTrue)
+                .requires("source")
+                .help("Print the source syntax tree instead of checking"),
+        )
+        .arg(
+            Arg::new("json")
+                .long("json")
+                .action(ArgAction::SetTrue)
+                .requires("source")
+                .help("Print JSON instead of text"),
         )
 }
 

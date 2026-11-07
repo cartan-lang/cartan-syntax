@@ -50,6 +50,27 @@ impl Error for CliError {
     }
 }
 
+/// The JSON result of checking one source: whether its syntax is valid and
+/// each diagnostic in the shared JSON envelope, with exact byte spans.
+pub(crate) fn parse_json(
+    path: &std::path::Path,
+    text: &str,
+    errors: &[cartan_syntax::ast::Error],
+) -> serde_json::Value {
+    let sources = [cartan_diagnostics::Source { name: path, text }];
+    let diagnostics: Vec<_> = errors
+        .iter()
+        .map(|error| {
+            cartan_diagnostics::to_json(&sources, &cartan_syntax_diagnostics::syntax(error, 0))
+        })
+        .collect();
+    serde_json::json!({
+        "source": path.to_string_lossy(),
+        "valid": errors.is_empty(),
+        "diagnostics": diagnostics,
+    })
+}
+
 /// Render domain errors only at the application's presentation boundary. A
 /// rendered report already names its severity and code, as downstream tools
 /// print it; other errors take an `error:` prefix.

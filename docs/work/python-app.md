@@ -6,7 +6,7 @@ status: done
 implementation: implemented
 topics: [syntax, tooling, interface]
 owner: cartan-syntax-agent
-depends: [ast-inspection]
+depends: [normalized-ast]
 authority: Owner-authorized supervisor assignment of the component application doctrine and a Sol builder on 2026-10-24
 evidence: tests/python/test_application.py; independent wheel and Rust delegation checks below
 ---

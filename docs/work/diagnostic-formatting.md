@@ -6,7 +6,7 @@ status: done
 implementation: partial
 topics: [syntax, interface, tooling]
 owner: cartan-syntax-agent
-depends: [ast-inspection, python-app]
+depends: [python-app]
 authority: Owner's workspace-wide diagnostic doctrine relayed by the supervisor on 2026-10-24
 evidence: cli/src/diagnostic.rs formatter tests; Rust, Python and documentation checks below
 ---

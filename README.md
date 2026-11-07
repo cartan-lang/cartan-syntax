@@ -21,28 +21,36 @@ workload subset into a source AST with full byte spans and structured errors.
 The [AST contract](docs/ast-interface.md) states its supported constructs,
 form checks and boundary with semantic analysis.
 
-Check a `.cart` file's syntax, or inspect its normalized AST and source spans:
+Check a `.cart` file's syntax, or print its source syntax tree:
 
 ```sh
-cargo run --offline -- check tests/fixtures/diffusion.cart
-cargo run --offline -- ir tests/fixtures/diffusion.cart | less
+cargo run --offline -- tests/fixtures/diffusion.cart
+cargo run --offline -- tests/fixtures/diffusion.cart --ast
+cargo run --offline -- tests/fixtures/diffusion.cart --json
+cargo run --offline -- tests/fixtures/diffusion.cart --ast --json
 ```
 
-`check` prints `SOURCE: valid syntax` or the same located syntax diagnostics
-downstream tools report, rendered by the `support/diagnostics` and
-`support/syntax-diagnostics` packages.
+- `SOURCE` alone prints `SOURCE: valid syntax`, or the same located syntax
+  diagnostics downstream tools report on stderr with status 1. Success claims
+  syntax only, with no name resolution, typing or execution.
+- `--ast` prints the source syntax tree as an indented outline: each node's
+  variant, written text and `line:column` range. It describes written
+  constructs; it is not typed computational IR.
+- `--json` prints a result object: `source`, `valid` and `diagnostics`, each
+  diagnostic in the shared JSON envelope with exact byte spans. With `--ast` a
+  valid source adds `items`, the serialized syntax tree. Invalid syntax prints
+  the same object with `valid: false` and exits 1; stderr stays empty.
 
-`ir` prints Rust's indented debug representation of source items, not typed
-computational IR or generated target code. Errors go to stderr with a nonzero
-exit status. The inspection format is not a stable interchange format.
-With no arguments, `cargo run` prints concise help to stdout and exits
-successfully. At any command, `-h` prints
-concise help and `--help` adds the full command outline generated from the Clap
-tree; there is no `help` subcommand. `--version` prints the version and
-`--describe-cli` prints version-one JSON discovery derived from the same tree. Usage errors exit 2;
-execution failures exit 1. `--color auto|always|never` controls help/diagnostics;
-`NO_COLOR` disables automatic color unless an explicit option overrides it.
-Inspection and JSON output remain undecorated.
+Diagnostics come from the `support/diagnostics` and
+`support/syntax-diagnostics` packages. With no arguments the CLI prints concise
+help to stdout and exits successfully. `-h` prints concise help and `--help`
+adds the full command outline generated from the Clap tree; there is no `help`
+command. `--version` prints the version and `--describe-cli` prints version-one
+JSON discovery derived from the same tree. Usage errors exit 2; execution
+failures exit 1. `--color auto|always|never` controls help, diagnostics and the
+outline; `NO_COLOR` disables automatic color unless an explicit option overrides
+it. Color changes only escapes, never text, and JSON is never colored. Write
+`--` before a source path that begins with `-`.
 
 The Python development app provides the composable `cartdev-syntax` commands
 and a documentation/diagnostics web app. In an independent clone, run these
@@ -51,8 +59,8 @@ from this repository; uv uses its own `uv.lock` and `.venv`:
 ```sh
 uv sync --locked
 uv run cartdev-syntax
-uv run cartdev-syntax ir tests/fixtures/diffusion.cart
-uv run cartdev-syntax ir -h
+uv run cartdev-syntax tests/fixtures/diffusion.cart
+uv run cartdev-syntax tests/fixtures/diffusion.cart --ast
 uv run cartdev-syntax --help
 uv run cartdev-syntax --describe-cli
 uv run cartdev-syntax serve --port 8000
@@ -64,7 +72,7 @@ the workspace root, run these from this component directory:
 
 ```sh
 uv run --no-sync --package cartan-syntax-dev cartdev-syntax
-uv run --no-sync --package cartan-syntax-dev cartdev-syntax ir tests/fixtures/diffusion.cart
+uv run --no-sync --package cartan-syntax-dev cartdev-syntax tests/fixtures/diffusion.cart
 uv run --no-sync --package cartan-syntax-dev pytest -q tests/python
 ```
 

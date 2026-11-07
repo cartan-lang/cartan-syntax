@@ -4,6 +4,7 @@ use treegram::Label;
 
 /// Half-open UTF-8 byte offsets in the source supplied to the parser.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Span {
     pub start: usize,
     pub end: usize,

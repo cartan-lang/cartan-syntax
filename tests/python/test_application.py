@@ -118,9 +118,12 @@ def test_real_binary():
     root = Path(__file__).resolve().parents[2]
     if not (root / 'target/debug/cartan-syntax').exists():
         pytest.skip('existing Rust binary unavailable; no implicit build')
-    result = CliRunner().invoke(create_cli(repo_root=root), ['ir', str(root / 'tests/fixtures/diffusion.cart')])
+    fixture = str(root / 'tests/fixtures/diffusion.cart')
+    result = CliRunner().invoke(create_cli(repo_root=root), [fixture])
+    assert (result.exit_code, result.stdout) == (0, f'{fixture}: valid syntax\n')
+    result = CliRunner().invoke(create_cli(repo_root=root), [fixture, '--ast', '--json'])
     assert result.exit_code == 0
-    assert result.stdout
+    assert json.loads(result.stdout)['items']
 
 
 def test_docs_do_not_spawn(repo, monkeypatch):
@@ -396,11 +399,11 @@ def test_standalone_preserves_child_exit_status(repo):
     assert not result.stdout
 
 
-def test_web_service_uses_sole_ir_command(repo):
+def test_web_service_requests_the_source_ast(repo):
     command = fake('import json,sys; print(json.dumps(sys.argv[1:]))')
     result = asyncio.run(inspect(repo, command, repo / 'source.cart'))
     assert result.status == 'ok'
-    assert json.loads(result.stdout) == ['ir', str(repo / 'source.cart')]
+    assert json.loads(result.stdout) == ['--ast', '--', str(repo / 'source.cart')]
 
 
 def test_forwarding_waits_through_interrupts_and_maps_signals(repo, monkeypatch):

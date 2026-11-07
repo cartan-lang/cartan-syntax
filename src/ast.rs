@@ -10,24 +10,29 @@ use crate::{Diagnostic, Span};
 
 /// A complete source document, preserving declaration order and source text.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Document {
+    #[cfg_attr(feature = "serde", serde(skip))]
     pub source: String,
     pub items: Vec<Item>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Name {
     pub text: String,
     pub span: Span,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Item {
     pub kind: ItemKind,
     pub span: Span,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum ItemKind {
     Use(Use),
     Binding(Binding),
@@ -41,6 +46,7 @@ pub enum ItemKind {
 
 /// A written import, without path lookup, name binding or export resolution.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Use {
     pub source: UseSource,
     pub selection: Option<ImportSelection>,
@@ -48,6 +54,7 @@ pub struct Use {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum UseSource {
     Namespace(Name),
     File(PathLiteral),
@@ -55,6 +62,7 @@ pub enum UseSource {
 
 /// A quoted file path; its span and raw spelling include both quotes.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct PathLiteral {
     pub raw: String,
     pub decoded: String,
@@ -63,6 +71,7 @@ pub struct PathLiteral {
 
 /// A selector's span includes `::` and its star, single name or braced list.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct ImportSelection {
     pub kind: Imports,
     pub span: Span,
@@ -70,6 +79,7 @@ pub struct ImportSelection {
 
 /// An explicit namespace followed by one or more member names.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct QualifiedName {
     pub namespace: Name,
     pub members: Vec<Name>,
@@ -77,18 +87,21 @@ pub struct QualifiedName {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum NameRef {
     Local(Name),
     Qualified(QualifiedName),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum Imports {
     All { span: Span },
     Names(Vec<Name>),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum BindingKind {
     Ordinary,
     Parameter,
@@ -96,6 +109,7 @@ pub enum BindingKind {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Binding {
     pub kind: BindingKind,
     pub pattern: Pattern,
@@ -104,6 +118,7 @@ pub struct Binding {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Fiber {
     pub name: Name,
     pub algebra: Option<Name>,
@@ -111,6 +126,7 @@ pub struct Fiber {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Component {
     pub name: Name,
     pub annotation: Annotation,
@@ -119,6 +135,7 @@ pub struct Component {
 
 /// `fiber Shape = (A: Real | B)`: a sum fiber's roster under an alias name.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Sum {
     pub name: Name,
     pub variants: Vec<Variant>,
@@ -127,6 +144,7 @@ pub struct Sum {
 /// One variant of a sum roster, in declared order. Duplicate names are kept;
 /// graph owns roster checks. A unit variant has no payload.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Variant {
     pub name: Name,
     pub payload: Option<Annotation>,
@@ -136,12 +154,14 @@ pub struct Variant {
 /// A named struct shape. Entries keep source order and duplicate keys; graph
 /// owns duplicate, empty-struct and kind diagnostics.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Struct {
     pub name: Name,
     pub entries: Vec<StructEntry>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct StructEntry {
     pub name: Name,
     pub annotation: Annotation,
@@ -149,6 +169,7 @@ pub struct StructEntry {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Function {
     pub name: Name,
     pub parameters: Vec<Parameter>,
@@ -156,6 +177,7 @@ pub struct Function {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Parameter {
     pub pattern: Pattern,
     pub annotation: Option<ParameterAnnotation>,
@@ -165,6 +187,7 @@ pub struct Parameter {
 /// A parameter's written type: an ordinary value type, or the signature of a
 /// statically named function the parameter receives.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum ParameterAnnotation {
     Value(Annotation),
     Signature(Signature),
@@ -173,6 +196,7 @@ pub enum ParameterAnnotation {
 /// `(T1, …, Tn) -> R`, or `T -> R` for one argument; `span` covers what was
 /// written, through the result.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Signature {
     pub arguments: Vec<Annotation>,
     pub result: Annotation,
@@ -182,6 +206,7 @@ pub struct Signature {
 
 /// Where a function signature was written outside a parameter annotation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum SignaturePosition {
     /// A document binding, including `param` and `state` declarations.
     Binding,
@@ -196,6 +221,7 @@ pub enum SignaturePosition {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct While {
     pub guard: Expr,
     pub writes: Vec<Write>,
@@ -207,6 +233,7 @@ pub struct While {
 /// states no checking semantics; the requirement binds nothing and is never a
 /// body's result.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Require {
     pub condition: Expr,
     pub message: Option<Expr>,
@@ -215,6 +242,7 @@ pub struct Require {
 
 /// `p <- e`, or the keyed `u[k, …] <- e` writing only the selected sites.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Write {
     pub target: Name,
     /// The subscript's selectors in order; empty for a whole-state write.
@@ -224,12 +252,14 @@ pub struct Write {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Annotation {
     pub kind: AnnotationKind,
     pub span: Span,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum AnnotationKind {
     Named(Name),
     Apply {
@@ -259,24 +289,28 @@ pub enum AnnotationKind {
 /// A tuple repetition width as written; analysis resolves names and validates
 /// numeric widths. A name `_` remains distinct from every numeric width.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum TupleWidth {
     Number(NumberLiteral),
     Name(Name),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum TypeArgument {
     Type(Annotation),
     Number { text: String, span: Span },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Pattern {
     pub kind: PatternKind,
     pub span: Span,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum PatternKind {
     Name(Name),
     Wildcard,
@@ -297,6 +331,7 @@ pub enum PatternKind {
 
 /// One `k: p` of a named-components pattern; `k` is a name or position.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct ComponentPattern {
     pub key: ComponentKey,
     pub pattern: Pattern,
@@ -306,6 +341,7 @@ pub struct ComponentPattern {
 /// One entry of a brace pattern. A bare key (`pattern: None`) binds the
 /// key's own name; `k: p` reads key `k` into `p`.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct EntryPattern {
     pub key: Name,
     pub pattern: Option<Pattern>,
@@ -313,12 +349,14 @@ pub struct EntryPattern {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Expr {
     pub kind: ExprKind,
     pub span: Span,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum ExprKind {
     Number(String),
     Bool(bool),
@@ -425,6 +463,7 @@ pub enum ExprKind {
 
 /// The written head of a sum constructor.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum ConstructorHead {
     /// An alias name, possibly qualified.
     Named(NameRef),
@@ -434,6 +473,7 @@ pub enum ConstructorHead {
 
 /// The literal key of a component read or product entry.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum ComponentKey {
     /// A named component.
     Name(Name),
@@ -450,6 +490,7 @@ pub enum ComponentKey {
 
 /// A numeric literal kept as written.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct NumberLiteral {
     pub text: String,
     pub span: Span,
@@ -457,6 +498,7 @@ pub struct NumberLiteral {
 
 /// One `key: value` entry of a product value or partial product.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct ProductEntry {
     pub key: ComponentKey,
     pub value: Expr,
@@ -465,6 +507,7 @@ pub struct ProductEntry {
 
 /// A brace-literal entry, preserving source order and duplicate keys.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct MapEntry {
     pub key: MapKey,
     pub value: Expr,
@@ -476,6 +519,7 @@ pub struct MapEntry {
 /// A static field name or a computed key expression. Syntax does not check
 /// that a computed key produces a String or fold it into a static name.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum MapKey {
     Static(Name),
     Computed(Expr),
@@ -483,6 +527,7 @@ pub enum MapKey {
 
 /// Whether a string or template was written with one or three quotation marks.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum StringForm {
     Quoted,
     Triple,
@@ -491,6 +536,7 @@ pub enum StringForm {
 /// A string expression. `raw` is the written spelling including delimiters and
 /// `value` the decoded text. Import paths use [`PathLiteral`] instead.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct StringLiteral {
     pub form: StringForm,
     pub raw: String,
@@ -499,6 +545,7 @@ pub struct StringLiteral {
 
 /// A tagged `f"…"` or `f"""…"""` literal, without desugaring or formatting.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Template {
     pub form: StringForm,
     /// Source order. Adjacent text is one piece and no text piece is empty.
@@ -506,6 +553,7 @@ pub struct Template {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum Piece {
     Text(TextPiece),
     Hole(Hole),
@@ -513,6 +561,7 @@ pub enum Piece {
 
 /// Text between holes; `span` and `raw` cover its written chunks and escapes.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct TextPiece {
     pub raw: String,
     pub value: String,
@@ -521,6 +570,7 @@ pub struct TextPiece {
 
 /// One `{expr}` or `{expr:format}` hole; `span` includes both braces.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Hole {
     pub expr: Expr,
     pub format: Option<FormatSpec>,
@@ -530,6 +580,7 @@ pub struct Hole {
 /// A hole's written format: digits after the point and notation. Consumers
 /// validate the precision range and which values a format applies to.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct FormatSpec {
     pub precision: Option<Precision>,
     pub notation: Option<Notation>,
@@ -541,18 +592,21 @@ pub struct FormatSpec {
 
 /// `.3`; the span covers the point and its digits.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Precision {
     pub digits: u32,
     pub span: Span,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum Notation {
     Sci,
     Eng,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct SettingsAtom {
     pub value: Expr,
     /// The introducing colon alone, excluding continuation whitespace.
@@ -560,12 +614,14 @@ pub struct SettingsAtom {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum ConfigureKind {
     Colon,
     Dot,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum UnaryOperator {
     Negate,
     Plus,
@@ -573,6 +629,7 @@ pub enum UnaryOperator {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum BinaryOperator {
     Add,
     Subtract,
@@ -591,6 +648,7 @@ pub enum BinaryOperator {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Body {
     /// Source order, with exactly one result. A result need not be last.
     pub items: Vec<BodyItem>,
@@ -598,6 +656,7 @@ pub struct Body {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum BodyItem {
     Local(Local),
     Require(Require),
@@ -605,6 +664,7 @@ pub enum BodyItem {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Local {
     pub pattern: Pattern,
     pub annotation: Option<Annotation>,
@@ -613,6 +673,7 @@ pub struct Local {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Comprehension {
     pub binder: Pattern,
     pub collection: Expr,
@@ -622,6 +683,7 @@ pub struct Comprehension {
 /// `match s { A(x) then e, Unit then e, else e }`. Arms keep source order and
 /// duplicates; graph owns roster coverage and arm agreement.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Match {
     pub scrutinee: Expr,
     pub arms: Vec<MatchArm>,
@@ -632,6 +694,7 @@ pub struct Match {
 /// One variant's arm. A bare unit arm has no payload pattern; `B(X: x, Y: y)`
 /// has the same `PatternKind::Components` payload as `B((X: x, Y: y))`.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct MatchArm {
     pub variant: Name,
     pub payload: Option<Pattern>,
@@ -641,12 +704,14 @@ pub struct MatchArm {
 
 /// `else e`; the span starts at the keyword.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct ElseArm {
     pub body: Expr,
     pub span: Span,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Reduction {
     pub accumulator: Name,
     pub seed: Expr,
