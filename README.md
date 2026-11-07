@@ -21,25 +21,36 @@ workload subset into a source AST with full byte spans and structured errors.
 The [AST contract](docs/ast-interface.md) states its supported constructs,
 form checks and boundary with semantic analysis.
 
-Check a `.cart` file's syntax, or print its source syntax tree:
+Check a `.cart` file's syntax, or print one item's source syntax tree:
 
 ```sh
 cargo run --offline -- tests/fixtures/diffusion.cart
-cargo run --offline -- tests/fixtures/diffusion.cart --ast
-cargo run --offline -- tests/fixtures/diffusion.cart --json
-cargo run --offline -- tests/fixtures/diffusion.cart --ast --json
+cargo run --offline -- tests/fixtures/diffusion.cart update --ast
+cargo run --offline -- tests/fixtures/diffusion.cart ni --json
+cargo run --offline -- tests/fixtures/diffusion.cart update:0 --ast --json
 ```
 
-- `SOURCE` alone prints `SOURCE: valid syntax`, or the same located syntax
-  diagnostics downstream tools report on stderr with status 1. Success claims
-  syntax only, with no name resolution, typing or execution.
-- `--ast` prints the source syntax tree as an indented outline: each node's
-  variant, written text and `line:column` range. It describes written
-  constructs; it is not typed computational IR.
+Usage is `cartan-syntax SOURCE [BINDING|UPDATE] [--ast] [--json]`.
+
+- `SOURCE` alone checks the whole document and prints `SOURCE: valid syntax`,
+  or the same located syntax diagnostics downstream tools report on stderr with
+  status 1. Success claims syntax only, with no name resolution, typing or
+  execution.
+- `BINDING` names a top-level binding or function; `UPDATE` is `update:N`, the
+  Nth top-level `while` block from zero, and `update` means `update:0`. The
+  whole document is still checked, and the selection must name exactly one
+  item: `SOURCE: valid syntax; energy at 3:1-15`. An unknown or ambiguous
+  selection fails with status 1, and a malformed one is a usage error (status
+  2).
+- `--ast` prints the selected item's source syntax tree, `main` by default, as
+  an indented outline: each node's variant, written text and `line:column`
+  range. It describes written constructs; it is not typed computational IR.
 - `--json` prints a result object: `source`, `valid` and `diagnostics`, each
-  diagnostic in the shared JSON envelope with exact byte spans. With `--ast` a
-  valid source adds `items`, the serialized syntax tree. Invalid syntax prints
-  the same object with `valid: false` and exits 1; stderr stays empty.
+  diagnostic in the shared JSON envelope with exact byte spans. A selection adds
+  `selection` (`selector`, `kind`, `index` for an update, `span`), and `--ast`
+  adds `item`, the same item the outline shows. Invalid syntax or a failed
+  selection prints the same object with its diagnostic and exits 1; stderr stays
+  empty.
 
 Diagnostics come from the `support/diagnostics` and
 `support/syntax-diagnostics` packages. With no arguments the CLI prints concise
@@ -60,7 +71,7 @@ from this repository; uv uses its own `uv.lock` and `.venv`:
 uv sync --locked
 uv run cartdev-syntax
 uv run cartdev-syntax tests/fixtures/diffusion.cart
-uv run cartdev-syntax tests/fixtures/diffusion.cart --ast
+uv run cartdev-syntax tests/fixtures/diffusion.cart update --ast
 uv run cartdev-syntax --help
 uv run cartdev-syntax --describe-cli
 uv run cartdev-syntax serve --port 8000

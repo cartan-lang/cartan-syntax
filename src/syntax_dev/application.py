@@ -64,8 +64,8 @@ def create_cli(*, repo_root: Path, rust_command: tuple[str, ...] | None = None) 
         name="syntax", cls=RustGroup, invoke_without_command=True,
         rust_command=rust_command or (str(root / "target/debug/cartan-syntax"),),
         context_settings={"help_option_names": []},
-        subcommand_metavar="SOURCE [--ast] [--json] | serve [OPTIONS]",
-        epilog="SOURCE checks a file's syntax; --ast prints its syntax tree and --json prints JSON. These arguments reach the configured Rust CLI unchanged; --help adds them to the full command outline. Rust must be built explicitly.",
+        subcommand_metavar="SOURCE [BINDING|UPDATE] [--ast] [--json] | serve [OPTIONS]",
+        epilog="SOURCE checks a file's syntax, and BINDING or UPDATE (update:N; update means update:0) also checks that it names one top-level item; --ast prints that item's syntax tree, main by default, and --json prints JSON. These arguments reach the configured Rust CLI unchanged; --help adds them to the full command outline. Rust must be built explicitly.",
     )
     @click.pass_context
     def cli(ctx):

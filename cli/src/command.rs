@@ -44,6 +44,12 @@ fn tree() -> Command {
                 .help("Cartan source file to check"),
         )
         .arg(
+            Arg::new("selection")
+                .value_name("BINDING|UPDATE")
+                .requires("source")
+                .help("Top-level binding, or update block as update:N (update means update:0); --ast selects main by default"),
+        )
+        .arg(
             Arg::new("ast")
                 .long("ast")
                 .action(ArgAction::SetTrue)

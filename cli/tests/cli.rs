@@ -46,7 +46,7 @@ fn help_and_usage_have_distinct_exit_statuses_and_streams() {
     for args in [
         vec!["--ast"],
         vec!["--json"],
-        vec!["one", "two"],
+        vec!["one", "two", "three"],
         vec!["--unknown"],
     ] {
         let output = cli().args(args).output().unwrap();
@@ -133,6 +133,7 @@ fn json_results_carry_validity_diagnostics_and_the_source_ast() {
             .args(["--color", "always", "--json"])
             .args(ast.then_some("--ast"))
             .arg(path)
+            .args(ast.then_some("n"))
             .output()
             .unwrap();
         assert!(output.stderr.is_empty());
@@ -149,7 +150,8 @@ fn json_results_carry_validity_diagnostics_and_the_source_ast() {
 
     let (status, tree) = run(&valid, true);
     assert_eq!(status, Some(0));
-    let binding = &tree["items"][0];
+    assert_eq!(tree["selection"]["selector"], "n");
+    let binding = &tree["item"];
     assert_eq!(binding["kind"]["Binding"]["kind"], "Parameter");
     assert_eq!(
         binding["kind"]["Binding"]["pattern"]["kind"]["Name"]["text"],
@@ -164,7 +166,7 @@ fn json_results_carry_validity_diagnostics_and_the_source_ast() {
         let diagnostic = &failed["diagnostics"][0];
         assert_eq!(diagnostic["code"], "syntax.unclosed_delimiter");
         assert_eq!(diagnostic["related"][0]["span"]["start"], 7);
-        assert!(failed.get("items").is_none());
+        assert!(failed.get("item").is_none());
     }
     fs::remove_dir_all(directory).unwrap();
 }
@@ -178,12 +180,17 @@ fn the_readable_syntax_tree_shows_nesting_and_positions() {
         let output = cli()
             .args(["--color", color, "--ast"])
             .arg(&path)
+            .arg("f")
             .output()
             .unwrap();
         assert!(output.status.success());
         String::from_utf8(output.stdout).unwrap()
     };
     let plain = view("never");
+    assert_eq!(
+        plain.lines().next(),
+        Some(format!("{} f", path.display()).as_str())
+    );
     for line in [
         "  Function 1:1-4:2",
         "    name: f 1:1-2",
@@ -229,6 +236,12 @@ fn discovery_agrees_with_options_and_help() {
     assert_eq!(source["position"], 1);
     assert_eq!(source["required"], false);
     assert_eq!(source["arity"], serde_json::json!({"min":1,"max":1}));
+    let selection = argument("selection");
+    assert_eq!(selection["position"], 2);
+    assert_eq!(
+        selection["value_names"],
+        serde_json::json!(["BINDING|UPDATE"])
+    );
     for flag in ["ast", "json"] {
         assert_eq!(argument(flag)["long"], flag);
         assert_eq!(argument(flag)["action"], "set_true");
@@ -305,5 +318,64 @@ fn sources_keep_os_paths_after_the_option_terminator() {
         let result = cli().current_dir(&directory).arg(name).output().unwrap();
         assert_eq!(result.status.code(), Some(1));
     }
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn a_selection_is_the_same_item_in_text_and_json() {
+    let directory = scratch("selection");
+    let path = directory.join("source.cart");
+    let text = "state u = 0\nenergy = u * 2\nmain = energy\nwhile u < 3 {\n  u <- u + 1\n}\n";
+    fs::write(&path, text).unwrap();
+    let run = |args: &[&str]| {
+        cli()
+            .args(["--color", "never"])
+            .arg(&path)
+            .args(args)
+            .output()
+            .unwrap()
+    };
+    // `update` is `update:0`, the whole authored block.
+    for (selector, canonical, kind) in [
+        (None, "main", "Binding"),
+        (Some("update"), "update:0", "While"),
+        (Some("energy"), "energy", "Binding"),
+    ] {
+        let args: Vec<&str> = selector.into_iter().collect();
+        let outline = run(&[args.as_slice(), &["--ast"]].concat());
+        assert!(outline.status.success());
+        let outline = String::from_utf8(outline.stdout).unwrap();
+        let mut lines = outline.lines();
+        assert_eq!(
+            lines.next(),
+            Some(format!("{} {canonical}", path.display()).as_str())
+        );
+        assert!(lines.next().unwrap().starts_with(&format!("  {kind} ")));
+        let json = run(&[args.as_slice(), &["--ast", "--json"]].concat());
+        let value: serde_json::Value = serde_json::from_slice(&json.stdout).unwrap();
+        assert_eq!(value["selection"]["selector"], canonical);
+        let span = &value["selection"]["span"];
+        let item =
+            &text[span["start"].as_u64().unwrap() as usize..span["end"].as_u64().unwrap() as usize];
+        assert!(value["item"]["kind"].get(kind).is_some(), "{item}");
+        assert_eq!(value["item"]["span"], *span);
+    }
+    let checked = run(&["update"]);
+    assert_eq!(
+        String::from_utf8(checked.stdout).unwrap(),
+        format!("{}: valid syntax; update:0 at 4:1-6:2\n", path.display())
+    );
+
+    let unknown = run(&["update:1"]);
+    assert_eq!(unknown.status.code(), Some(1));
+    assert!(unknown.stdout.is_empty());
+    assert!(String::from_utf8(unknown.stderr)
+        .unwrap()
+        .starts_with("error[syntax.selection_unknown]"));
+    let malformed = run(&["update:x"]);
+    assert_eq!(malformed.status.code(), Some(2));
+    assert!(String::from_utf8(malformed.stderr)
+        .unwrap()
+        .starts_with("error[syntax.selection_malformed]"));
     fs::remove_dir_all(directory).unwrap();
 }

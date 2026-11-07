@@ -3,6 +3,7 @@ mod diagnostic;
 mod metadata;
 mod tree;
 
+use cartan_syntax::selection::{self, Selector};
 use diagnostic::CliError;
 use std::{
     env, fs, io,
@@ -28,8 +29,16 @@ fn read(path: &Path) -> Result<String, CliError> {
 }
 
 /// Check or print one source file. Invalid syntax fails with status 1; in
-/// JSON mode its diagnostics are the JSON result rather than an error.
-fn run(path: &Path, ast: bool, json: bool, colored: bool) -> Result<ExitCode, CliError> {
+/// JSON mode its diagnostics are the JSON result rather than an error. The
+/// whole document is always checked; a selector, given or the inspection
+/// default `main`, must also name exactly one top-level item.
+fn run(
+    path: &Path,
+    selector: Option<Selector>,
+    ast: bool,
+    json: bool,
+    colored: bool,
+) -> Result<ExitCode, CliError> {
     let text = read(path)?;
     let document = match cartan_syntax::ast::parse_document(&text) {
         Ok(document) => document,
@@ -45,23 +54,70 @@ fn run(path: &Path, ast: bool, json: bool, colored: bool) -> Result<ExitCode, Cl
             })
         }
     };
-    match (ast, json) {
-        (false, false) => output(format_args!("{}: valid syntax", path.display()))?,
-        (false, true) => output(json_text(&diagnostic::parse_json(path, &text, &[])))?,
-        (true, false) => output(tree::render(path, &text, &syntax_tree(&document), colored))?,
-        (true, true) => {
-            let mut value = diagnostic::parse_json(path, &text, &[]);
-            value["items"] = syntax_tree(&document);
-            output(json_text(&value))?
+    let selector = selector.or_else(|| ast.then(Selector::default));
+    let selected = match &selector {
+        None => None,
+        Some(selector) => match selection::select(&document, selector) {
+            Ok(item) => Some((selector, item)),
+            Err(error) if json => {
+                output(json_text(&diagnostic::selection_json(path, &text, &error)))?;
+                return Ok(ExitCode::FAILURE);
+            }
+            Err(error) => {
+                return Err(CliError::Selection {
+                    path: path.to_owned(),
+                    text,
+                    error,
+                })
+            }
+        },
+    };
+    if json {
+        let mut value = diagnostic::parse_json(path, &text, &[]);
+        if let Some((selector, item)) = selected {
+            value["selection"] = selection_json(selector, item);
+            if ast {
+                value["item"] = serialized(item);
+            }
+        }
+        output(json_text(&value))?;
+    } else {
+        match selected {
+            Some((selector, item)) if ast => {
+                let heading = format!("{} {selector}", path.display());
+                output(tree::render(&heading, &text, &serialized(item), colored))?
+            }
+            Some((selector, item)) => output(format_args!(
+                "{}: valid syntax; {selector} at {}",
+                path.display(),
+                tree::position(&text, item.span.start, item.span.end)
+            ))?,
+            None => output(format_args!("{}: valid syntax", path.display()))?,
         }
     }
     Ok(ExitCode::SUCCESS)
 }
 
-/// The source syntax tree's items as serialized data, the one source for both
-/// the JSON and the readable view.
-fn syntax_tree(document: &cartan_syntax::ast::Document) -> serde_json::Value {
-    serde_json::to_value(&document.items).expect("the source AST serializes as JSON")
+/// One item of the source syntax tree as serialized data, the one source for
+/// both the JSON and the readable view.
+fn serialized(item: &cartan_syntax::ast::Item) -> serde_json::Value {
+    serde_json::to_value(item).expect("the source AST serializes as JSON")
+}
+
+/// The selected item's identity: its selector, kind, update index and span.
+fn selection_json(selector: &Selector, item: &cartan_syntax::ast::Item) -> serde_json::Value {
+    let mut value = serde_json::json!({
+        "selector": selector.to_string(),
+        "kind": match selector {
+            Selector::Binding(_) => "binding",
+            Selector::Update(_) => "update",
+        },
+        "span": {"start": item.span.start, "end": item.span.end},
+    });
+    if let Selector::Update(index) = selector {
+        value["index"] = (*index).into();
+    }
+    value
 }
 
 fn json_text(value: &serde_json::Value) -> String {
@@ -92,12 +148,19 @@ fn main() -> ExitCode {
     } else if let Some(path) = matches.get_one::<PathBuf>("source") {
         let colored =
             command::stream_color(color, io::stdout().is_terminal()) == clap::ColorChoice::Always;
-        match run(
-            path,
-            matches.get_flag("ast"),
-            matches.get_flag("json"),
-            colored,
-        ) {
+        let selector = matches
+            .get_one::<String>("selection")
+            .map(|text| Selector::parse(text).map_err(|error| CliError::Selector { error }))
+            .transpose();
+        match selector.and_then(|selector| {
+            run(
+                path,
+                selector,
+                matches.get_flag("ast"),
+                matches.get_flag("json"),
+                colored,
+            )
+        }) {
             Ok(code) => return code,
             Err(error) => Err(error),
         }
@@ -116,7 +179,7 @@ fn main() -> ExitCode {
                 _ => io::stderr().is_terminal(),
             };
             diagnostic::print(&error, colored);
-            ExitCode::FAILURE
+            ExitCode::from(error.exit_code())
         }
     }
 }

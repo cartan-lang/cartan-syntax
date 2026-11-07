@@ -121,9 +121,9 @@ def test_real_binary():
     fixture = str(root / 'tests/fixtures/diffusion.cart')
     result = CliRunner().invoke(create_cli(repo_root=root), [fixture])
     assert (result.exit_code, result.stdout) == (0, f'{fixture}: valid syntax\n')
-    result = CliRunner().invoke(create_cli(repo_root=root), [fixture, '--ast', '--json'])
+    result = CliRunner().invoke(create_cli(repo_root=root), [fixture, 'update', '--ast', '--json'])
     assert result.exit_code == 0
-    assert json.loads(result.stdout)['items']
+    assert json.loads(result.stdout)['selection']['selector'] == 'update:0'
 
 
 def test_docs_do_not_spawn(repo, monkeypatch):

@@ -17,6 +17,27 @@ pub(crate) enum CliError {
     Output {
         source: io::Error,
     },
+    /// A selector spelled as neither a binding nor an update block: a usage
+    /// error, found before any file is read.
+    Selector {
+        error: cartan_syntax::selection::SelectorError,
+    },
+    /// A valid document in which the selector names no single item.
+    Selection {
+        path: PathBuf,
+        text: String,
+        error: cartan_syntax::selection::SelectionError,
+    },
+}
+
+impl CliError {
+    /// Usage errors exit 2 like the parser's own; every other failure exits 1.
+    pub(crate) fn exit_code(&self) -> u8 {
+        match self {
+            Self::Selector { .. } => 2,
+            _ => 1,
+        }
+    }
 }
 
 impl fmt::Display for CliError {
@@ -37,6 +58,17 @@ impl fmt::Display for CliError {
                 formatter.write_str(&reports.join("\n"))
             }
             Self::Output { source } => write!(formatter, "stdout: {source}"),
+            Self::Selector { error } => formatter.write_str(&cartan_diagnostics::render(
+                &[],
+                &cartan_syntax_diagnostics::selector(error),
+            )),
+            Self::Selection { path, text, error } => {
+                let sources = [cartan_diagnostics::Source { name: path, text }];
+                formatter.write_str(&cartan_diagnostics::render(
+                    &sources,
+                    &cartan_syntax_diagnostics::selection(error, 0),
+                ))
+            }
         }
     }
 }
@@ -45,7 +77,7 @@ impl Error for CliError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Read { source, .. } | Self::Output { source } => Some(source),
-            Self::Parse { .. } => None,
+            Self::Parse { .. } | Self::Selector { .. } | Self::Selection { .. } => None,
         }
     }
 }
@@ -69,6 +101,22 @@ pub(crate) fn parse_json(
         "valid": errors.is_empty(),
         "diagnostics": diagnostics,
     })
+}
+
+/// The JSON result for a valid document whose selector names no single item:
+/// the syntax is valid, and the selection diagnostic is the result.
+pub(crate) fn selection_json(
+    path: &std::path::Path,
+    text: &str,
+    error: &cartan_syntax::selection::SelectionError,
+) -> serde_json::Value {
+    let sources = [cartan_diagnostics::Source { name: path, text }];
+    let mut value = parse_json(path, text, &[]);
+    value["diagnostics"] = serde_json::json!([cartan_diagnostics::to_json(
+        &sources,
+        &cartan_syntax_diagnostics::selection(error, 0)
+    )]);
+    value
 }
 
 /// Render domain errors only at the application's presentation boundary. A

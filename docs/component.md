@@ -120,12 +120,17 @@ library's documentation; CLI usage lives in its help and the README.
 See the [README](../README.md) for source inspection and library-example commands.
 
 The [Clap builder tree](../cli/src/command.rs) is the sole command definition.
-The root command takes one optional `SOURCE` and the flags `--ast` and
-`--json`, each requiring a source; there are no subcommands. `SOURCE` alone
-parses and normalizes the file and prints `SOURCE: valid syntax` (status 0) or
-the shared rendered diagnostics on stderr (status 1). `--ast` prints the source
-syntax tree as an outline, and `--json` prints the check result object, adding
-the serialized `items` with `--ast`. Usage lives in the [README](../README.md).
+The root command takes `SOURCE [BINDING|UPDATE]` and the flags `--ast` and
+`--json`, each requiring a source; there are no subcommands. The whole document
+is always parsed and normalized: `SOURCE: valid syntax` (status 0) or the shared
+rendered diagnostics on stderr (status 1). A selector is parsed by
+[`selection::Selector`](ast-interface.md#selecting-one-item) before the file is
+read, so a malformed one is a usage error (status 2); a given selector, or
+`main` by default for `--ast`, must then name exactly one top-level item, or the
+typed selection diagnostic fails with status 1. `--ast` prints the selected
+item as an outline, and `--json` prints the check result object with the same
+`selection` and, under `--ast`, the same `item`. There is no whole-document
+syntax-tree view. Usage lives in the [README](../README.md).
 
 Both syntax-tree views print one value: the CLI enables the library's optional
 `serde` feature, which derives `Serialize` for the AST and `Span` only when
@@ -252,8 +257,8 @@ later `--repo` or `--rust-command` tokens remain literal Rust arguments.
 Python declares no syntax command of its own: any argument list not addressed to
 `serve` reaches Rust unchanged, so `cartdev syntax SOURCE --ast --json` needs no
 wrapper. A source file literally named `serve` is written `./serve`. Web
-diagnostics invoke `--ast -- SOURCE` with repository-relative paths and a
-default 30-second bound. Their version-one result envelope preserves opaque
+diagnostics invoke `--ast -- SOURCE`, so they show the document's `main`, with
+repository-relative paths and a default 30-second bound. Their version-one result envelope preserves opaque
 child streams and status; it is not command metadata or structured Rust IR.
 The asynchronous web service kills its POSIX process group and reaps the child
 on timeout or cancellation; cancellation propagates after cleanup.

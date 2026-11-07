@@ -7,20 +7,27 @@
 //! keeps the exact byte spans. Color changes only escapes, never the text.
 
 use serde_json::{Map, Value};
-use std::path::Path;
 
-/// The outline of `items`, the serialized items of the document at `path`.
-pub(crate) fn render(path: &Path, text: &str, items: &Value, colored: bool) -> String {
+/// The outline of one serialized item of `text`, beneath `heading`.
+pub(crate) fn render(heading: &str, text: &str, item: &Value, colored: bool) -> String {
     let printer = Printer {
         lines: line_starts(text),
         text,
         colored,
     };
-    let mut out = printer.paint(BOLD, &path.display().to_string());
-    for item in items.as_array().into_iter().flatten() {
-        printer.node(&mut out, 1, None, item);
-    }
+    let mut out = printer.paint(BOLD, heading);
+    printer.node(&mut out, 1, None, item);
     out
+}
+
+/// A byte span of `text` as the outline writes it, `line:column-column`.
+pub(crate) fn position(text: &str, start: usize, end: usize) -> String {
+    Printer {
+        lines: line_starts(text),
+        text,
+        colored: false,
+    }
+    .position(start, end)
 }
 
 const BOLD: &str = "1";
@@ -75,6 +82,15 @@ impl Printer<'_> {
                     for element in elements {
                         self.node(out, depth + 2, None, element);
                     }
+                }
+                // Another span-valued field, such as an update block's
+                // `body_span`, reads as a position like a node's own.
+                child if span(child).is_some() => {
+                    let (start, end) = span(child).unwrap_or_default();
+                    out.push('\n');
+                    out.push_str(&"  ".repeat(depth + 1));
+                    out.push_str(&self.paint(FIELD, &format!("{}: ", name.unwrap_or("span"))));
+                    out.push_str(&self.paint(POSITION, &self.position(start, end)));
                 }
                 child => self.node(out, depth + 1, name, child),
             }
