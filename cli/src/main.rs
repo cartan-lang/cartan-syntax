@@ -137,8 +137,14 @@ fn main() -> ExitCode {
     let mut command = command::command();
     let color = command::color(&command, &args);
     command = command.color(command::stream_color(color, io::stdout().is_terminal()));
-    let matches = match command.clone().try_get_matches_from(args) {
+    let matches = match command.clone().try_get_matches_from(args.clone()) {
         Ok(matches) => matches,
+        // Under --json a usage error is a structured result on stdout; help
+        // and version are successful outcomes and print as usual.
+        Err(error) if error.exit_code() != 0 && command::json_requested(&command, &args) => {
+            let _ = output(json_text(&diagnostic::usage_json(&error)));
+            return ExitCode::from(error.exit_code() as u8);
+        }
         Err(error) => {
             let code = error.exit_code() as u8;
             let terminal = if error.use_stderr() {

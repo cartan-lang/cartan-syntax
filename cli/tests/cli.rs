@@ -45,7 +45,6 @@ fn help_and_usage_have_distinct_exit_statuses_and_streams() {
     // Help is a flag, never a command, and the views need a source.
     for args in [
         vec!["--ast"],
-        vec!["--json"],
         vec!["one", "two", "three"],
         vec!["--unknown"],
     ] {
@@ -169,6 +168,20 @@ fn json_results_carry_validity_diagnostics_and_the_source_ast() {
         assert!(failed.get("item").is_none());
     }
 
+    // A usage error under --json is a structured result too.
+    let output = cli()
+        .args(["--color", "always", "--json", "--unknown"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stderr.is_empty());
+    assert!(!output.stdout.contains(&27));
+    let usage: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let diagnostic = &usage["diagnostics"][0];
+    assert_eq!(diagnostic["code"], "cli.usage");
+    assert_eq!(diagnostic["fields"]["kind"], "UnknownArgument");
+    assert_eq!(diagnostic["fields"]["argument"], "--unknown");
+
     // An unreadable source is a JSON result too, with the same status.
     let (status, unread) = run(&directory.join("missing.cart"), false);
     assert_eq!(status, Some(1));
@@ -230,6 +243,8 @@ fn discovery_agrees_with_options_and_help() {
     assert_eq!(schema["version"], env!("CARGO_PKG_VERSION"));
     let root = &schema["command"];
     assert_eq!(root["commands"], serde_json::json!([]));
+    // `notes` carries after-help prose without the outline; this command has none.
+    assert_eq!(root["notes"], serde_json::Value::Null);
     let arguments = root["arguments"].as_array().unwrap();
     let argument = |id: &str| arguments.iter().find(|arg| arg["id"] == id).unwrap();
     assert_eq!(

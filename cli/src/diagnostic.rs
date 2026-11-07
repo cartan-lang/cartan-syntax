@@ -103,6 +103,23 @@ pub(crate) fn parse_json(
     })
 }
 
+/// The JSON result for invalid arguments under `--json`: one `cli.usage`
+/// diagnostic with Clap's error kind and the offending argument, if any.
+pub(crate) fn usage_json(error: &clap::Error) -> serde_json::Value {
+    let mut report =
+        cartan_diagnostics::Report::error("cli.usage", error.render().to_string(), None);
+    let argument = error
+        .get(clap::error::ContextKind::InvalidArg)
+        .map(ToString::to_string);
+    report.fields =
+        serde_json::json!({"kind": format!("{:?}", error.kind()), "argument": argument});
+    serde_json::json!({
+        "source": null,
+        "valid": false,
+        "diagnostics": [cartan_diagnostics::to_json(&[], &report)],
+    })
+}
+
 /// The JSON result for a source that could not be read: not valid, with one
 /// `source.read` diagnostic carrying the path and the I/O error kind.
 pub(crate) fn read_json(path: &std::path::Path, error: &io::Error) -> serde_json::Value {

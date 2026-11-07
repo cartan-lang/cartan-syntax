@@ -17,6 +17,8 @@ fn node(command: &Command) -> Value {
     json!({
         "name": command.get_name(),
         "description": command.get_about().map(ToString::to_string),
+        // Optional, additive: the command's after-help prose without the generated outline.
+        "notes": command.get_after_help().map(ToString::to_string),
         "aliases": command.get_visible_aliases().collect::<Vec<_>>(),
         "arguments": command.get_arguments().filter(|arg| !arg.is_hide_set()).map(argument).collect::<Vec<_>>(),
         "commands": command.get_subcommands().filter(|child| !child.is_hide_set()).map(node).collect::<Vec<_>>(),

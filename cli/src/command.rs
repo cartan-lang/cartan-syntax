@@ -201,6 +201,16 @@ fn presentation_probe(mut command: Command) -> Command {
     command.disable_help_subcommand(true).ignore_errors(true)
 }
 
+/// Whether `--json` was requested, even when the arguments are otherwise invalid.
+pub(crate) fn json_requested(command: &Command, args: &[OsString]) -> bool {
+    presentation_probe(command.clone())
+        .try_get_matches_from(args)
+        .ok()
+        // An aborted probe may lack the flag's default, so read it fallibly.
+        .and_then(|matches| matches.try_get_one::<bool>("json").ok().flatten().copied())
+        .unwrap_or(false)
+}
+
 pub(crate) fn color(command: &Command, args: &[OsString]) -> ColorChoice {
     let matches = presentation_probe(command.clone())
         .try_get_matches_from(args)
