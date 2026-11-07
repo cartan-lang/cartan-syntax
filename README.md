@@ -10,7 +10,9 @@ name resolution, typing, graph construction or evaluation.
 - Library: `cartan_syntax::parse_document` returns a CST with structured grammar
   diagnostics; `cartan_syntax::ast::parse_document` returns the source AST or
   typed errors with byte spans; `cartan_syntax::selection` picks one top-level
-  binding or update block. Contracts: [component](docs/component.md) and
+  binding or update block; `cartan_syntax::prompt` classifies prompt text as
+  complete, incomplete or invalid and colors it; `cartan_syntax::KEYWORDS` lists
+  the reserved words. Contracts: [component](docs/component.md) and
   [AST interface](docs/ast-interface.md).
 - Diagnostics: `support/diagnostics` (`cartan-diagnostics`) renders reports;
   `support/syntax-diagnostics` (`cartan-syntax-diagnostics`) is the one home of
@@ -54,8 +56,6 @@ workspace owner's `uv sync --locked --all-packages`; an independent clone uses
 - Only `while` blocks normalize as update blocks; `every` blocks, namespace
   bodies, default arguments, qualified annotations, function-header
   configuration and Tap bodies parse to a CST but are unsupported in the AST.
-- An unclosed call such as `f(1` reports a call-head or positional-argument
-  rule instead of the missing `)`.
 - Generated Tree-sitter JavaScript passes a syntax check; building and running a
   Tree-sitter parser is untested here.
 - The Python app's own failures are not yet structured; see
@@ -64,6 +64,6 @@ workspace owner's `uv sync --locked --all-packages`; an independent clone uses
 ## Consumers and next work
 
 Graph consumes the source AST and selection; Graph, Codegen and Compile use the
-diagnostic packages. Their `Cargo.lock` files record the revision each one
-consumes. Next: the unclosed-call fix and the Runtime prompt's input
-classification, highlight classes and keyword list.
+diagnostic packages, and Runtime's interactive prompt uses `prompt`. Their
+`Cargo.lock` files record the revision each one consumes. Next: merging the
+diagnostics-move branch that current consumers pin back into main.

@@ -194,6 +194,29 @@ The generic `treegram` package interprets and prints this grammar. Tooling does
 not import a language builtin registry or require compiler execution. These
 generators do not provide a language server or semantic completion features.
 
+## Prompt support
+
+[`prompt`](../src/prompt.rs) supplies the facts an interactive prompt needs, as
+data. `completeness(text)` reads the text as a document and as one expression:
+`Complete` when either has no grammar diagnostic, `Incomplete` when neither
+does but one stopped at the end of the text (the typed `incomplete` flag), and
+`Invalid` otherwise. It is a grammar judgment; normalization errors appear when
+the text is parsed with `ast::parse_document`, rendered through the shared
+diagnostic packages.
+
+`highlight(text)` returns non-overlapping byte spans with a `HighlightClass`
+(`Keyword`, `Constant`, `Number`, `String`, `Comment`, `Operator`, `Punctuation`
+or `Name`). It scans lexically, so partially typed text colors: words, constants
+and operators come from the grammar's lexical layer, the same sets the editor
+grammars print, and only comments, strings and numbers are scanned by their
+token shapes. Template holes color as part of their literal, and an unterminated
+literal colors to its line's end. The reserved words are `KEYWORDS`.
+
+An unfinished call is incomplete rather than refused: the call-head refusal
+applies only to a complete argument list, and the positional-argument refusal
+only where the call closes after it, so `f(1` and `f(1, 2` followed by another
+line report the open `(`.
+
 ## Development application
 
 The installable `cartan-syntax-dev` distribution supplies `syntax_dev` and the
