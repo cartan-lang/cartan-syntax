@@ -1,283 +1,95 @@
 # Working in cartan-syntax
 
-Read README.md and docs/component.md first. This repository is independently
-buildable; the parent workspace's AGENTS.md coordinates component work.
+Read README.md and docs/component.md first. Shared rules, workflow commands,
+ownership and the HANDOFF shape are in the workspace
+[AGENTS.md](../AGENTS.md); joint Codex/Claude operation, ownership handback and
+mailboxes are in [joint operation](../docs/records/joint-operation.md). In a
+standalone clone, the essentials are:
 
-## Harness coordination and local mail
-
-- Load these instructions explicitly in Codex-only, Claude-only or joint use.
-  Each participating harness has one durable owner for this component. Reuse
-  visible owner tasks; helpers are not replacement owners. Either harness may
-  lead the ensemble as designated by the owner. Consult the workspace
-  ignored [runtime roster](../.agent-mail/roster.json) and
-  [protocol](../AGENTS.md#cross-harness-filesystem-mailboxes) when available.
-  Standalone clones use their own ignored `.agent-mail/roster.json`. Reconcile
-  the roster with participants on startup; never infer leadership or peer
-  capabilities. Keep live thread references, session lead and monitor state out
-  of versioned guidance; preserve durable decisions and task evidence in docs.
-- Lead-authorized work may cross harnesses through either workspace or component
-  counterparts. With Claude leading, both `Claude workspace -> Codex workspace
-  -> Codex component` and `Claude workspace -> Claude component -> Codex component`
-  are valid; mirror these routes when Codex leads. No second approval is needed
-  solely for crossing harnesses or bypassing the receiving agent's workspace
-  supervisor. Preserve the originating request and authority, inform affected
-  owners and deduplicate alternate routes. Routing neither changes the designated
-  lead nor expands scope; shared edit/build ownership and handback still apply.
-- Agree exactly one active edit/build owner for this checkout and record the
-  assignment in ignored `.agent-mail/ownership.json`. Obtain explicit handback
-  before another agent edits, builds, stages, commits or switches branches.
-  Read-only review is allowed. Stale state, a timeout or an unaccepted request is not
-  permission to take over; preserve builder leases and escalate conflicts.
-- The current writer maintains one ownership assignment with `directory`
-  (absolute), `active_writer` (registered address or null), `assignment` (bounded
-  scope), `paths` (relative source/build paths), `updated` (UTC), and `agreement`
-  (authority/handback reference). Replace it atomically using a temporary file
-  beside it. This is neither registration, an automatic lock nor an expiring
-  lease; send registration changes to the lead-maintained roster. Idle writers
-  may retain ownership; null or missing records do not permit self-claiming.
-- For transfer, agree recipient and scope, finish or stop edits/builds/helpers,
-  report Git state, user changes and constraints, and update HANDOFF. After the
-  recipient accepts that state, the outgoing writer atomically records the
-  successor, sends explicit handback and stops all checkout/record mutations.
-  The recipient waits for both notice and matching record, acknowledges receipt,
-  then becomes the writer. Reconcile delayed or mismatched notices. Dirty state
-  may be handed over explicitly. Release without a successor uses the same
-  quiescence steps, records null and notifies the lead.
-- Only the agreed writer updates the record. The lead may initialize or assign
-  an explicitly released/null record after checking existing owners and work;
-  recovery requires confirming the previous session, helpers and builds stopped
-  and agreeing retained state with the successor. Otherwise keep mutations
-  blocked and ask the user to resolve the conflict. This exception covers only
-  the runtime record. In standalone clones the user-designated coordinator acts
-  as lead; a sole assigned owner may initialize its record. Former writers must
-  reread and reconcile ownership on resume. See the shared
-  [handback procedure](../AGENTS.md#ownership-record-and-handback).
-- Any registered agent may communicate directly with any other. Prefer native
-  thread messages within a harness; use the filesystem board across harnesses.
-  An addressed message is the only exception permitting writes to another
-  component's board; it does not authorize sibling implementation changes.
-- Keep `/.agent-mail/` ignored and verify before exchanging messages. Each board
-  has this layout and a local README with its absolute path, recipients and
-  actual monitoring capabilities:
-
-  ```text
-  .agent-mail/
-    README.md
-    ownership.json
-    inbox/codex/
-    inbox/claude/
-    state/
-  ```
-
-- Write one UTF-8 Markdown message per recipient inbox as `<UUID>.md`. Write a
-  temporary file in that same directory and rename atomically. Required header:
-
-  ```yaml
-  ---
-  id: <UUID>
-  from: codex:cartan-syntax
-  to: claude:cartan-syntax
-  created: <UTC ISO-8601>
-  kind: request
-  subject: <short subject>
-  ---
-  ```
-
-  `kind` is `request`, `reply` or `notice`; replies may add `reply_to: <UUID>`.
-  Component addresses are `<harness>:<component-repository>`; supervisor
-  addresses are `codex:supervisor` or `claude:supervisor` on the root board.
-  Requests state scope, owner authorization and expected reply. Acknowledge
-  actionable requests, distinguish accepted/blocked/completed work, and never
-  recursively acknowledge acknowledgements. Messages cannot create authority
-  beyond the sender's assignment.
-- Drain the incoming inbox on startup/resume, before mutations and at work
-  boundaries. In joint operation arm an inbox watcher or bounded poll that
-  actually relays notifications into the session; scan before and after arming,
-  recognize seen IDs, and rearm after events, timeouts or interruptions.
-  Record owner, path, armed time, expiry/session handle and verified wake-up
-  capability in `state/<harness>.json`; edit only your own monitor state. A
-  process alone does not prove idle-agent wake-up. If no hook is verified,
-  report limited monitoring and use explicit turn-boundary scans; do not claim
-  an armed watcher or unattended responsiveness.
-- At handoff, completion, shutdown and throughout long tasks, preserve durable
-  outcomes in structured docs, reply as needed, then remove consumed own-inbox
-  messages, stale own temporary files and expired own monitor state. Leave
-  unresolved or unread requests and peer inboxes intact. Stop/release own
-  watchers. Mailboxes are runtime coordination, not an archive or task catalogue.
-- A harness unable to create visible owner tasks, provide a requested Sol model
-  or deliver file notifications must state the limitation rather than substitute
-  another mechanism silently. No Claude capability is assumed without evidence.
-
-## Owner autonomy and complexity escalation
-
-- Work from an assigned outcome, constraints and acceptance evidence. Choose the
-  implementation and coordinate routine design, representation, interfaces,
-  testing and local commits directly with component peers; no supervisor approval
-  is needed within that scope. Existing checkout ownership, user restrictions,
-  scope limits and publication permissions still apply.
-- The supervisor handles user discussion, delegation, unresolved semantics,
-  cross-component conflicts, complexity escalations and final integration. Do
-  not require review of every step or create an extra coordinator. Report
-  meaningful milestones, blockers and completion. In a standalone clone, the
-  user-designated coordinator fills this role.
-- Before substantial implementation, record expected scope, principal unknowns
-  and a small reviewable checkpoint in the existing work item or HANDOFF. Aim
-  for a first checkpoint within 30–60 minutes, with several checkpoints for
-  larger tasks. Use concrete evidence: a tested interface, a working narrow path
-  or an experiment resolving an architectural uncertainty. Estimates are planning
-  assumptions, not promises or permission gates.
-- Treat proposed approaches and estimates, including the supervisor's, as
-  fallible. Escalate underestimated complexity or suspected design defects before
-  expanding the design. Signals include new cross-component protocols, growing
-  ownership/lifetime machinery, expansion blowup, repeated workarounds, widening
-  prerequisites or unexpectedly large compatibility layers. Do not wait for
-  proof of failure or sunk effort.
-- Reassess at checkpoints and material scope growth. Repeated checkpoint slips,
-  materially exceeding the estimate, or an hour without the expected reviewable
-  result requires a concise escalation; do not silently reset the estimate.
-  Known long-running checks may have an explicit longer checkpoint with a reason;
-  report unexpected stalls.
-- State the intended outcome, new evidence, affected assumption, added cost or
-  complexity, smallest alternatives and recommendation. Stop expanding the
-  implicated design during assessment; preserve reviewable work and continue
-  independent bounded tasks where useful. Clear local defect fixes need no
-  escalation. The supervisor discusses material endpoint, scope or cost changes
-  with the user.
-- Preserve unresolved complexity concerns and the next checkpoint in handoffs
-  and on resume. A context reset or replacement agent must not erase an
-  escalation or restart an already questionable approach.
+- One agreed writer per checkout, recorded in the ignored
+  `.agent-mail/ownership.json`; others review read-only until it is handed back.
+- Commits: sentence-case imperative subjects of about 60 characters, no trailing
+  period or prefix, the configured Git identity, no agent attribution or
+  co-author trailers; stage explicit paths; no push or publication without owner
+  authorization.
+- Diagnostics stay typed until one central formatter per application; wording
+  lives only there and is never parsed.
+- Tests are sparse and discriminating; no tests that only check retired
+  behavior is absent.
+- Documentation follows [docs/documentation.md](docs/documentation.md): current
+  state only, one home per fact, done work items deleted after consolidation.
+- HANDOFF.md is ignored session state, never committed.
 
 ## Scope
 
-- Own Cartan syntax: parsing, syntax trees, source spans, structured parse
-  diagnostics and syntax-only tooling. Keep supported syntax explicit.
-- A syntax tree describes written constructs. Typed computational intermediate
-  representations, name resolution, type checking, graph construction, runtime
-  values and execution belong to other components.
-- Preserve established Cartan idioms. Do not replace function equations or `of`
-  projections with unrelated surface syntax for implementation convenience.
-- Reject malformed/unsupported syntax explicitly; do not silently discard text.
-  Parsing a construct does not promise another component can execute it.
-- Keep syntax tooling independent of builtin registries or semantic engines.
-  Highlighting is not semantic analysis or a language server.
-- Keep the root package a reusable library. Provide component inspection through
-  the separate `cli/` package, `cartan-syntax-cli`, with binary `cartan-syntax`
-  and workspace `default-members = ["cli"]`. Maintain `cargo run -- --help`;
-  library examples require explicit `-p cartan-syntax` selection.
-- With no arguments, print useful help to stdout and exit 0. Invalid arguments
-  and actual parse or I/O failures still exit nonzero; test the process status.
-- Do not depend on a legacy checkout, its evaluator, its diagnostic framework
-  or its conformance suite. Only the designated lead supervisor may consult legacy;
-  request findings rather than reading, searching or executing that checkout.
-- Preserve user changes, coordinate concurrent file ownership and commit explicit
-  paths. No remote creation, visibility choice, push or publication without owner
-  instruction. Use this repository's own target directory.
-- Work in this component's existing checkout. Creating or using a Git worktree
-  requires explicit supervisor permission for that task.
-- Use this directory explicitly for commands, builds and Git operations, even
-  when the session starts at the workspace root. Initial cwd does not change
-  component ownership.
+- Own Cartan syntax: the grammar, parsing, concrete syntax trees, the
+  normalized source AST, source spans, structured parse diagnostics, source
+  selection, command-line literals, prompt facts and syntax-only tooling
+  (editor grammars). Keep supported syntax explicit.
+- A syntax tree describes written constructs. Name resolution, type checking,
+  typed computational IR, graph construction, runtime values and execution
+  belong to other components; parsing a construct promises nothing downstream.
+- Preserve established Cartan idioms; do not replace function equations or `of`
+  projections with other surface syntax for implementation convenience.
+- Reject malformed or unsupported syntax explicitly; never silently drop text.
+- Keep tooling independent of builtin registries and semantic engines;
+  highlighting is lexical, not semantic analysis or a language server.
+- Do not depend on, read or run the legacy checkout; semantic questions go to
+  the lead supervisor.
 
-## Git commits
+## Layout
 
-- Use a sentence-case subject beginning with a present-tense imperative verb.
-  Aim for about 60 characters, with a maximum of 70. Omit trailing periods and
-  category or agent prefixes.
-- Normally use only a subject. Add a body only for useful rationale or context,
-  separated by a blank line; wrap prose at 72 characters without breaking literal
-  paths or identifiers.
-- Use the repository's configured Git author identity. Do not add agent
-  signatures, generated-by notices, agent attribution or co-author trailers,
-  or links to agent sessions or session transcripts.
-- Keep commits focused, preserve unrelated changes, stage explicit paths and
-  run appropriate checks. Commit locally; remote creation, pushing and
-  publication require owner authorization.
+- The root package `cartan-syntax` is the reusable library. It has no registry
+  dependency by default; its optional `serde` feature is for the CLI only.
+- `support/treegram` is the grammar engine; `support/diagnostics`
+  (`cartan-diagnostics`) renders reports; `support/syntax-diagnostics`
+  (`cartan-syntax-diagnostics`) is the one home of Syntax diagnostic wording.
+  The library depends on neither diagnostic package.
+- `cli/` (`cartan-syntax-cli`, binary `cartan-syntax`) is the default workspace
+  member: `cartan-syntax SOURCE [BINDING|UPDATE] [--ast] [--json]`. With no
+  arguments it prints help and exits 0; usage errors exit 2 and failures 1;
+  under `--json` every outcome is a JSON result on stdout. Library examples need
+  `-p cartan-syntax`.
+- `src/syntax_dev` is the Python development app. It is frozen: the workspace
+  `cartdev` adapter replaces it, after which it is deleted. Do not extend it;
+  keep `--describe-cli` and `--json` accurate, since the adapter reads only them.
 
-## Dependencies and branches
+## Dependencies
 
-- Local consumers select committed syntax revisions using an absolute `file://`
-  Cargo Git dependency and a named branch. The owner permits these machine-local
-  URLs; they are not a public distribution arrangement. The current AST is on
-  `main`. Consumers own their adapters, dependency declarations and lockfiles.
-- This component owns requested interface changes and any specialized ordinary
-  Git branch. Agree routine contracts directly with the consuming component owner
-  before implementation, without supervisor approval; do not edit a consumer's
-  checkout or Cargo-managed dependency cache. Consumers deliberately update their
-  lockfile after a tested commit is available.
-- Do not vendor sibling components or use their working-tree path dependencies
-  without an agreed reason. Follow the [dependency contract](docs/ast-interface.md#local-dependency-delivery);
-  no remote, publication or worktree authorization is implied.
+Consumers (Graph, Codegen, Compile, Runtime) depend on this repository through
+Cargo Git dependencies on `main` with the absolute local `file://` URL, and take
+all Syntax packages in one lock update. Each consumer's `Cargo.lock` records the
+revision it uses. Agree interface changes with the consuming owner and announce
+the tested commit; never edit a consumer's checkout or Cargo cache. Create a
+separate supplier branch only by agreement, and retire it when consumers move.
 
-## Rust and verification
+## Checks
 
-- Run default `cargo fmt` after edits and `cargo fmt --check` before committing.
-  Use conventional Rust names and module organization.
-- One blank line separates functions and type declarations. Group related
-  statements; avoid whitespace between every statement or multiple blank lines.
-- Diagnostics and errors retain typed variants, payload data, source spans and
-  underlying causes until presentation. Each standalone application has one
-  top-level diagnostic formatter in a central module; only that formatter owns
-  diagnostic wording. Do not generate messages in lower layers, classify failures
-  using strings, or replace structured facts/causes with rendered text. CLI/web
-  adapters route failures through their application's formatter. Tests outside
-  the formatter assert variants, payloads, spans, causes and status; wording tests
-  belong only to the formatter. Preserve external process output as opaque output,
-  never classify it by matching text. The [diagnostic contract](docs/component.md#diagnostics)
-  distinguishes implemented behavior from existing migration gaps.
+Run from this directory:
+
+```sh
+cargo fmt --check
+cargo check --workspace --offline
+cargo test --workspace --offline
+cargo clippy --workspace --all-targets --offline -- -D warnings
+RUSTDOCFLAGS=-Dwarnings cargo doc --workspace --no-deps --offline
+python3 tools/docs.py check --strict
+python3 -m unittest discover -s tools -p 'test_*.py'
+git diff --check
+cargo run -p cartan-syntax --offline --example grammar > out/grammar.js && node --check out/grammar.js
+```
+
+Until `syntax_dev` is deleted, also run its tests: in the parent workspace
+`uv run --no-sync --package cartan-syntax-dev pytest -q tests/python` after the
+workspace owner's `uv sync --locked --all-packages`; in an independent clone
+`uv run --locked pytest -q tests/python`.
+
+- `tools/docs.py` and `docs/documentation.md` are byte-identical copies of the
+  workspace validator and conventions; never edit them here. The workspace's
+  `cartdev docs drift` checks them.
+- Offline builds need the cached Clap, serde and JSON crates.
+- Building and running an actual Tree-sitter parser is untested here; only the
+  generated JavaScript is syntax-checked.
 - Test syntax-tree structure and spans, malformed input and representative
-  supported programs. Parser acceptance alone is not semantic validation.
-- Run `cargo check --workspace --offline`, `cargo test --workspace --offline`,
-  `cargo clippy --workspace --all-targets --offline -- -D warnings`, and
-  `git diff --check`. Check public rustdoc links with
-  `RUSTDOCFLAGS=-Dwarnings cargo doc --workspace --no-deps --offline`.
-- Run `python3 tools/docs.py check` and
-  `python3 -m unittest discover -s tools -p 'test_*.py'` for documentation tooling.
-
-## Documentation and terminology
-
-- Follow docs/documentation.md: Markdown, small structured headers, current
-  state only. Git records history; no completed-work diary or manual status index.
-- Maintain decisions, contracts and bounded tasks in structured docs/rulings,
-  docs/records and docs/work files. Coordinate schema changes with the supervisor
-  and synchronize conventions and equivalent validator behavior. The workspace
-  uses `cartan_dev.docs`; this component retains independent `tools/docs.py` and
-  tooling tests without a workspace Python dependency.
-- Records hold agreed contracts regardless of implementation; distinguish
-  delivery with `planned`, `partial` or `implemented`. Explicit owner instructions
-  establish a contract without a redundant ruling.
-- Keep `docs/work/` tracked but disposable, never Git-ignored: active scope,
-  blockers and acceptance criteria must remain reviewable across sessions.
-- Maintain local HANDOFF.md as an ignored resume aid; never commit it. On
-  "update HANDOFF", refresh it in place with owner/directory, revision/state,
-  active work or blockers, next actions, verification and authoritative docs
-  links. Replace stale information rather than appending a diary. Read it when
-  resuming, then confirm its state against Git, the inventory and task records.
-  Durable decisions and evidence remain in structured docs.
-- The current edit owner updates the shared ignored handoff, naming its harness
-  and task and any pending cross-harness handback. Review changed documentation
-  at completion and on "update HANDOFF": move lasting requirements into records,
-  usage into maintained documentation, and verification into relevant contracts,
-  tests or benchmark data. Consolidate unresolved questions into work items or
-  rulings. Delete completed work items by default after consolidation; retain a
-  concise completed item only while its acceptance evidence serves a continuing
-  purpose. Delete redundant or superseded designs, repairing incoming links and
-  dependency references. Report what was retained, consolidated or removed.
-  Git preserves deleted plans; HANDOFF and mailboxes hold temporary session state.
-- Python app changes use installed entry-point checks and, from this component
-  directory inside the parent uv workspace,
-  `uv run --no-sync --package cartan-syntax-dev pytest -q tests/python` after
-  the workspace owner prepares the environment with
-  `uv sync --locked --all-packages` at the root. Independent clones use
-  `uv run --locked pytest -q tests/python` with their own lockfile/environment.
-  In the parent workspace uv uses the root lockfile and shared environment;
-  its owner coordinates uv sync/lock/run mutations with other active users.
-  Use `--no-sync` for component checks; `--locked` alone can mutate the environment.
-  Preserve the component manifest/lockfile for standalone use and verify it from
-  clean exported files outside the parent workspace, without creating a worktree.
-  Keep imports/factories/docs free of implicit Rust builds,
-  process/server launches and SSH. Follow the [app contract](docs/component.md#development-application).
-- Keep one authoritative home per fact. Separate proposal, approval and actual
-  implementation; list limitations and untested behavior explicitly.
-- Use mainstream technical terminology and define terms on introduction.
-  Refresh meanings in chat when useful. Agree on unfamiliar or project-specific
-  vocabulary with the owner before putting it into authoritative documentation.
+  programs; parser acceptance is not semantic validation. Wording tests belong
+  to `support/syntax-diagnostics`.
