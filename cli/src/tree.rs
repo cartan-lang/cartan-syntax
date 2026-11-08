@@ -3,18 +3,14 @@
 //! The JSON view and this outline print the same serialized value. Here a node
 //! with a `kind` and a `span` reads as its variant name, its written text and
 //! its source position; other fields are indented beneath it. Positions are
-//! `line:column` ranges, columns counting Unicode scalar values; the JSON view
+//! `line:column` ranges with the diagnostic renderer's columns; the JSON view
 //! keeps the exact byte spans. Color changes only escapes, never the text.
 
 use serde_json::{Map, Value};
 
 /// The outline of one serialized item of `text`, beneath `heading`.
 pub(crate) fn render(heading: &str, text: &str, item: &Value, colored: bool) -> String {
-    let printer = Printer {
-        lines: line_starts(text),
-        text,
-        colored,
-    };
+    let printer = Printer { text, colored };
     let mut out = printer.paint(BOLD, heading);
     printer.node(&mut out, 1, None, item);
     out
@@ -23,7 +19,6 @@ pub(crate) fn render(heading: &str, text: &str, item: &Value, colored: bool) -> 
 /// A byte span of `text` as the outline writes it, `line:column-column`.
 pub(crate) fn position(text: &str, start: usize, end: usize) -> String {
     Printer {
-        lines: line_starts(text),
         text,
         colored: false,
     }
@@ -37,7 +32,6 @@ const WRITTEN: &str = "33";
 const POSITION: &str = "2";
 
 struct Printer<'a> {
-    lines: Vec<usize>,
     text: &'a str,
     colored: bool,
 }
@@ -109,13 +103,8 @@ impl Printer<'_> {
     }
 
     fn line_column(&self, offset: usize) -> (usize, usize) {
-        let line = self.lines.partition_point(|&start| start <= offset);
-        let start = self.lines[line - 1];
-        let column = self
-            .text
-            .get(start..offset)
-            .map_or(offset - start, |text| text.chars().count());
-        (line, column + 1)
+        cartan_diagnostics::line_column(self.text, offset)
+            .expect("syntax tree spans lie on character boundaries of the source")
     }
 
     fn paint(&self, style: &str, text: &str) -> String {
@@ -125,12 +114,6 @@ impl Printer<'_> {
             text.to_owned()
         }
     }
-}
-
-fn line_starts(text: &str) -> Vec<usize> {
-    std::iter::once(0)
-        .chain(text.match_indices('\n').map(|(at, _)| at + 1))
-        .collect()
 }
 
 fn span(value: &Value) -> Option<(usize, usize)> {

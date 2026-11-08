@@ -1,4 +1,4 @@
-use cartan_diagnostics::{render, to_json, Report, Source, SourceLocation, Span};
+use cartan_diagnostics::{line_column, render, to_json, Report, Source, SourceLocation, Span};
 use std::path::Path;
 
 fn located(start: usize, end: usize) -> Report {
@@ -27,6 +27,10 @@ fn unicode_tabs_eof_and_invalid_spans_never_guess_byte_columns() {
         assert!(text.contains(&format!(":{start}..{end}")));
         assert!(!text.contains('^'));
     }
+    // The shared position helper agrees with the caret placement above.
+    assert_eq!(line_column("é\tx\n", 3), Some((1, 5)));
+    assert_eq!(line_column("é\tx\n", 5), Some((2, 1)));
+    assert_eq!(line_column("é\tx\n", 1), None);
     let unlocated = Report::error("test.unlocated", "unlocated", None);
     assert!(!render(&sources, &unlocated).contains("-->"));
     let json = to_json(&sources, &located(3, 4));

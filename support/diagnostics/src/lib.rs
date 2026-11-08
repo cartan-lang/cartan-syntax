@@ -161,37 +161,13 @@ fn render_label(text: &mut String, sources: &[Source<'_>], label: &Label) {
         .find('\n')
         .map_or(content.len(), |i| start + i);
     let number = content[..start].bytes().filter(|&b| b == b'\n').count() + 1;
-    let mut expanded = String::new();
-    let mut column = 0;
-    let mut first = 0;
-    let mut last = 0;
-    for (offset, ch) in content[line_start..line_end].char_indices() {
-        if line_start + offset == start {
-            first = column;
-        }
-        if line_start + offset == end {
-            last = column;
-        }
-        if ch == '\t' {
-            let width = 4 - column % 4;
-            expanded.push_str(&" ".repeat(width));
-            column += width;
-        } else if ch == '\r' { /* CRLF terminator */
-        } else if ch.is_control() {
-            let escaped = ch.escape_default().to_string();
-            column += escaped.len();
-            expanded.push_str(&escaped);
-        } else {
-            expanded.push(ch);
-            column += 1;
-        }
-    }
-    if start == line_end {
-        first = column;
-    }
-    if end >= line_end {
-        last = column;
-    }
+    let (expanded, line_width) = expand(&content[line_start..line_end]);
+    let first = expand(&content[line_start..start]).1;
+    let last = if end >= line_end {
+        line_width
+    } else {
+        expand(&content[line_start..end]).1
+    };
     let width = last.saturating_sub(first).max(1);
     let gutter = number.to_string().len();
     text.push_str(&format!(
@@ -210,4 +186,41 @@ fn render_label(text: &mut String, sources: &[Source<'_>], label: &Label) {
     if end > line_end {
         text.push_str(" (continues on following lines)");
     }
+}
+
+/// The 1-based line and display column of byte `offset` in `text`, as the
+/// renderer places a caret: columns count Unicode scalar values, tabs expand to
+/// four-column stops, other control characters take their escaped width and a
+/// carriage return none. `None` when `offset` is past the text or inside a
+/// character.
+pub fn line_column(text: &str, offset: usize) -> Option<(usize, usize)> {
+    if offset > text.len() || !text.is_char_boundary(offset) {
+        return None;
+    }
+    let line_start = text[..offset].rfind('\n').map_or(0, |i| i + 1);
+    let line = text[..offset].bytes().filter(|&b| b == b'\n').count() + 1;
+    Some((line, expand(&text[line_start..offset]).1 + 1))
+}
+
+/// One line's displayed text and its display width.
+fn expand(line: &str) -> (String, usize) {
+    let mut expanded = String::new();
+    let mut column = 0;
+    for ch in line.chars() {
+        if ch == '\t' {
+            let width = 4 - column % 4;
+            expanded.push_str(&" ".repeat(width));
+            column += width;
+        } else if ch == '\r' {
+            // a CRLF terminator displays nothing
+        } else if ch.is_control() {
+            let escaped = ch.escape_default().to_string();
+            column += escaped.len();
+            expanded.push_str(&escaped);
+        } else {
+            expanded.push(ch);
+            column += 1;
+        }
+    }
+    (expanded, column)
 }
