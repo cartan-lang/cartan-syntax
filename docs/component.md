@@ -156,7 +156,7 @@ explicit choices take precedence over `NO_COLOR`, and auto uses the destination'
 terminal state. AST output and metadata JSON never contain presentation escapes.
 
 `--describe-cli` exports the built tree using the
-[version-one shared schema](../../docs/records/component-apps.md#rust-authority-and-python-exposure).
+[version-one shared schema](../../docs/records/component-apps.md#rust-authority-and-command-metadata).
 Visible command/argument aliases, inherited globals, value arity, defaults and
 choices are derived through Clap introspection. Custom validation/relationships
 remain Rust responsibilities. Each command's `notes` is its after-help prose
