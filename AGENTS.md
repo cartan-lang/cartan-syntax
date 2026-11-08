@@ -1,6 +1,6 @@
 # Working in cartan-syntax
 
-Read README.md and docs/component.md first. Shared rules, workflow commands,
+Read README and docs/component.md first. Shared rules, workflow commands,
 ownership and the HANDOFF shape are in the workspace
 [AGENTS.md](../AGENTS.md); joint Codex/Claude operation, ownership handback and
 mailboxes are in [joint operation](../docs/records/joint-operation.md). In a

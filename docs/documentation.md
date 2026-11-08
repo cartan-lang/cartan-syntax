@@ -16,7 +16,7 @@ superseded behavior. Historical benchmark observations remain valid data.
 
 ## File roles
 
-- `README.md`: purpose, public entry points, local checks, limitations and next work.
+- `README`: plain text, two or three sentences stating the component's purpose.
 - `AGENTS.md`: standing operational instructions.
 - `HANDOFF.md`: ignored local resume note for the directory's owning agent.
 - `docs/*.md`: current designs, reference material, explanations and how-to guides.

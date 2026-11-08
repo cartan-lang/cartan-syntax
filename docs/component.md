@@ -106,8 +106,7 @@ dependency points to the root parser library; the library has no CLI dependency.
 The workspace sets `default-members = ["cli"]`, matching codegen's package
 arrangement. The selected package has one binary, so no `default-run` is needed.
 The binary disables rustdoc output to avoid colliding with the same-named
-library's documentation; CLI usage lives in its help and the README.
-See the [README](../README.md) for source inspection and library-example commands.
+library's documentation; CLI usage lives in its help.
 
 The [Clap builder tree](../cli/src/command.rs) is the sole command definition.
 Help flags, the generated outline, `--describe-cli`, `--color` and the `--json`
@@ -123,7 +122,7 @@ read, so a malformed one is a usage error (status 2); a given selector, or
 typed selection diagnostic fails with status 1. `--ast` prints the selected
 item as an outline, and `--json` prints the check result object with the same
 `selection` and, under `--ast`, the same `item`. There is no whole-document
-syntax-tree view. Usage lives in the [README](../README.md).
+syntax-tree view. Usage lives in the CLI help.
 
 Both syntax-tree views print one value: the CLI enables the library's optional
 `serde` feature, which derives `Serialize` for the AST and `Span` only when
@@ -260,3 +259,11 @@ following the [local dependency contract](ast-interface.md#local-dependency-deli
 its `Cargo.lock` is the record of the revision it consumes. Name resolution,
 overload selection, type checking and graph construction remain outside syntax. Integration and execution evidence belongs to the
 consuming components.
+
+## Current limitations
+
+- Only `while` blocks normalize as update blocks; `every` blocks, namespace
+  bodies, default arguments, qualified annotations, function-header
+  configuration and Tap bodies parse to a CST but are unsupported in the AST.
+- Generated Tree-sitter JavaScript passes a syntax check; building and running a
+  Tree-sitter parser is untested here.
