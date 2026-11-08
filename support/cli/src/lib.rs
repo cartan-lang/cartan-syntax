@@ -176,11 +176,10 @@ fn argument(arg: &Arg) -> Value {
         ArgAction::Version => "version",
         _ => unreachable!("new Clap action requires schema review"),
     };
+    // Empty for an argument that takes no value, such as a boolean flag.
     let choices: Vec<_> = arg
-        .get_value_parser()
-        .possible_values()
+        .get_possible_values()
         .into_iter()
-        .flatten()
         .filter(|value| !value.is_hide_set())
         .map(|value| value.get_name().to_owned())
         .collect();
@@ -249,6 +248,8 @@ fn presentation_probe(mut command: Command) -> Command {
 
 /// The color choice in `args`, even when they are otherwise invalid. An
 /// explicit `--color` wins; automatic color yields to a non-empty `NO_COLOR`.
+/// Pass the unbuilt tree: the probe edits it, and Clap does not refresh option
+/// lookup on a built command.
 pub fn color(command: &Command, args: &[OsString]) -> ColorChoice {
     let matches = presentation_probe(command.clone())
         .try_get_matches_from(args)
@@ -282,23 +283,24 @@ pub fn stream_color(choice: ColorChoice, terminal: bool) -> ColorChoice {
     }
 }
 
-/// Whether `--json` was requested at any level of the matched command path,
-/// even when the arguments are otherwise invalid.
+/// Whether `--json` was requested: the tree declares it somewhere and the
+/// token appears before any `--`. This reads the tokens rather than parsing, so
+/// it still answers when an earlier argument is invalid, and it accepts a built
+/// or unbuilt tree. `args` starts with the program name.
 pub fn json_requested(command: &Command, args: &[OsString]) -> bool {
-    let Ok(matches) = presentation_probe(command.clone()).try_get_matches_from(args) else {
-        return false;
-    };
-    let mut level = &matches;
-    loop {
-        // An aborted probe may lack the flag's default, so read it fallibly.
-        if level.try_get_one::<bool>("json").ok().flatten() == Some(&true) {
-            return true;
-        }
-        match level.subcommand() {
-            Some((_, child)) => level = child,
-            None => return false,
-        }
-    }
+    declares_json(command)
+        && args
+            .iter()
+            .skip(1)
+            .take_while(|arg| *arg != "--")
+            .any(|arg| arg == "--json")
+}
+
+fn declares_json(command: &Command) -> bool {
+    command
+        .get_arguments()
+        .any(|arg| arg.get_long() == Some("json"))
+        || command.get_subcommands().any(declares_json)
 }
 
 /// The `cli.usage` diagnostic for invalid arguments: the first line of Clap's
@@ -430,6 +432,8 @@ mod tests {
                     .num_args(3..),
             )
             .arg(Arg::new("verbose").short('v').action(ArgAction::Count))
+            .arg(Arg::new("flag").long("flag").action(ArgAction::SetTrue))
+            .arg(color_arg())
             .arg(Arg::new("hidden").long("hidden").hide(true))
             .subcommand(Command::new("hidden-command").hide(true));
         let value = describe(&mut command);
@@ -444,6 +448,10 @@ mod tests {
         assert_eq!(verbose["arity"], json!({"min":0,"max":0}));
         assert_eq!(verbose["action"], "count");
         assert_eq!(verbose["repeatable"], true);
+        let flag = args.iter().find(|arg| arg["id"] == "flag").unwrap();
+        assert_eq!(flag["choices"], json!([]));
+        let color = args.iter().find(|arg| arg["id"] == "color").unwrap();
+        assert_eq!(color["choices"], json!(["auto", "always", "never"]));
         assert!(args.iter().all(|arg| arg["id"] != "hidden"));
         assert!(value["command"]["commands"]
             .as_array()
@@ -453,21 +461,32 @@ mod tests {
     }
 
     #[test]
-    fn json_is_found_on_the_matched_subcommand_despite_invalid_arguments() {
-        let command = with_help(
+    fn json_is_found_after_invalid_arguments_and_on_built_trees() {
+        let mut command = with_help(
             Command::new("tool").arg(color_arg()).subcommand(
                 Command::new("inspect")
                     .arg(Arg::new("json").long("json").action(ArgAction::SetTrue))
                     .arg(Arg::new("module").required(true)),
             ),
         );
-        let requested = |args: &[&str]| {
+        let requested = |command: &Command, args: &[&str]| {
             let args: Vec<OsString> = args.iter().map(OsString::from).collect();
-            json_requested(&command, &args)
+            json_requested(command, &args)
         };
-        assert!(requested(&["tool", "inspect", "--json"]));
-        assert!(requested(&["tool", "inspect", "--json", "--unknown"]));
-        assert!(!requested(&["tool", "inspect", "m"]));
+        for command in [command.clone(), {
+            command.build();
+            command
+        }] {
+            assert!(requested(&command, &["tool", "inspect", "--json"]));
+            assert!(requested(
+                &command,
+                &["tool", "inspect", "--bogus", "--json"]
+            ));
+            assert!(!requested(&command, &["tool", "inspect", "m"]));
+            assert!(!requested(&command, &["tool", "inspect", "--", "--json"]));
+        }
+        let undeclared = Command::new("tool").arg(color_arg());
+        assert!(!requested(&undeclared, &["tool", "--json"]));
     }
 
     #[test]
