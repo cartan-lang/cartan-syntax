@@ -243,8 +243,10 @@ fn discovery_agrees_with_options_and_help() {
     assert_eq!(schema["version"], env!("CARGO_PKG_VERSION"));
     let root = &schema["command"];
     assert_eq!(root["commands"], serde_json::json!([]));
-    // `notes` carries after-help prose without the outline; this command has none.
-    assert_eq!(root["notes"], serde_json::Value::Null);
+    // `notes` carries the after-help prose without the generated outline.
+    let notes = root["notes"].as_str().unwrap();
+    assert!(notes.contains("update means update:0"), "{notes}");
+    assert!(!notes.contains("Command outline:"));
     let arguments = root["arguments"].as_array().unwrap();
     let argument = |id: &str| arguments.iter().find(|arg| arg["id"] == id).unwrap();
     assert_eq!(

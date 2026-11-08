@@ -99,16 +99,6 @@ the shared packages, joined by newlines on stderr; with color it highlights only
 a report's leading `error`. Other failures take an `error:` prefix. AST debug
 output remains an inspection format, not a diagnostic protocol.
 
-The Python development app is not yet fully migrated: its process service embeds
-launch/timeout messages in `stderr`, configuration failures use message-bearing
-`ValueError`, and HTTP validation/status presentation is spread through the
-application. Its version-one JSON envelope transports opaque child streams and
-cannot reconstruct typed Rust diagnostics. These are existing gaps, not exceptions
-to the rule; [the diagnostic work item](work/diagnostic-formatting.md) records their
-scope. Migrating them requires an explicit transport/formatter design that preserves
-current CLI/web behavior and underlying causes. No message matching is permitted
-as an adapter.
-
 ## Syntax tooling
 
 The `cartan-syntax-cli` workspace member supplies a `cartan-syntax` binary. Its
@@ -157,8 +147,8 @@ definition order. A required positional prints `<NAME>`, an optional one `[NAME]
 options print `--long <NAME>` or a bare flag; repeatable arguments end with `...`.
 Value arguments note `default:` and `choices:`. Help/version entries, globals
 inherited below the root and argument relationships such as `requires_if` are
-omitted. The Python outline applies the same rules, and both sides test identical
-expected lines.
+omitted. The workspace adapter builds its outline from `--describe-cli` with the
+same rules.
 Bare groups and help exit 0 on stdout, usage errors exit 2 on stderr, and domain
 failures retain exit 1 and typed causes until the formatter. File operands use
 OS-native paths and `--` terminates option parsing. Color accepts auto/always/never;
@@ -169,8 +159,10 @@ terminal state. AST output and metadata JSON never contain presentation escapes.
 [version-one shared schema](../../docs/records/component-apps.md#rust-authority-and-python-exposure).
 Visible command/argument aliases, inherited globals, value arity, defaults and
 choices are derived through Clap introspection. Custom validation/relationships
-remain Rust responsibilities. The local exporter and Python adapter introduce no
-component dependency; peers agreed the schema and maintain their own adapters.
+remain Rust responsibilities. Each command's `notes` is its after-help prose
+(the selector and `--json` explanation here), without the generated outline. The
+workspace `cartdev syntax` adapter is driven only by this metadata and the
+`--json` results; Syntax ships no Python package.
 
 The CLI alone depends on Clap (default features off; `std`, `help`, `usage`,
 `error-context` and `color` on) and `serde_json`; `Cargo.lock` records the
@@ -178,10 +170,7 @@ versions. The parser library's dependencies are unchanged by the CLI.
 
 [CLI process tests](../cli/tests/cli.rs) cover help and usage statuses, checks
 against the shared renderer, selection, JSON results, the readable tree, color
-and OS path operands. [Python tests](../tests/python/test_application.py) cover
-forwarding, color precedence and process-free help, and
-[metadata tests](../tests/python/test_metadata.py) cover discovery from the
-binary's `--describe-cli`. Tree-sitter parser generation and execution are
+and OS path operands, including discovery from `--describe-cli`. Tree-sitter parser generation and execution are
 untested.
 
 `grammar::grammar()` returns the shared grammar value. The same value drives:
@@ -218,106 +207,6 @@ An unfinished call is incomplete rather than refused: the call-head refusal
 applies only to a complete argument list, and the positional-argument refusal
 only where the call closes after it, so `f(1` and `f(1, 2` followed by another
 line report the open `(`.
-
-## Development application
-
-The installable `cartan-syntax-dev` distribution supplies `syntax_dev` and the
-unique `cartdev-syntax` executable. It composes with the workspace development
-app through the version-one `cartan.dev.components` entry point named `syntax`.
-The component owner maintains it under the workspace's
-[application contract](../../docs/records/component-apps.md).
-
-`syntax_dev.application.component()` returns `api_version`, `id`, `title`,
-`create_cli` and `create_app`. The factories accept an explicit absolute
-`repo_root` and optional `rust_command` tuple. `create_app` additionally accepts
-the tuple of `(label, href)` navigation entries supplied by its composition owner.
-Returned Click groups and Starlette apps are independent of the aggregate
-package; imports and factories start no processes or servers.
-
-The standalone command locates the project from the invocation directory or
-`--repo PATH`. Its repeatable `--rust-command TOKEN` option supplies literal
-command-prefix arguments; use `--rust-command=-c` for an argument beginning with
-a hyphen. Factories and standalone commands read a component-local
-`[tool.cartdev]` `rust-command` array in `pyproject.toml` when no explicit command
-is supplied. The default is `target/debug/cartan-syntax` under the configured
-root. Missing binaries yield a build instruction, never an implicit build.
-
-The CLI factory declares only Python-owned commands such as `serve`; its Rust
-commands come from the configured binary's [metadata](../src/syntax_dev/metadata.py).
-Every metadata node becomes a display-only Click object: a group for a node with
-children, otherwise a command, so the generated hierarchy is traversable. These
-objects never parse; the root group forwards the original argv. Discovery runs at
-most once per group, only for group help or listing, and validates every
-version-one key with its exact type, including an integer `schema_version`. Launch, status, JSON, schema and collision
-failures are typed `MetadataError` kinds, worded by one presentation function;
-group help then still lists Python commands. A Rust command may not share a
-Python command's name. `-h` on the group prints concise help; `--help` adds the
-command outline derived from metadata followed by the visible Python commands;
-hidden Python commands still dispatch. Bare invocation and group help discover
-metadata; a launch, status or schema failure there exits 0 with the Python commands
-and the build or compatibility instruction, never building. Python command help
-starts no Rust process. Leading options always belong to Rust, so a Python command
-name must come first. Every other argument vector, including
-generated command names, unknown names, options and `--describe-cli`, is
-forwarded literally to the configured binary, which owns validation and the help
-of its own commands. Invoking-directory paths
-retain their meaning because CLI forwarding does not change the child cwd.
-Real stdin/stdout/stderr are inherited without buffering or decoration, preserving
-terminal detection and child exit codes (signals map to conventional 128+signal).
-Ctrl-C reaches the child through the shared process group; the forwarder keeps
-waiting and returns the child's own status rather than exiting early.
-In-process callers whose streams lack descriptors use captured byte streams.
-The standalone configuration prefix stops at the first Rust/Python command, so
-later `--repo` or `--rust-command` tokens remain literal Rust arguments.
-
-Python declares no syntax command of its own: any argument list not addressed to
-`serve` reaches Rust unchanged, so `cartdev syntax SOURCE --ast --json` needs no
-wrapper. A source file literally named `serve` is written `./serve`. Web
-diagnostics invoke `--ast -- SOURCE`, so they show the document's `main`, with
-repository-relative paths and a default 30-second bound. Their version-one result envelope preserves opaque
-child streams and status; it is not command metadata or structured Rust IR.
-The asynchronous web service kills its POSIX process group (other operating
-systems are untested) and reaps the child
-on timeout or cancellation; cancellation propagates after cleanup.
-
-The web app serves `/`, `/docs/`, `/diagnostics/` and locally packaged CSS and
-JavaScript. It follows the [shared visual conventions](../../docs/records/component-apps.md)
-with global and component navigation, a keyboard skip link, visible focus,
-responsive panels and bounded code/table overflow. Styles and scripts are
-packaged independently; no aggregate or sibling import is required. Documentation
-is restricted to resolved Markdown paths inside `docs/` and the root README;
-symlinks escaping those sources are refused. Metadata headers and raw HTML are
-not rendered as page content. Relative Markdown links are routed inside the
-viewer; relative non-document links and images are disabled rather than exposing
-other repository files. Local URLs honor deployment and named-mount prefixes;
-supplied aggregate navigation URLs are not rewritten.
-
-GET requests start no Rust process. An explicit diagnostic form or
-`POST /api/inspect` with JSON `{"source": "path.cart"}` invokes the same bounded
-service and returns its unchanged result envelope. Browser form submissions
-return an HTML result with escaped output and diagnostics, preserving the entered
-path. A small local script disables the submit button and announces pending work;
-inspection also works without JavaScript. Invalid form input renders a styled
-error with HTTP status 400, matching JSON validation status. Web source paths are relative to the
-configured repository. Each app owns active operation tasks through its lifespan;
-the aggregate must enter and exit each child's lifespan once. `serve` uses
-Uvicorn on loopback by default with an explicit port option.
-
-In this parent uv workspace, Python packages share its `uv.lock` and `.venv`.
-After the workspace owner runs `uv sync --locked --all-packages` at the root,
-use `uv run --no-sync --package cartan-syntax-dev` from this component directory
-so test and fixture paths remain local. `--locked` alone can still mutate the
-shared environment; `--no-sync` uses the prepared environment without syncing.
-The component retains its own `pyproject.toml` and `uv.lock` for independent
-clones outside the parent workspace, where `uv sync --locked` creates a local
-environment. It has no dependency on the aggregate Python package. The parent
-owns workspace membership and shared environment changes; coordinate mutations
-there with its owner. See the [README](../README.md) for commands in both layouts.
-
-An offline install requires cached artifacts. Set `UV_CACHE_DIR` to a writable
-cache when the default location is unavailable. No GPU, SSH, persistent server
-or browser execution is needed by the
-[in-process tests](../tests/python/test_application.py).
 
 ## Acceptance limits
 

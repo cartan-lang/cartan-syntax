@@ -50,9 +50,9 @@ standalone clone, the essentials are:
   arguments it prints help and exits 0; usage errors exit 2 and failures 1;
   under `--json` every outcome is a JSON result on stdout. Library examples need
   `-p cartan-syntax`.
-- `src/syntax_dev` is the Python development app. It is frozen: the workspace
-  `cartdev` adapter replaces it, after which it is deleted. Do not extend it;
-  keep `--describe-cli` and `--json` accurate, since the adapter reads only them.
+- There is no Python package. The workspace `cartdev syntax` adapter is generic
+  root code driven only by `--describe-cli` (including each command's `notes`,
+  its after-help) and `--json`; keep both accurate.
 
 ## Dependencies
 
@@ -78,11 +78,6 @@ python3 -m unittest discover -s tools -p 'test_*.py'
 git diff --check
 cargo run -p cartan-syntax --offline --example grammar > out/grammar.js && node --check out/grammar.js
 ```
-
-Until `syntax_dev` is deleted, also run its tests: in the parent workspace
-`uv run --no-sync --package cartan-syntax-dev pytest -q tests/python` after the
-workspace owner's `uv sync --locked --all-packages`; in an independent clone
-`uv run --locked pytest -q tests/python`.
 
 - `tools/docs.py` and `docs/documentation.md` are byte-identical copies of the
   workspace validator and conventions; never edit them here. The workspace's

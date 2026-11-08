@@ -21,6 +21,7 @@ fn tree() -> Command {
     Command::new("cartan-syntax")
         .version(env!("CARGO_PKG_VERSION"))
         .about("Check and inspect Cartan source syntax")
+        .after_help("SOURCE checks a file's syntax, and BINDING or UPDATE (update:N; update means update:0) also checks that it names one top-level item; --ast prints that item's syntax tree, main by default, and --json prints JSON. Under --json every outcome, including usage and I/O failures, is a JSON result on stdout.")
         .long_about("Check a Cartan source file's syntax, or print its source syntax tree. The syntax tree describes written constructs with byte spans; it is not typed computational IR. Success claims syntax only, with no name resolution, typing or execution.")
         .arg(
             Arg::new("color")
@@ -67,6 +68,7 @@ fn tree() -> Command {
 
 /// Give every command `-h` for concise help and `--help` for its full outline.
 fn with_help(command: Command, parents: &[&str]) -> Command {
+    let command_notes = command.get_after_help().map(ToString::to_string);
     let mut outline = String::from("Command outline:\n");
     write_outline(&command, parents, &mut outline);
     let mut path = parents.to_vec();
@@ -86,7 +88,11 @@ fn with_help(command: Command, parents: &[&str]) -> Command {
                 .action(ArgAction::HelpLong)
                 .help("Print help with the full command outline"),
         )
-        .after_long_help(outline.trim_end().to_owned());
+        // --help shows the command's notes, if any, above its outline.
+        .after_long_help(match command_notes {
+            Some(notes) => format!("{notes}\n\n{}", outline.trim_end()),
+            None => outline.trim_end().to_owned(),
+        });
     let path: Vec<&str> = path.iter().map(String::as_str).collect();
     for child in command.get_subcommands_mut() {
         *child = with_help(child.clone(), &path);
@@ -247,7 +253,7 @@ pub(crate) fn stream_color(choice: ColorChoice, terminal: bool) -> ColorChoice {
 mod tests {
     use super::*;
 
-    /// The Python outline in tests/python/test_metadata.py expects these lines.
+    /// The workspace adapter's outline from `--describe-cli` follows these lines.
     /// Argument relationships such as `requires_if` stay in Rust validation.
     #[test]
     fn outline_orders_nested_paths_positionals_repeats_defaults_and_choices() {
