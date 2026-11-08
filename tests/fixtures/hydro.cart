@@ -7,8 +7,8 @@ param n = 32
 param dt_factor = 0.13416407864998736
 param amplitude = 2.0
 
-fiber Conserved: Module = (rho: Real, mom: Real, nrg: Real)
-fiber Primitive: Module = (rho: Real, vel: Real, pre: Real)
+fiber Conserved = (rho: Real, mom: Real, nrg: Real)
+fiber Primitive = (rho: Real, vel: Real, pre: Real)
 
 gamma = 5.0 / 3.0
 plm_theta = 1.5

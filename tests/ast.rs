@@ -396,7 +396,6 @@ fn normalizes_all_five_workloads_and_retains_document_items() {
                     }
                     let expected = if fiber.name.text == "Particle" { 7 } else { 3 };
                     assert_eq!(fiber.components.len(), expected);
-                    assert_eq!(fiber.algebra.as_ref().unwrap().text, "Module");
                 }
                 ItemKind::Struct(_) => panic!("workloads declare no structs"),
                 ItemKind::Sum(_) => panic!("workloads declare no sums"),
@@ -2418,7 +2417,7 @@ fn sum_rosters_keep_declared_order_unit_variants_duplicates_and_nesting() {
     };
     assert_eq!(roster(inner), [("C", None), ("D", Some("Int"))]);
     // A product's components still normalize as a product fiber.
-    let document = ast::parse_document("fiber P: Module = (x: Real, y: Real)").unwrap();
+    let document = ast::parse_document("fiber P = (x: Real, y: Real)").unwrap();
     assert!(
         matches!(&document.items[0].kind, ItemKind::Fiber(fiber) if fiber.components.len() == 2)
     );

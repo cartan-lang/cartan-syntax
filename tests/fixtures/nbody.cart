@@ -6,8 +6,8 @@ param n = 32
 param dt = 0.001
 param softening = 0.1
 
-fiber Particle: Module = (x: Real, y: Real, z: Real, vx: Real, vy: Real, vz: Real, mass: Real)
-fiber Acceleration: Module = (x: Real, y: Real, z: Real)
+fiber Particle = (x: Real, y: Real, z: Real, vx: Real, vy: Real, vz: Real, mass: Real)
+fiber Acceleration = (x: Real, y: Real, z: Real)
 
 gravitate(p: Particle, q: Particle) = {
     dx := x of q - x of p
