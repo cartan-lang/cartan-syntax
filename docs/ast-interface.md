@@ -58,7 +58,7 @@ The source constructs are:
 | --- | --- |
 | Items | Imports, ordinary and `param` bindings, `state` declarations, fiber declarations, struct declarations, function equations, guarded `while` update blocks and `require` statements. |
 | Functions | Name, ordered parameters with patterns and optional value or function-signature annotations, and expression body. |
-| Fibers | Name, written base annotation such as `Module`, and ordered named components with annotations. |
+| Fibers | Name and ordered named components with annotations; field kinds determine algebra, in graph. |
 | Annotations | Named types, generic applications, inline struct types and fixed positional tuple annotations, preserving names and numeric arguments such as `Array<Primitive, 1>` without interpreting rank. |
 | Patterns | Name, wildcard, list, positional site pattern with its enclosing annotation retained, constructor, named components and brace entries, all nesting. |
 | Expressions | Literal number/boolean/string, tagged template, local/qualified name, unary/binary operation, conditional, local/qualified call, indexing, `of` component read, product value, `but` update, `none`, presence default `??`, absence mark `?`, list, named map, map join, configurable constructor/application, range, `periodic`, body, `for` and value-producing `each` comprehensions, and `reduce`. |
@@ -330,8 +330,7 @@ order and duplicate names, and a unit variant has `payload: None`. An inline
 roster wherever a fiber type stands, including struct entries, fiber components,
 type arguments and before `|None`, is `AnnotationKind::Sum(Vec<Variant>)` with
 its span covering the parentheses. The grammar refuses a one-variant roster and
-mixed `,`/`|` separators; an algebra word on a sum declaration yields
-`FormDiagnosticKind::SumAlgebra` spanning the word.
+mixed `,`/`|` separators.
 
 A constructor whose parentheses hold a tight `Name: value` argument is
 `ExprKind::Construct { head, variant, payload: Some(_) }`. `head` is

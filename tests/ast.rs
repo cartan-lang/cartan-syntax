@@ -2518,11 +2518,6 @@ fn constructors_name_one_variant_under_a_named_or_inline_head() {
 fn sum_form_errors_are_typed_at_their_spans() {
     for (source, written, expected) in [
         (
-            "fiber M: Module = (A | B)",
-            "Module",
-            FormDiagnosticKind::SumAlgebra,
-        ),
-        (
             "x = Shape(A: 1, B: 2)",
             "(A: 1, B: 2)",
             FormDiagnosticKind::ConstructorVariantCount { found: 2 },

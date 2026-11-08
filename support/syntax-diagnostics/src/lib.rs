@@ -149,10 +149,6 @@ pub fn syntax(error: &ast::Error, source: usize) -> Report {
                     "syntax.pattern_annotation",
                     "this pattern cannot carry a type annotation".into(),
                 ),
-                SumAlgebra => (
-                    "syntax.sum_algebra",
-                    "a Sum declaration cannot specify an algebra".into(),
-                ),
                 ConstructorVariantCount { found } => {
                     report.fields = json!({"found":found});
                     (

@@ -929,18 +929,12 @@ fn build() -> Grammar {
                  v: Vector<Real, k>)` names a width parameter after the name,\n\
                  which the component fibers read.\n\
                  \n\
-                 **A declared product states its algebra after `:`**\n\
-                : `fiber Conserved: Module = (…)` admits\n\
-                 componentwise addition, negation and scaling, `fiber\n\
-                 Primitive: Algebra = (…)` the componentwise product of two\n\
-                 values besides, and a declaration writing no word is a set\n\
-                 every arithmetic operator refuses on. A sum states no word,\n\
-                 its structure being the active variant's.",
+                 **A fiber's field kinds determine its algebra**, which a later\n\
+                 analysis stage states; the declaration writes no algebra word.",
                 seq(vec![
                     "fiber".into(),
                     field("name", sym("identifier")),
                     optional(seq(vec!["<".into(), field("param", sym("identifier")), ">".into()])),
-                    optional(seq(vec![":".into(), field("algebra", sym("identifier"))])),
                     expecting("=", Stated::FiberDeclares.label()),
                     refusing("{", Stated::StructFiber.label()),
                     expecting(choice(descriptions(None, false)), Stated::FiberDeclares.label()),

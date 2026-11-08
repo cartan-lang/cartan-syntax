@@ -452,17 +452,14 @@ impl Reader<'_> {
                 })
             }
             "fiber_declaration" if node.child("variant").is_some() => {
-                shape(node, &["name", "algebra", "variant"], &[])?;
-                if let Some(algebra) = node.child("algebra") {
-                    return Err(form(algebra, FormDiagnosticKind::SumAlgebra));
-                }
+                shape(node, &["name", "variant"], &[])?;
                 ItemKind::Sum(Sum {
                     name: self.name(field(node, "name")?)?,
                     variants: self.variants(node)?,
                 })
             }
             "fiber_declaration" => {
-                shape(node, &["name", "algebra", "component"], &[])?;
+                shape(node, &["name", "component"], &[])?;
                 let components = node
                     .children_named("component")
                     .map(|component| {
@@ -476,10 +473,6 @@ impl Reader<'_> {
                     .collect::<Result<_>>()?;
                 ItemKind::Fiber(Fiber {
                     name: self.name(field(node, "name")?)?,
-                    algebra: node
-                        .child("algebra")
-                        .map(|name| self.name(name))
-                        .transpose()?,
                     components,
                 })
             }

@@ -121,7 +121,6 @@ pub struct Binding {
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Fiber {
     pub name: Name,
-    pub algebra: Option<Name>,
     pub components: Vec<Component>,
 }
 
@@ -786,8 +785,6 @@ pub enum FormDiagnosticKind {
     PatternTypeAnnotation {
         pattern_span: Span,
     },
-    /// An algebra word on a sum fiber declaration; the span is the word.
-    SumAlgebra,
     /// A sum constructor naming other than one variant; the span covers the
     /// parenthesized arguments.
     ConstructorVariantCount {
