@@ -301,10 +301,17 @@ pub fn json_requested(command: &Command, args: &[OsString]) -> bool {
     }
 }
 
-/// The `cli.usage` diagnostic for invalid arguments: Clap's rendered error,
-/// its kind and the offending argument, if any.
+/// The `cli.usage` diagnostic for invalid arguments: the first line of Clap's
+/// error as its message, with the error's kind and offending argument, if any,
+/// as fields.
 pub fn usage_report(error: &clap::Error) -> Report {
-    let mut report = Report::error("cli.usage", error.render().to_string(), None);
+    let rendered = error.render().to_string();
+    let message = rendered
+        .lines()
+        .next()
+        .unwrap_or_default()
+        .trim_start_matches("error: ");
+    let mut report = Report::error("cli.usage", message, None);
     let argument = error.get(ContextKind::InvalidArg).map(ToString::to_string);
     report.fields = json!({"kind": format!("{:?}", error.kind()), "argument": argument});
     report
@@ -470,6 +477,7 @@ mod tests {
             .unwrap_err();
         let report = usage_report(&error);
         assert_eq!(report.code, "cli.usage");
+        assert_eq!(report.message, "unexpected argument '--unknown' found");
         assert_eq!(report.fields["kind"], "UnknownArgument");
         assert_eq!(report.fields["argument"], "--unknown");
         let map = result(Status::Error, Some(Path::new("a.cart")), vec![]);
