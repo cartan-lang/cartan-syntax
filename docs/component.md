@@ -110,6 +110,9 @@ library's documentation; CLI usage lives in its help and the README.
 See the [README](../README.md) for source inspection and library-example commands.
 
 The [Clap builder tree](../cli/src/command.rs) is the sole command definition.
+Help flags, the generated outline, `--describe-cli`, `--color` and the `--json`
+envelope come from `cartan-cli-support` (`support/cli`), which every component
+CLI shares.
 The root command takes `SOURCE [BINDING|UPDATE]` and the flags `--ast` and
 `--json`, each requiring a source; there are no subcommands. The whole document
 is always parsed and normalized: `SOURCE: valid syntax` (status 0) or the shared
@@ -130,10 +133,12 @@ each node's variant, written text and `line:column` range, with columns counting
 Unicode scalar values; the JSON keeps exact byte spans and declaration field
 order. Color adds escapes only, and JSON is never colored. The check result's
 diagnostics use the shared `cartan_diagnostics::to_json` envelope through the
-CLI formatter. In JSON mode an unreadable file is also a result on stdout: `valid: false`
-with one `source.read` diagnostic whose fields carry the path, the I/O error
-`kind` and any OS error code; the status is 1 and stderr stays empty. In text
-mode it is an ordinary CLI error on stderr.
+CLI formatter. Every `--json` outcome uses the shared result envelope
+`{schema_version: 1, status: "ok" | "error", source, diagnostics}` plus any
+payload (`selection`, `item`). An unreadable file is a result on stdout with
+`status: "error"` and one `source.read` diagnostic whose fields carry the path,
+the I/O error `kind` and any OS error code; the status is 1 and stderr stays
+empty. In text mode it is an ordinary CLI error on stderr.
 
 The command takes `-h` for concise help and `--help` for help followed by a
 full command outline generated from the tree; there is no `help` subcommand. Help

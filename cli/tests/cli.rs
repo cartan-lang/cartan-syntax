@@ -143,7 +143,8 @@ fn json_results_carry_validity_diagnostics_and_the_source_ast() {
 
     let (status, checked) = run(&valid, false);
     assert_eq!(status, Some(0));
-    assert_eq!(checked["valid"], true);
+    assert_eq!(checked["schema_version"], 1);
+    assert_eq!(checked["status"], "ok");
     assert_eq!(checked["diagnostics"], serde_json::json!([]));
     assert!(checked.get("items").is_none());
 
@@ -161,7 +162,7 @@ fn json_results_carry_validity_diagnostics_and_the_source_ast() {
     for ast in [false, true] {
         let (status, failed) = run(&invalid, ast);
         assert_eq!(status, Some(1));
-        assert_eq!(failed["valid"], false);
+        assert_eq!(failed["status"], "error");
         let diagnostic = &failed["diagnostics"][0];
         assert_eq!(diagnostic["code"], "syntax.unclosed_delimiter");
         assert_eq!(diagnostic["related"][0]["span"]["start"], 7);
@@ -185,7 +186,7 @@ fn json_results_carry_validity_diagnostics_and_the_source_ast() {
     // An unreadable source is a JSON result too, with the same status.
     let (status, unread) = run(&directory.join("missing.cart"), false);
     assert_eq!(status, Some(1));
-    assert_eq!(unread["valid"], false);
+    assert_eq!(unread["status"], "error");
     let diagnostic = &unread["diagnostics"][0];
     assert_eq!(diagnostic["code"], "source.read");
     assert_eq!(diagnostic["fields"]["kind"], "NotFound");

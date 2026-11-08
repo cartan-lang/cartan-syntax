@@ -1,5 +1,6 @@
 //! The CLI's sole diagnostic formatter. Operations retain typed error facts.
 
+use cartan_cli_support::{result, Status};
 use std::{error::Error, fmt, io, path::PathBuf};
 
 #[derive(Debug)]
@@ -82,46 +83,41 @@ impl Error for CliError {
     }
 }
 
-/// The JSON result of checking one source: whether its syntax is valid and
-/// each diagnostic in the shared JSON envelope, with exact byte spans.
+/// The JSON result of checking one source: `status` says whether its syntax
+/// is valid, with each diagnostic in the shared JSON form and exact byte spans.
 pub(crate) fn parse_json(
     path: &std::path::Path,
     text: &str,
     errors: &[cartan_syntax::ast::Error],
 ) -> serde_json::Value {
     let sources = [cartan_diagnostics::Source { name: path, text }];
-    let diagnostics: Vec<_> = errors
+    let diagnostics = errors
         .iter()
         .map(|error| {
             cartan_diagnostics::to_json(&sources, &cartan_syntax_diagnostics::syntax(error, 0))
         })
         .collect();
-    serde_json::json!({
-        "source": path.to_string_lossy(),
-        "valid": errors.is_empty(),
-        "diagnostics": diagnostics,
-    })
+    let status = if errors.is_empty() {
+        Status::Ok
+    } else {
+        Status::Error
+    };
+    result(status, Some(path), diagnostics).into()
 }
 
-/// The JSON result for invalid arguments under `--json`: one `cli.usage`
-/// diagnostic with Clap's error kind and the offending argument, if any.
+/// The JSON result for invalid arguments under `--json`.
 pub(crate) fn usage_json(error: &clap::Error) -> serde_json::Value {
-    let mut report =
-        cartan_diagnostics::Report::error("cli.usage", error.render().to_string(), None);
-    let argument = error
-        .get(clap::error::ContextKind::InvalidArg)
-        .map(ToString::to_string);
-    report.fields =
-        serde_json::json!({"kind": format!("{:?}", error.kind()), "argument": argument});
-    serde_json::json!({
-        "source": null,
-        "valid": false,
-        "diagnostics": [cartan_diagnostics::to_json(&[], &report)],
-    })
+    let report = cartan_cli_support::usage_report(error);
+    result(
+        Status::Error,
+        None,
+        vec![cartan_diagnostics::to_json(&[], &report)],
+    )
+    .into()
 }
 
-/// The JSON result for a source that could not be read: not valid, with one
-/// `source.read` diagnostic carrying the path and the I/O error kind.
+/// The JSON result for a source that could not be read, with one `source.read`
+/// diagnostic carrying the path and the I/O error kind.
 pub(crate) fn read_json(path: &std::path::Path, error: &io::Error) -> serde_json::Value {
     let mut report = cartan_diagnostics::Report::error(
         "source.read",
@@ -138,27 +134,31 @@ pub(crate) fn read_json(path: &std::path::Path, error: &io::Error) -> serde_json
         name: path,
         text: "",
     }];
-    serde_json::json!({
-        "source": path.to_string_lossy(),
-        "valid": false,
-        "diagnostics": [cartan_diagnostics::to_json(&sources, &report)],
-    })
+    result(
+        Status::Error,
+        Some(path),
+        vec![cartan_diagnostics::to_json(&sources, &report)],
+    )
+    .into()
 }
 
-/// The JSON result for a valid document whose selector names no single item:
-/// the syntax is valid, and the selection diagnostic is the result.
+/// The JSON result for a selector that names no single item of a valid
+/// document: the selection diagnostic is the result.
 pub(crate) fn selection_json(
     path: &std::path::Path,
     text: &str,
     error: &cartan_syntax::selection::SelectionError,
 ) -> serde_json::Value {
     let sources = [cartan_diagnostics::Source { name: path, text }];
-    let mut value = parse_json(path, text, &[]);
-    value["diagnostics"] = serde_json::json!([cartan_diagnostics::to_json(
-        &sources,
-        &cartan_syntax_diagnostics::selection(error, 0)
-    )]);
-    value
+    result(
+        Status::Error,
+        Some(path),
+        vec![cartan_diagnostics::to_json(
+            &sources,
+            &cartan_syntax_diagnostics::selection(error, 0),
+        )],
+    )
+    .into()
 }
 
 /// Render domain errors only at the application's presentation boundary. A

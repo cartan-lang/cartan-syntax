@@ -1,6 +1,5 @@
 mod command;
 mod diagnostic;
-mod metadata;
 mod tree;
 
 use cartan_syntax::selection::{self, Selector};
@@ -135,13 +134,18 @@ fn json_text(value: &serde_json::Value) -> String {
 fn main() -> ExitCode {
     let args: Vec<_> = env::args_os().collect();
     let mut command = command::command();
-    let color = command::color(&command, &args);
-    command = command.color(command::stream_color(color, io::stdout().is_terminal()));
+    let color = cartan_cli_support::color(&command, &args);
+    command = command.color(cartan_cli_support::stream_color(
+        color,
+        io::stdout().is_terminal(),
+    ));
     let matches = match command.clone().try_get_matches_from(args.clone()) {
         Ok(matches) => matches,
         // Under --json a usage error is a structured result on stdout; help
         // and version are successful outcomes and print as usual.
-        Err(error) if error.exit_code() != 0 && command::json_requested(&command, &args) => {
+        Err(error)
+            if error.exit_code() != 0 && cartan_cli_support::json_requested(&command, &args) =>
+        {
             let _ = output(json_text(&diagnostic::usage_json(&error)));
             return ExitCode::from(error.exit_code() as u8);
         }
@@ -152,16 +156,16 @@ fn main() -> ExitCode {
             } else {
                 io::stdout().is_terminal()
             };
-            let command = command.color(command::stream_color(color, terminal));
+            let command = command.color(cartan_cli_support::stream_color(color, terminal));
             let _ = error.with_cmd(&command).print();
             return ExitCode::from(code);
         }
     };
     let result = if matches.get_flag("describe-cli") {
-        output(metadata::describe(&mut command))
+        output(cartan_cli_support::describe(&mut command))
     } else if let Some(path) = matches.get_one::<PathBuf>("source") {
-        let colored =
-            command::stream_color(color, io::stdout().is_terminal()) == clap::ColorChoice::Always;
+        let colored = cartan_cli_support::stream_color(color, io::stdout().is_terminal())
+            == clap::ColorChoice::Always;
         let selector = matches
             .get_one::<String>("selection")
             .map(|text| Selector::parse(text).map_err(|error| CliError::Selector { error }))

@@ -16,7 +16,8 @@ name resolution, typing, graph construction or evaluation.
   [AST interface](docs/ast-interface.md).
 - Diagnostics: `support/diagnostics` (`cartan-diagnostics`) renders reports;
   `support/syntax-diagnostics` (`cartan-syntax-diagnostics`) is the one home of
-  Syntax wording. The parser library depends on neither.
+  Syntax wording. The parser library depends on neither. `support/cli`
+  (`cartan-cli-support`) holds the conventions shared by every component CLI.
 - CLI: `cartan-syntax SOURCE [BINDING|UPDATE] [--ast] [--json]`.
 
   ```sh

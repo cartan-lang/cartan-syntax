@@ -44,7 +44,10 @@ standalone clone, the essentials are:
 - `support/treegram` is the grammar engine; `support/diagnostics`
   (`cartan-diagnostics`) renders reports; `support/syntax-diagnostics`
   (`cartan-syntax-diagnostics`) is the one home of Syntax diagnostic wording.
-  The library depends on neither diagnostic package.
+  The library depends on neither diagnostic package. `support/cli`
+  (`cartan-cli-support`) holds the help, outline, `--describe-cli`, `--color`
+  and `--json` envelope conventions every component CLI shares; extend it
+  rather than copying helpers into a CLI.
 - `cli/` (`cartan-syntax-cli`, binary `cartan-syntax`) is the default workspace
   member: `cartan-syntax SOURCE [BINDING|UPDATE] [--ast] [--json]`. With no
   arguments it prints help and exits 0; usage errors exit 2 and failures 1;

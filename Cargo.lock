@@ -53,6 +53,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cartan-cli-support"
+version = "0.1.0"
+dependencies = [
+ "cartan-diagnostics",
+ "clap",
+ "serde_json",
+]
+
+[[package]]
 name = "cartan-diagnostics"
 version = "0.1.0"
 dependencies = [
@@ -71,6 +80,7 @@ dependencies = [
 name = "cartan-syntax-cli"
 version = "0.1.0"
 dependencies = [
+ "cartan-cli-support",
  "cartan-diagnostics",
  "cartan-syntax",
  "cartan-syntax-diagnostics",
