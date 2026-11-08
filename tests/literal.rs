@@ -1,5 +1,5 @@
 use cartan_syntax::literal::{
-    parse_assignment, parse_literal, AssignmentError, Literal, LiteralError,
+    number, parse_assignment, parse_literal, AssignmentError, Literal, LiteralError, NumberError,
 };
 
 #[test]
@@ -70,4 +70,12 @@ fn assignments_name_a_param_and_index_the_whole_text() {
         panic!()
     };
     assert_eq!((span.start, span.end), (3, 7));
+}
+
+#[test]
+fn source_number_spellings_convert_at_the_current_widths() {
+    assert_eq!(number("1_000"), Ok(Literal::Int(1000)));
+    assert_eq!(number("2.5e1"), Ok(Literal::Real(25.0)));
+    assert_eq!(number("2147483648"), Err(NumberError::IntRange));
+    assert_eq!(number("1e40"), Err(NumberError::RealRange));
 }

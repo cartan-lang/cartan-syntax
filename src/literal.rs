@@ -62,12 +62,14 @@ pub fn parse_literal(text: &str) -> Result<Literal, LiteralError> {
     let expr = ast::parse_expression(text).map_err(LiteralError::Syntax)?;
     let span = expr.span;
     match expr.kind {
-        ExprKind::Number(written) => number(&written, false, span),
+        ExprKind::Number(written) => literal_number(&written, false, span),
         ExprKind::Unary {
             operator: operator @ (UnaryOperator::Negate | UnaryOperator::Plus),
             operand,
         } => match &operand.kind {
-            ExprKind::Number(written) => number(written, operator == UnaryOperator::Negate, span),
+            ExprKind::Number(written) => {
+                literal_number(written, operator == UnaryOperator::Negate, span)
+            }
             _ => Err(LiteralError::NotLiteral { span }),
         },
         ExprKind::Bool(value) => Ok(Literal::Bool(value)),
@@ -109,16 +111,29 @@ fn is_name(text: &str) -> bool {
     !text.is_empty() && word.longest(text, 0) == Some(text.len()) && !KEYWORDS.contains(&text)
 }
 
-fn number(written: &str, negative: bool, span: Span) -> Result<Literal, LiteralError> {
+/// Why a number spelling has no value at the current Int and Real widths.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NumberError {
+    /// An Int spelling outside the signed 32-bit range.
+    IntRange,
+    /// A Real spelling that is not a finite f32.
+    RealRange,
+}
+
+/// The value of one number spelling as source writes it, such as the text of
+/// an `ast::ExprKind::Number`: a Real when it contains `.`, `e` or `E`, else an
+/// Int, with `_` digit separators allowed. The spelling has no sign.
+pub fn number(written: &str) -> Result<Literal, NumberError> {
+    signed_number(written, false)
+}
+
+fn signed_number(written: &str, negative: bool) -> Result<Literal, NumberError> {
     let digits: String = written.chars().filter(|&c| c != '_').collect();
     if written.contains(['.', 'e', 'E']) {
         let value = digits.parse::<f32>().ok().filter(|value| value.is_finite());
         return value
             .map(|value| Literal::Real(if negative { -value } else { value }))
-            .ok_or_else(|| LiteralError::RealRange {
-                written: written.into(),
-                span,
-            });
+            .ok_or(NumberError::RealRange);
     }
     digits
         .parse::<i64>()
@@ -126,8 +141,18 @@ fn number(written: &str, negative: bool, span: Span) -> Result<Literal, LiteralE
         .map(|value| if negative { -value } else { value })
         .and_then(|value| i32::try_from(value).ok())
         .map(Literal::Int)
-        .ok_or_else(|| LiteralError::IntRange {
+        .ok_or(NumberError::IntRange)
+}
+
+fn literal_number(written: &str, negative: bool, span: Span) -> Result<Literal, LiteralError> {
+    signed_number(written, negative).map_err(|error| match error {
+        NumberError::IntRange => LiteralError::IntRange {
             written: written.into(),
             span,
-        })
+        },
+        NumberError::RealRange => LiteralError::RealRange {
+            written: written.into(),
+            span,
+        },
+    })
 }

@@ -530,6 +530,11 @@ for any other expression, including tagged templates, and `IntRange` or
 `RealRange` for a number outside signed 32-bit Int or finite f32 Real, the
 current widths in the workspace integer and Real record.
 
+`literal::number(written)` is the one conversion of a number spelling, such as
+the text of an `ExprKind::Number`, to `Literal::Int` or `Literal::Real` by the
+same rules, failing with `NumberError::IntRange` or `RealRange`. Graph converts
+source numbers through it, so source and `--set` values agree.
+
 `literal::parse_assignment(text)` splits `NAME=VALUE` at the first `=`. The name
 must be a word that is not a reserved word. Errors are `MissingEquals`,
 `InvalidName` and `Value`, whose literal-error spans index the whole assignment
