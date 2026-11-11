@@ -20,6 +20,25 @@ standalone clone, the essentials are:
   state only, one home per fact, done work items deleted after consolidation.
 - HANDOFF.md is ignored session state, never committed.
 
+## Design from requirements
+
+For substantial features, repairs and design work, state the problem, required
+behavior and owner constraints before inspecting implementation. Ask: "If we
+were building this from scratch, what is the simplest coherent solution?"
+Write that candidate first; set familiar architecture aside. Then examine the
+existing architecture and compare solutions. Existing interfaces are choices,
+not implicit requirements; preserve mechanisms and verified behavior that fit.
+Consider diff size, migration cost, reviewability and regression risk alongside
+the simplicity of the resulting system. Neither a small patch nor a rewrite is
+inherently preferable, and sunk effort alone does not justify retaining a design.
+Always escalate to the supervisor or owner when an architectural change makes an
+obviously simpler solution possible, before implementing an accommodation.
+State the requirements, architectural change, benefit, retirement plan and smallest
+resolving experiment. Keep the checkpoint bounded and preserve a working baseline.
+Reuse what fits; update callers and retire superseded mechanisms coherently.
+Preserve user work without inventing compatibility obligations or leaving parallel
+implementations without an explicit scope and retirement condition.
+
 ## Scope
 
 - Own Cartan syntax: the grammar, parsing, concrete syntax trees, the
