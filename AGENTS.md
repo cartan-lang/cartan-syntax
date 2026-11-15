@@ -16,8 +16,10 @@ standalone clone, the essentials are:
   lives only there and is never parsed.
 - Tests are sparse and discriminating; no tests that only check retired
   behavior is absent.
-- Documentation follows [docs/documentation.md](docs/documentation.md): current
-  state only, one home per fact, done work items deleted after consolidation.
+- Documentation follows the workspace's
+  [conventions](../docs/documentation.md), of which a standalone clone has no
+  copy: current state only, one home per fact, done work items deleted after
+  consolidation.
 - HANDOFF.md is ignored session state, never committed.
 
 ## Design from requirements
@@ -101,10 +103,8 @@ git diff --check
 cargo run -p cartan-syntax --offline --example grammar > out/grammar.js && node --check out/grammar.js
 ```
 
-- `docs/documentation.md` is a byte-identical copy of the workspace
-  conventions; never edit it here. The workspace's `cartdev docs drift` checks
-  it. Documentation is checked from the workspace, and a standalone clone has
-  no checker.
+- Documentation is checked from the workspace, and a standalone clone has no
+  checker.
 - Offline builds need the cached Clap, serde and JSON crates.
 - Building and running an actual Tree-sitter parser is untested here; only the
   generated JavaScript is syntax-checked.
