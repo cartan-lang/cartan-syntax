@@ -460,20 +460,9 @@ impl Reader<'_> {
             }
             "fiber_declaration" => {
                 shape(node, &["name", "component"], &[])?;
-                let components = node
-                    .children_named("component")
-                    .map(|component| {
-                        shape(component, &["name", "type"], &[])?;
-                        Ok(Component {
-                            name: self.name(field(component, "name")?)?,
-                            annotation: self.value_type(field(component, "type")?)?,
-                            span: span(component),
-                        })
-                    })
-                    .collect::<Result<_>>()?;
                 ItemKind::Fiber(Fiber {
                     name: self.name(field(node, "name")?)?,
-                    components,
+                    components: self.components(node)?,
                 })
             }
             "struct_declaration" => {
@@ -630,6 +619,11 @@ impl Reader<'_> {
             let argument = children(written)
                 .find(|child| child.field.is_none())
                 .ok_or_else(|| unsupported(written))?;
+            // Before an arrow the parens are the argument list, so a name and
+            // a colon there is a named formal, not an inline product.
+            if let Some(component) = argument.child("component") {
+                return Err(unsupported(component));
+            }
             vec![match written.child("alternative") {
                 Some(alternative) => self.optional_type(
                     argument,
@@ -666,6 +660,20 @@ impl Reader<'_> {
             },
             span: whole,
         })
+    }
+
+    /// A product's components in declared order, keeping duplicates.
+    fn components(&self, node: &Node) -> Result<Vec<Component>> {
+        node.children_named("component")
+            .map(|component| {
+                shape(component, &["name", "type"], &[])?;
+                Ok(Component {
+                    name: self.name(field(component, "name")?)?,
+                    annotation: self.value_type(field(component, "type")?)?,
+                    span: span(component),
+                })
+            })
+            .collect()
     }
 
     /// A roster's variants in declared order, keeping duplicates.
@@ -784,6 +792,14 @@ impl Reader<'_> {
             shape(node, &["variant"], &[])?;
             return Ok(Annotation {
                 kind: AnnotationKind::Sum(self.variants(node)?),
+                span: span(node),
+            });
+        }
+        if node.child("component").is_some() {
+            // An inline product; its span covers the parentheses.
+            shape(node, &["component"], &[])?;
+            return Ok(Annotation {
+                kind: AnnotationKind::Product(self.components(node)?),
                 span: span(node),
             });
         }

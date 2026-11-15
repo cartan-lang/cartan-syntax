@@ -1883,23 +1883,18 @@ fn unary_signatures_match_parenthesized_ones_with_written_spans() {
             "{unary}"
         );
     }
-    // Inline products and named signature formals stay out.
-    for (source, kind) in [
-        ("f(g: (x: Real) -> Real) = 1", "component"),
-        ("f(p: (a: Real, b: Real)) = p", "component"),
-    ] {
-        let errors = ast::parse_document(source).unwrap_err();
-        assert!(
-            matches!(
-                errors.as_slice(),
-                [Error::Form(FormDiagnostic {
-                    kind: FormDiagnosticKind::UnsupportedConstruct { kind: found },
-                    ..
-                })] if found == kind
-            ),
-            "{source}: {errors:?}"
-        );
-    }
+    // A named signature formal stays out.
+    let errors = ast::parse_document("f(g: (x: Real) -> Real) = 1").unwrap_err();
+    assert!(
+        matches!(
+            errors.as_slice(),
+            [Error::Form(FormDiagnostic {
+                kind: FormDiagnosticKind::UnsupportedConstruct { kind: found },
+                ..
+            })] if found == "component"
+        ),
+        "{errors:?}"
+    );
 }
 
 #[test]
@@ -2372,6 +2367,7 @@ fn roster(variants: &[Variant]) -> Vec<(&str, Option<&str>)> {
                 AnnotationKind::Struct(_) => "{}",
                 AnnotationKind::Tuple(_) | AnnotationKind::TupleRepeat { .. } => "[]",
                 AnnotationKind::Sum(_) => "|",
+                AnnotationKind::Product(_) => "()",
                 AnnotationKind::Optional { .. } => "?",
             });
             (variant.name.text.as_str(), payload)
@@ -2450,6 +2446,35 @@ fn inline_sums_stand_where_a_fiber_type_does() {
             "{source}: {debug}"
         );
     }
+}
+
+#[test]
+fn inline_products_are_components_as_a_declaration_has_them() {
+    let source = "fiber P = (pos: (x: Real, at: (i: Int, j: Int)), v: Vector<Real, 3>)";
+    let document = ast::parse_document(source).unwrap_or_else(|errors| panic!("{errors:?}"));
+    let ItemKind::Fiber(fiber) = &document.items[0].kind else {
+        panic!("{document:?}");
+    };
+    let pos = &fiber.components[0].annotation;
+    assert_eq!(
+        &source[pos.span.start..pos.span.end],
+        "(x: Real, at: (i: Int, j: Int))"
+    );
+    let AnnotationKind::Product(members) = &pos.kind else {
+        panic!("{pos:?}");
+    };
+    let names: Vec<_> = members.iter().map(|m| m.name.text.as_str()).collect();
+    assert_eq!(names, ["x", "at"]);
+    let at = &members[1];
+    assert_eq!(&source[at.span.start..at.span.end], "at: (i: Int, j: Int)");
+    let AnnotationKind::Product(inner) = &at.annotation.kind else {
+        panic!("{at:?}");
+    };
+    assert_eq!(inner.len(), 2);
+    assert!(matches!(
+        &fiber.components[1].annotation.kind,
+        AnnotationKind::Apply { name, .. } if name.text == "Vector"
+    ));
 }
 
 #[test]

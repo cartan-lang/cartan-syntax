@@ -59,7 +59,7 @@ The source constructs are:
 | Items | Imports, ordinary and `param` bindings, `state` declarations, fiber declarations, struct declarations, function equations, guarded `while` update blocks and `require` statements. |
 | Functions | Name, ordered parameters with patterns and optional value or function-signature annotations, and expression body. |
 | Fibers | Name and ordered named components with annotations; field kinds determine algebra, in graph. |
-| Annotations | Named types, generic applications, inline struct types and fixed positional tuple annotations, preserving names and numeric arguments such as `Array<Primitive, 1>` without interpreting rank. |
+| Annotations | Named types, generic applications, inline struct, product and sum types and fixed positional tuple annotations, preserving names and numeric arguments such as `Array<Primitive, 1>` without interpreting rank. |
 | Patterns | Name, wildcard, list, positional site pattern with its enclosing annotation retained, constructor, named components and brace entries, all nesting. |
 | Expressions | Literal number/boolean/string, tagged template, local/qualified name, unary/binary operation, conditional, local/qualified call, indexing, `of` component read, product value, `but` update, `none`, presence default `??`, absence mark `?`, list, named map, map join, configurable constructor/application, range, `periodic`, body, `for` and value-producing `each` comprehensions, and `reduce`. |
 | Body | Ordered `BodyItem::Local`, `BodyItem::Require` and `BodyItem::Result` entries, with exactly one result. A result need not be last. |
@@ -207,8 +207,10 @@ entry types nest. The annotation span covers the braces. It is admitted wherever
 a value annotation stands, including signature slots and results, struct entries,
 fiber components and generic type arguments. Graph interns an inline struct like
 a `struct` alias and decides where a struct is semantically eligible.
-Inline product descriptions such as `(a: Real, b: Real)` remain an
-`UnsupportedConstruct` of kind `component` in annotations.
+An inline product `(a: Real, b: Real)` written where a fiber type stands is
+`AnnotationKind::Product(Vec<Component>)`, the components a `fiber`
+declaration's body has, in source order with duplicates preserved; components
+nest, and the annotation span covers the parentheses.
 
 ## Tuples and ordered value walks
 

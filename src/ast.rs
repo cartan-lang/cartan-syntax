@@ -275,6 +275,9 @@ pub enum AnnotationKind {
         item: Box<Annotation>,
         width: TupleWidth,
     },
+    /// An inline product `(x: Real, y: Real)`, its components as a
+    /// declaration's; the span covers the parentheses.
+    Product(Vec<Component>),
     /// An inline sum roster `(A: Real | B)`; the span covers the parentheses.
     Sum(Vec<Variant>),
     /// `T|None`, the only union the type language admits.
