@@ -680,9 +680,10 @@ fn build() -> Grammar {
                 "`\"\"\"prose\"\"\"` standing alone — a doc string. It\n\
                  is a declaration rather than a binding: no name, no node in the\n\
                  graph, no part in evaluation. Standing first it is the document's\n\
-                 prose; standing above a binding it is that binding's prose. Which\n\
-                 one it is is positional, so a later analysis stage decides it — the grammar\n\
-                 accepts the literal as an item anywhere.\n\
+                 prose; standing above a binding, a function, a fiber or a struct\n\
+                 it is that declaration's prose. Which one it is is positional, so\n\
+                 the grammar accepts the literal as an item anywhere and the source\n\
+                 tree places it, refusing one standing above anything else.\n\
                  \n\
                  A triple string is an expression too, so a document's first line\n\
                  could be read as the bare item `main = \"\"\"prose\"\"\"`\n\

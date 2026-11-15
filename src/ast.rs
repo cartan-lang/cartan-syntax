@@ -14,7 +14,23 @@ use crate::{Diagnostic, Span};
 pub struct Document {
     #[cfg_attr(feature = "serde", serde(skip))]
     pub source: String,
+    /// The documentation string written as the document's first item.
+    pub prose: Option<Prose>,
     pub items: Vec<Item>,
+}
+
+/// A documentation string: text for people, with no meaning to analysis.
+/// `text` is what was written between the delimiters, without escape
+/// decoding, less the opening delimiter's line when nothing but spaces/tabs
+/// follow the delimiter on it, the closing delimiter's line when nothing but
+/// spaces/tabs precede the delimiter on it (each with its line break), and the
+/// longest common run of leading spaces/tabs of the non-blank lines; a blank
+/// line shorter than that run becomes empty. `span` covers the delimiters.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+pub struct Prose {
+    pub text: String,
+    pub span: Span,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -28,6 +44,10 @@ pub struct Name {
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Item {
     pub kind: ItemKind,
+    /// The documentation string written directly before a binding, function,
+    /// fiber, sum or struct item; always absent on any other item. The item's
+    /// span excludes it.
+    pub prose: Option<Prose>,
     pub span: Span,
 }
 
@@ -260,9 +280,11 @@ pub struct Annotation {
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum AnnotationKind {
-    Named(Name),
+    /// A type name, `Real` or `orbit::Binary`.
+    Named(NameRef),
+    /// A type name applied to arguments, `Vector<Real, 2>`.
     Apply {
-        name: Name,
+        name: NameRef,
         arguments: Vec<TypeArgument>,
     },
     /// An inline struct type `{a: Real, b: Int}`, possibly empty; the
@@ -815,6 +837,13 @@ pub enum FormDiagnosticKind {
     LineLeadingArmElse {
         else_span: Span,
         conditional_span: Span,
+    },
+    /// A documentation string standing before something other than a binding,
+    /// function, fiber, sum or struct item, other than as the document's first
+    /// item. The diagnostic span is the documentation string; `next_span` is
+    /// the item after it, absent at the end of the document.
+    MisplacedDocumentation {
+        next_span: Option<Span>,
     },
 }
 

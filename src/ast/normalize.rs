@@ -7,17 +7,61 @@ type Result<T> = std::result::Result<T, Error>;
 pub(super) fn document(tree: SyntaxTree) -> std::result::Result<Document, Vec<Error>> {
     check_grammar(&tree)?;
     let reader = Reader { tree: &tree };
+    let mut prose = None;
     let mut items = Vec::new();
     let mut errors = Vec::new();
-    for node in children(&tree.root) {
-        match reader.item(node) {
-            Ok(item) => items.push(item),
-            Err(error) => errors.push(error),
+    // Documentation waiting for the item after it.
+    let mut pending: Option<Prose> = None;
+    let misplaced = |prose: Prose, next_span| {
+        form_at(
+            prose.span,
+            FormDiagnosticKind::MisplacedDocumentation { next_span },
+        )
+    };
+    for (index, node) in children(&tree.root).enumerate() {
+        if node.kind == "doc_declaration" {
+            match reader.prose(node) {
+                Ok(written) if index == 0 => prose = Some(written),
+                Ok(written) => {
+                    if let Some(previous) = pending.replace(written) {
+                        errors.push(misplaced(previous, Some(span(node))));
+                    }
+                }
+                Err(error) => errors.push(error),
+            }
+            continue;
         }
+        match reader.item(node) {
+            Ok(mut item) => {
+                if let Some(written) = pending.take() {
+                    match item.kind {
+                        ItemKind::Binding(_)
+                        | ItemKind::Function(_)
+                        | ItemKind::Fiber(_)
+                        | ItemKind::Sum(_)
+                        | ItemKind::Struct(_) => item.prose = Some(written),
+                        ItemKind::Use(_) | ItemKind::While(_) | ItemKind::Require(_) => {
+                            errors.push(misplaced(written, Some(item.span)))
+                        }
+                    }
+                }
+                items.push(item);
+            }
+            // The item's own error stands; whether it could carry the
+            // documentation is not known.
+            Err(error) => {
+                pending = None;
+                errors.push(error);
+            }
+        }
+    }
+    if let Some(written) = pending {
+        errors.push(misplaced(written, None));
     }
     if errors.is_empty() {
         Ok(Document {
             source: tree.source,
+            prose,
             items,
         })
     } else {
@@ -535,6 +579,20 @@ impl Reader<'_> {
         };
         Ok(Item {
             kind,
+            prose: None,
+            span: span(node),
+        })
+    }
+
+    /// A `doc_declaration`'s text; see [`Prose`].
+    fn prose(&self, node: &Node) -> Result<Prose> {
+        shape(node, &["text"], &[])?;
+        let literal = field(node, "text")?;
+        shape(literal, &["text"], &[])?;
+        Ok(Prose {
+            text: literal
+                .child("text")
+                .map_or_else(String::new, |content| text::prose(self.text(content))),
             span: span(node),
         })
     }
@@ -650,7 +708,8 @@ impl Reader<'_> {
     /// `T|None`; any other alternative is refused, since this is the only union.
     fn optional_type(&self, value: &Node, alternative: &Node, whole: Span) -> Result<Annotation> {
         let none = self.value_type(alternative)?;
-        if !matches!(&none.kind, AnnotationKind::Named(name) if name.text == "None") {
+        if !matches!(&none.kind, AnnotationKind::Named(NameRef::Local(name)) if name.text == "None")
+        {
             return Err(form(alternative, FormDiagnosticKind::UnionAlternative));
         }
         Ok(Annotation {
@@ -841,7 +900,7 @@ impl Reader<'_> {
             });
         }
         shape(node, &["name"], &["type_annotation", "number"])?;
-        let name = self.name(field(node, "name")?)?;
+        let name = self.name_ref(field(node, "name")?)?;
         let kind = if node.children.iter().any(|child| child.kind == "<") {
             let arguments = children(node)
                 .filter(|child| child.field.is_none())

@@ -42,6 +42,28 @@ pub(super) fn triple_pieces(runs: &[String]) -> Vec<String> {
             *first = rest.to_owned();
         }
     }
+    dedent(runs)
+}
+
+/// Documentation text between its delimiters, raw like [`triple`] text: the
+/// opening delimiter's line goes when only spaces/tabs follow the delimiter,
+/// the closing delimiter's line when only spaces/tabs precede it, each with its
+/// line break, and then the common indentation as for [`triple`].
+pub(super) fn prose(content: &str) -> String {
+    let blank = |line: &str| line.trim_matches([' ', '\t', '\r']).is_empty();
+    let content = match content.split_once('\n') {
+        Some((opening, rest)) if blank(opening) => rest,
+        _ => content,
+    };
+    let content = match content.rsplit_once('\n') {
+        Some((rest, closing)) if blank(closing) => rest.strip_suffix('\r').unwrap_or(rest),
+        _ => content,
+    };
+    dedent(vec![content.to_owned()]).remove(0)
+}
+
+/// Remove the common indentation of [`triple_pieces`]' runs.
+fn dedent(runs: Vec<String>) -> Vec<String> {
     let indent = common_indent(&runs);
     let mut at_line_start = true;
     runs.iter()
@@ -130,6 +152,24 @@ mod tests {
         assert_eq!(triple("\n  a\n  b"), "a\nb");
         assert_eq!(triple("\r\n  a"), "a");
         assert_eq!(triple(""), "");
+    }
+
+    #[test]
+    fn prose_drops_the_delimiter_lines_and_common_indentation() {
+        // No escapes are decoded; a lone line's leading spaces are its indentation.
+        assert_eq!(prose(r"`x` in \n [0, p) "), r"`x` in \n [0, p) ");
+        assert_eq!(prose("  x  "), "x  ");
+        assert_eq!(prose("\nThe orbit.\n"), "The orbit.");
+        assert_eq!(
+            prose("  \r\n  One\r\n\r\n    two\r\n  "),
+            "One\r\n\r\n  two"
+        );
+        // Text on a delimiter's line stays, and so do inner blank lines.
+        assert_eq!(prose("First\n  second\n"), "First\n  second");
+        assert_eq!(prose("\n  a\n\n  "), "a\n");
+        assert_eq!(prose("\n  a\n  b  "), "a\nb  ");
+        assert_eq!(prose("\n\n"), "");
+        assert_eq!(prose(""), "");
     }
 
     #[test]

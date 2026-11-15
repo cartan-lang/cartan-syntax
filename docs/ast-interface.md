@@ -56,10 +56,10 @@ The source constructs are:
 
 | Area | Supported source representation |
 | --- | --- |
-| Items | Imports, ordinary and `param` bindings, `state` declarations, fiber declarations, struct declarations, function equations, guarded `while` update blocks and `require` statements. |
+| Items | Imports, ordinary and `param` bindings, `state` declarations, fiber declarations, struct declarations, function equations, guarded `while` update blocks and `require` statements; documentation strings on the document and on declarations. |
 | Functions | Name, ordered parameters with patterns and optional value or function-signature annotations, and expression body. |
 | Fibers | Name and ordered named components with annotations; field kinds determine algebra, in graph. |
-| Annotations | Named types, generic applications, inline struct, product and sum types and fixed positional tuple annotations, preserving names and numeric arguments such as `Array<Primitive, 1>` without interpreting rank. |
+| Annotations | Local or qualified named types, generic applications, inline struct, product and sum types and fixed positional tuple annotations, preserving names and numeric arguments such as `Array<Primitive, 1>` without interpreting rank. |
 | Patterns | Name, wildcard, list, positional site pattern with its enclosing annotation retained, constructor, named components and brace entries, all nesting. |
 | Expressions | Literal number/boolean/string, tagged template, local/qualified name, unary/binary operation, conditional, local/qualified call, indexing, `of` component read, product value, `but` update, `none`, presence default `??`, absence mark `?`, list, named map, map join, configurable constructor/application, range, `periodic`, body, `for` and value-producing `each` comprehensions, and `reduce`. |
 | Body | Ordered `BodyItem::Local`, `BodyItem::Require` and `BodyItem::Result` entries, with exactly one result. A result need not be last. |
@@ -126,9 +126,13 @@ behavior belong to consumers.
 and full name span. Every segment retains its own byte span; no dotted/joined
 string replaces that structure. Value references use `ExprKind::QualifiedName`;
 ordinary value references remain `ExprKind::Name`. Calls use `NameRef::Local(Name)`
-or `NameRef::Qualified(QualifiedName)` in `ExprKind::Call.function`. Declaration,
-pattern and annotation names are unchanged; qualified annotations and qualified
-function definitions remain outside this subset.
+or `NameRef::Qualified(QualifiedName)` in `ExprKind::Call.function`, so a
+positional constructor such as `orbit::Elements(1.0, q)` is a call whose head is
+the qualified name. A type name is a `NameRef` too: `AnnotationKind::Named` and
+`AnnotationKind::Apply.name`, as in `binary: orbit::Binary` or
+`orbit::Pair<Real>`, the annotation span equal to the qualified name's for a bare
+name. Declaration and pattern names stay local; qualified function definitions
+remain outside this subset.
 
 An explicit alias combined with any selector produces
 `FormDiagnosticKind::UseAliasAndImports`, with the complete use-declaration span.
@@ -154,8 +158,31 @@ is the written spelling including delimiters, and the expression span covers it.
 Quoted text uses the path decoding rule above. Triple-quoted text is raw, except
 that one LF or CRLF immediately after the opening delimiter is dropped and the
 longest common run of leading spaces/tabs of the non-blank lines is removed; a
-blank line shorter than that indentation becomes empty. A standalone triple
-string doc declaration is not an expression and keeps its typed unsupported error.
+blank line shorter than that indentation becomes empty. A triple string standing
+alone as an item is documentation, not an expression; see below.
+
+A documentation string is text for people with no meaning to analysis.
+`Prose { text, span }` keeps it, the span covering both delimiters. `text` is
+what was written between the delimiters, without escape decoding, less three
+removals: the opening delimiter's line when only spaces/tabs follow the
+delimiter on it, the closing delimiter's line when only spaces/tabs precede the
+delimiter on it (each with its line break), and then the triple-quoted text's
+common indentation as above, a lone line's leading spaces/tabs included. Inner
+line breaks, CRLF included, stay as written. Placement is positional, and blank
+lines and comments between a documentation string and the item after it do not
+matter:
+
+- The document's first item, when it is a documentation string, is
+  `Document.prose`, whatever follows it.
+- Any other documentation string is `Item.prose` of the item after it, which
+  must be a binding (`param`, `state` and pattern bindings included), function,
+  fiber, sum or struct item. The item's own span excludes its documentation.
+- Before a `use` line, a `while` block, a `require` statement or another
+  documentation string, or at the end of the document, it is refused with
+  `FormDiagnosticKind::MisplacedDocumentation { next_span }`, spanning the
+  documentation string; `next_span` covers the following item and is absent at
+  the end. Before an item that fails to normalize, that item's error stands
+  alone.
 
 `ExprKind::Template(Template { form, pieces })` covers the tagged `f"…"` and
 `f"""…"""` forms. Pieces stand in source order as `Piece::Text(TextPiece { raw,
@@ -195,7 +222,7 @@ belongs to graph and later stages.
 `ItemKind::Struct(Struct { name, entries })` covers `struct P = {x: Real, …}`.
 Each `StructEntry` retains `name`, `annotation` and the entry span in source
 order, including duplicate keys; graph diagnoses duplicates and empty structs.
-Annotations naming a struct use the existing `AnnotationKind::Named`, and a brace
+Annotations naming a struct use `AnnotationKind::Named`, and a brace
 value remains `ExprKind::Map`. A struct declaration is a structural alias, not a
 nominal constructor or type identity; graph interprets an annotated brace value
 structurally through the alias, never from AST spelling alone.
@@ -493,7 +520,8 @@ relevant payloads: unsupported construct and its CST kind, comparison/range
 chain, body result count, a use alias combined with selectors, malformed
 format precision or notation, misplaced signatures, component keys of the
 wrong length, the removed spatial update, stated types on patterns other than
-names, discards and positional tuples, and a type alternative other than `None`. `Error::span()` returns the full byte range; errors
+names, discards and positional tuples, a type alternative other than `None`
+and misplaced documentation. `Error::span()` returns the full byte range; errors
 derive `Clone`, `Debug`, `PartialEq` and `Eq`. Grammar diagnostics are preserved
 without rewriting. Normalization reports the first form error in each document
 item; it returns no partial AST if any error occurs. Unsupported syntax is
@@ -516,7 +544,7 @@ ordered writes only; other update-body forms are outside this AST subset.
 
 Only the value annotations described above, the imports above,
 and the listed expression forms are normalized. Default arguments,
-function-header configuration/lock clauses, qualified annotations,
+function-header configuration/lock clauses,
 general `fold`, guard/configuration clauses on reductions and inline-description pattern heads
 return unsupported errors. Broader syntax restrictions such as periodic operands
 or annotation-placement rules are not comprehensively validated. Names, type

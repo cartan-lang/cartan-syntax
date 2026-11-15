@@ -202,6 +202,19 @@ pub fn syntax(error: &ast::Error, source: usize) -> Report {
                             .into(),
                     )
                 }
+                MisplacedDocumentation { next_span } => {
+                    if let Some(next_span) = next_span {
+                        report.related.push(Label {
+                            location: location(source, *next_span),
+                            message: "this item takes no documentation".into(),
+                        });
+                    }
+                    (
+                        "syntax.misplaced_documentation",
+                        "a documentation string must open the document or stand before a binding, function, fiber or struct"
+                            .into(),
+                    )
+                }
             };
             report.code = code;
             report.message = message;

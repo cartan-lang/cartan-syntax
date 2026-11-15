@@ -218,7 +218,8 @@ Grammar parsing is one layer of syntax processing. The separate
 [`ast` interface](ast-interface.md) normalizes a supported subset into an
 abstract syntax tree (AST), the representation of source constructs used for
 further analysis. It includes file/namespace use heads, selectors, aliases and
-qualified value/call names without loading files or resolving names. It refuses
+qualified value, call and type names without loading files or resolving names,
+and documentation strings on the document and its declarations. It refuses
 alias-plus-selector combinations and written comparison/range chains, and requires
 value bodies to have exactly one result. The CST API still returns grammar
 trees for those forms without performing the AST checks.
@@ -263,7 +264,7 @@ consuming components.
 ## Current limitations
 
 - Only `while` blocks normalize as update blocks; `every` blocks, namespace
-  bodies, default arguments, qualified annotations, function-header
+  bodies, default arguments, function-header
   configuration and Tap bodies parse to a CST but are unsupported in the AST.
 - Generated Tree-sitter JavaScript passes a syntax check; building and running a
   Tree-sitter parser is untested here.

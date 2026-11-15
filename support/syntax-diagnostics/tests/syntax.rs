@@ -40,6 +40,12 @@ fn stated_rules_and_related_spans_keep_their_identity() {
     assert_eq!(report.code, "syntax.duplicate_else");
     let first = &report.related[0].location.span;
     assert_eq!(&text[first.start..first.end], "else 2");
+
+    let text = "x = 1\n\"\"\"Imports.\"\"\"\nuse std::*\n";
+    let report = syntax(&ast::parse_document(text).unwrap_err()[0], 0);
+    assert_eq!(report.code, "syntax.misplaced_documentation");
+    let next = &report.related[0].location.span;
+    assert_eq!(&text[next.start..next.end], "use std::*");
 }
 
 /// The owner-approved wording for a representative error of each family. A

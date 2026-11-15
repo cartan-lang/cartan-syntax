@@ -584,7 +584,11 @@ fn preserves_annotations_site_patterns_and_source_spelling() {
     let Some(ParameterAnnotation::Value(annotation)) = &function.parameters[1].annotation else {
         panic!()
     };
-    let AnnotationKind::Apply { name, arguments } = &annotation.kind else {
+    let AnnotationKind::Apply {
+        name: NameRef::Local(name),
+        arguments,
+    } = &annotation.kind
+    else {
         panic!()
     };
     assert_eq!(name.text, "Array");
@@ -593,7 +597,7 @@ fn preserves_annotations_site_patterns_and_source_spelling() {
         "Array<Unknown, 17>"
     );
     assert!(
-        matches!(&arguments[0], TypeArgument::Type(Annotation { kind: AnnotationKind::Named(Name { text, .. }), .. }) if text == "Unknown")
+        matches!(&arguments[0], TypeArgument::Type(Annotation { kind: AnnotationKind::Named(NameRef::Local(Name { text, .. })), .. }) if text == "Unknown")
     );
     assert!(
         matches!(&arguments[1], TypeArgument::Number { text, span } if text == "17" && &source[span.start..span.end] == "17")
@@ -912,7 +916,6 @@ fn import_extension_keeps_unsupported_clauses_and_grammar_failures_structured() 
     for source in [
         "use std with (x: 1)",
         "use \"file.cart\" as file with (x: 1)",
-        "x: ns::Type = 1",
         "x = ns::f'(1)",
     ] {
         assert!(
@@ -1408,14 +1411,6 @@ fn strings_keep_raw_spelling_beside_decoded_unicode_text() {
         };
         assert!(matches!(binding.value.kind, ExprKind::String(_)));
     }
-    // A standalone triple string is doc prose, not a string expression.
-    assert!(matches!(
-        ast::parse_document("\"\"\"Prose.\"\"\"\nx = 1\n").unwrap_err().as_slice(),
-        [Error::Form(FormDiagnostic {
-            kind: FormDiagnosticKind::UnsupportedConstruct { kind },
-            ..
-        })] if kind == "doc_declaration"
-    ));
 }
 
 #[test]
@@ -1555,14 +1550,14 @@ fn struct_declarations_keep_ordered_duplicate_entries_and_named_annotations() {
     }
     assert!(matches!(
         &declaration.entries[2].annotation.kind,
-        AnnotationKind::Apply { name, .. } if name.text == "Vector"
+        AnnotationKind::Apply { name: NameRef::Local(name), .. } if name.text == "Vector"
     ));
     let ItemKind::Binding(binding) = &document.items[1].kind else {
         panic!();
     };
     assert!(matches!(
         &binding.annotation.as_ref().unwrap().kind,
-        AnnotationKind::Named(name) if name.text == "P"
+        AnnotationKind::Named(NameRef::Local(name)) if name.text == "P"
     ));
     assert!(matches!(binding.value.kind, ExprKind::Map(_)));
     // An inline struct may stand as an entry's type.
@@ -1662,7 +1657,7 @@ fn signature(parameter: &Parameter) -> &Signature {
 
 fn named(annotation: &Annotation) -> &str {
     match &annotation.kind {
-        AnnotationKind::Named(name) => &name.text,
+        AnnotationKind::Named(NameRef::Local(name)) => &name.text,
         kind => panic!("expected a named type, found {kind:?}"),
     }
 }
@@ -1714,7 +1709,7 @@ fn signature_slots_take_generic_annotations_at_utf8_offsets() {
     assert_eq!(text(signature_.arrow_span), "->");
     assert!(matches!(
         &signature_.arguments[0].kind,
-        AnnotationKind::Apply { name, arguments } if name.text == "Array" && arguments.len() == 2
+        AnnotationKind::Apply { name: NameRef::Local(name), arguments } if name.text == "Array" && arguments.len() == 2
     ));
 }
 
@@ -2361,9 +2356,16 @@ fn roster(variants: &[Variant]) -> Vec<(&str, Option<&str>)> {
         .iter()
         .map(|variant| {
             let payload = variant.payload.as_ref().map(|payload| match &payload.kind {
-                AnnotationKind::Named(name) | AnnotationKind::Apply { name, .. } => {
-                    name.text.as_str()
-                }
+                AnnotationKind::Named(NameRef::Local(name))
+                | AnnotationKind::Apply {
+                    name: NameRef::Local(name),
+                    ..
+                } => name.text.as_str(),
+                AnnotationKind::Named(NameRef::Qualified(_))
+                | AnnotationKind::Apply {
+                    name: NameRef::Qualified(_),
+                    ..
+                } => "::",
                 AnnotationKind::Struct(_) => "{}",
                 AnnotationKind::Tuple(_) | AnnotationKind::TupleRepeat { .. } => "[]",
                 AnnotationKind::Sum(_) => "|",
@@ -2473,7 +2475,7 @@ fn inline_products_are_components_as_a_declaration_has_them() {
     assert_eq!(inner.len(), 2);
     assert!(matches!(
         &fiber.components[1].annotation.kind,
-        AnnotationKind::Apply { name, .. } if name.text == "Vector"
+        AnnotationKind::Apply { name: NameRef::Local(name), .. } if name.text == "Vector"
     ));
 }
 
@@ -3460,4 +3462,195 @@ fn a_requirement_message_must_be_a_string_literal() {
         "{diagnostic:?}"
     );
     assert_eq!(diagnostic.span.start, source.find('3').unwrap());
+}
+
+fn document(source: &str) -> Document {
+    ast::parse_document(source).unwrap_or_else(|errors| panic!("{source:?}: {errors:?}"))
+}
+
+fn assert_prose(source: &str, prose: &Prose, text: &str) {
+    assert_eq!(prose.text, text);
+    let written = &source[prose.span.start..prose.span.end];
+    assert!(written.starts_with("\"\"\"") && written.ends_with("\"\"\""));
+}
+
+#[test]
+fn documentation_strings_are_the_prose_of_the_document_or_the_next_declaration() {
+    let source = r#"# A comment does not take the first place.
+"""
+The two-body problem: elements to point masses.
+
+Units are the caller's.
+"""
+
+use std::*
+
+"""
+The orbit, in elements: the total mass
+  and the semi-major axis.
+"""
+fiber Elements = (mass: Real, a: Real)
+
+"""The mean motion."""
+frequency((mass, a): Elements) = sqrt(mass / a^3)
+
+    """  Its mass ratio. \n is no escape.  """
+param q = 0.25
+"""A Mode."""
+fiber Mode = (Circular | Eccentric: Real)
+"""A Point."""
+struct Point = {x: Real}
+"""A pair."""
+[a, b] = [1, 2]
+period(o: Elements) = 1
+"#;
+    let document = document(source);
+    assert_prose(
+        source,
+        document.prose.as_ref().unwrap(),
+        "The two-body problem: elements to point masses.\n\nUnits are the caller's.",
+    );
+    let prose: Vec<_> = document
+        .items
+        .iter()
+        .map(|item| item.prose.as_ref().map(|prose| prose.text.as_str()))
+        .collect();
+    assert_eq!(
+        prose,
+        [
+            None,
+            Some("The orbit, in elements: the total mass\n  and the semi-major axis."),
+            Some("The mean motion."),
+            Some(r"Its mass ratio. \n is no escape.  "),
+            Some("A Mode."),
+            Some("A Point."),
+            Some("A pair."),
+            None,
+        ]
+    );
+    for item in &document.items {
+        // The item's span is the declaration alone.
+        assert!(!source[item.span.start..item.span.end].contains("\"\"\""));
+        if let Some(prose) = &item.prose {
+            assert_prose(source, prose, &prose.text);
+            assert!(prose.span.end < item.span.start);
+        }
+    }
+    let fiber = &document.items[1];
+    assert!(matches!(&fiber.kind, ItemKind::Fiber(fiber) if fiber.name.text == "Elements"));
+    let prose = fiber.prose.as_ref().unwrap();
+    assert_eq!(prose.span.start, source.find("\"\"\"\nThe orbit").unwrap());
+    assert!(matches!(document.items[4].kind, ItemKind::Sum(_)));
+
+    // The first item is the document's prose even directly above a declaration.
+    let document = self::document("\"\"\"Only prose.\"\"\"\nx = 1\n");
+    assert_eq!(document.prose.unwrap().text, "Only prose.");
+    assert_eq!(document.items[0].prose, None);
+    let document = self::document("\"\"\"\"\"\"\n");
+    assert_eq!(document.prose.unwrap().text, "");
+    assert!(document.items.is_empty());
+}
+
+#[test]
+fn documentation_before_anything_but_a_declaration_is_refused() {
+    for (source, next) in [
+        (
+            "x = 1\n\"\"\"Imports.\"\"\"\nuse std::*\n",
+            Some("use std::*"),
+        ),
+        (
+            "state t = 0\n\"\"\"Step.\"\"\"\nwhile true {\n  t <- t + 1\n}\n",
+            Some("while true {\n  t <- t + 1\n}"),
+        ),
+        (
+            "x = 1\n\"\"\"Check.\"\"\"\nrequire(x > 0)\n",
+            Some("require(x > 0)"),
+        ),
+        ("x = 1\n\"\"\"Trailing.\"\"\"\n", None),
+        (
+            "x = 1\n\"\"\"One.\"\"\"\n\"\"\"Two.\"\"\"\ny = 2\n",
+            Some("\"\"\"Two.\"\"\""),
+        ),
+    ] {
+        let errors = ast::parse_document(source).unwrap_err();
+        let [Error::Form(FormDiagnostic {
+            kind: FormDiagnosticKind::MisplacedDocumentation { next_span },
+            span,
+        })] = errors.as_slice()
+        else {
+            panic!("{source:?}: {errors:?}")
+        };
+        assert!(
+            source[span.start..span.end].starts_with("\"\"\""),
+            "{source:?}"
+        );
+        assert_eq!(
+            next_span.map(|next| &source[next.start..next.end]),
+            next,
+            "{source:?}"
+        );
+    }
+}
+
+#[test]
+fn qualified_type_names_and_constructor_heads_keep_their_namespace() {
+    let source = "potential(x: Vector<Real, 2>, binary: orbit::Binary) = 1\n\
+                  elements: orbit::Pair<orbit::Real, 2>|None = orbit::Elements(1.0, q)\n";
+    let document = document(source);
+    let ItemKind::Function(function) = &document.items[0].kind else {
+        panic!()
+    };
+    let Some(ParameterAnnotation::Value(annotation)) = &function.parameters[1].annotation else {
+        panic!()
+    };
+    let AnnotationKind::Named(NameRef::Qualified(name)) = &annotation.kind else {
+        panic!("{annotation:?}")
+    };
+    assert_qualified_spans(source, name);
+    assert_eq!(
+        (name.namespace.text.as_str(), name.members[0].text.as_str()),
+        ("orbit", "Binary")
+    );
+    assert_eq!(
+        &source[annotation.span.start..annotation.span.end],
+        "orbit::Binary"
+    );
+    assert_eq!(annotation.span, name.span);
+
+    let ItemKind::Binding(binding) = &document.items[1].kind else {
+        panic!()
+    };
+    let Some(Annotation {
+        kind: AnnotationKind::Optional { value, .. },
+        ..
+    }) = &binding.annotation
+    else {
+        panic!()
+    };
+    let AnnotationKind::Apply {
+        name: NameRef::Qualified(name),
+        arguments,
+    } = &value.kind
+    else {
+        panic!("{value:?}")
+    };
+    assert_eq!(&source[name.span.start..name.span.end], "orbit::Pair");
+    assert!(matches!(
+        &arguments[0],
+        TypeArgument::Type(Annotation {
+            kind: AnnotationKind::Named(NameRef::Qualified(real)),
+            ..
+        }) if &source[real.span.start..real.span.end] == "orbit::Real"
+    ));
+    // A positional constructor is a call, its head the same qualified name.
+    let ExprKind::Call {
+        function: NameRef::Qualified(head),
+        arguments,
+    } = &binding.value.kind
+    else {
+        panic!("{:?}", binding.value)
+    };
+    assert_eq!(&source[head.span.start..head.span.end], "orbit::Elements");
+    assert_eq!(arguments.len(), 2);
+    assert_expr_spans(source, &binding.value);
 }
