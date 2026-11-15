@@ -1830,9 +1830,9 @@ fn parameter_signature(source: &str) -> Signature {
     signature(&function(source).parameters[0]).clone()
 }
 
-fn without_spans(signature: &Signature) -> String {
+fn without_spans(value: &impl std::fmt::Debug) -> String {
     // Debug text with every span removed, for comparing shapes only.
-    let text = format!("{:?}", (&signature.arguments, &signature.result));
+    let text = format!("{value:?}");
     let mut out = String::new();
     let mut rest = text.as_str();
     while let Some(at) = rest.find("span: Span {") {
@@ -1877,7 +1877,11 @@ fn unary_signatures_match_parenthesized_ones_with_written_spans() {
             parameter_signature(parenthesized),
         );
         assert_eq!(left.arguments.len(), 1);
-        assert_eq!(without_spans(&left), without_spans(&right), "{unary}");
+        assert_eq!(
+            without_spans(&(&left.arguments, &left.result)),
+            without_spans(&(&right.arguments, &right.result)),
+            "{unary}"
+        );
     }
     // Inline products and named signature formals stay out.
     for (source, kind) in [
@@ -3070,9 +3074,10 @@ fn the_range_binds_loosest_and_never_chains() {
     }
     for source in [
         "x = a..b..c",
-        "x = ..a..b",
         "x = a..b..",
         "x = ..a..",
+        "x = ..=a..b",
+        "x = ..a..b..c",
         "x = a.. ..b",
     ] {
         let errors = ast::parse_document(source).unwrap_err();
@@ -3087,6 +3092,46 @@ fn the_range_binds_loosest_and_never_chains() {
             "{source}: {errors:?}"
         );
     }
+}
+
+#[test]
+fn a_leading_range_operator_spells_the_periodic_axis() {
+    for (sugar, keyword) in [
+        ("x = ..0..n", "x = 0..n periodic"),
+        (
+            "x = [..0..ny, ..0..nx]",
+            "x = [0..ny periodic, 0..nx periodic]",
+        ),
+        ("x = [..0..n, 0..m]", "x = [0..n periodic, 0..m]"),
+        ("x = ..lo..hi + 1", "x = lo..hi + 1 periodic"),
+    ] {
+        assert_eq!(
+            without_spans(&binding_value(sugar)),
+            without_spans(&binding_value(keyword)),
+            "{sugar}"
+        );
+    }
+    let source = "x = [..0..n + 1, ..m]";
+    let ExprKind::List(axes) = binding_value(source).kind else {
+        panic!();
+    };
+    let ExprKind::Periodic(axis) = &axes[0].kind else {
+        panic!("{axes:?}");
+    };
+    assert_eq!(&source[axes[0].span.start..axes[0].span.end], "..0..n + 1");
+    assert_eq!(&source[axis.span.start..axis.span.end], "0..n + 1");
+    assert!(matches!(range_parts(&axes[1]), (None, Some(_), false)));
+    let source = "x = ..0..n periodic";
+    assert_eq!(
+        ast::parse_document(source).unwrap_err(),
+        [Error::Form(FormDiagnostic {
+            kind: FormDiagnosticKind::PeriodicTwice,
+            span: Span {
+                start: 4,
+                end: source.len()
+            }
+        })]
+    );
 }
 
 #[test]

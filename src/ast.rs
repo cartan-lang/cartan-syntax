@@ -751,6 +751,8 @@ pub enum FormDiagnosticKind {
     UseAliasAndImports,
     ComparisonChain,
     RangeChain,
+    /// `periodic` written on the periodic axis `..a..b`, which already wraps.
+    PeriodicTwice,
     BodyResultCount {
         found: usize,
     },

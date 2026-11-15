@@ -147,6 +147,9 @@ fn preserves_newline_separation_continuation_and_open_ranges() {
     assert_eq!(value(&tree).named_children().count(), 1);
     let tree = expression("[0..\n8]");
     assert_eq!(value(&tree).named_children().count(), 2);
+    let tree = expression("[..0..n, 3.., ..n, ..]");
+    assert_eq!(value(&tree).named_children().count(), 4);
+    assert_eq!(nodes(&tree.root, "periodic_range").len(), 1);
     let tree = expression("[0..n periodic, 3.., ..n, ..]");
     assert_eq!(value(&tree).named_children().count(), 4);
     assert_eq!(nodes(&tree.root, "periodic_expression").len(), 1);

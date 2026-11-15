@@ -1192,7 +1192,11 @@ impl Reader<'_> {
                 if start.into_iter().chain(end).any(|child| {
                     matches!(
                         child.kind.as_str(),
-                        "range_expression" | "range_from" | "range_to" | "full_range"
+                        "range_expression"
+                            | "range_from"
+                            | "range_to"
+                            | "full_range"
+                            | "periodic_range"
                     )
                 }) {
                     return Err(form(node, FormDiagnosticKind::RangeChain));
@@ -1207,6 +1211,14 @@ impl Reader<'_> {
             }
             "periodic_expression" => {
                 shape(node, &["axis"], &[])?;
+                let axis = field(node, "axis")?;
+                if axis.kind == "periodic_range" {
+                    return Err(form(node, FormDiagnosticKind::PeriodicTwice));
+                }
+                ExprKind::Periodic(Box::new(self.expr(axis)?))
+            }
+            "periodic_range" => {
+                shape(node, &["operator", "axis"], &[])?;
                 ExprKind::Periodic(Box::new(self.expr(field(node, "axis")?)?))
             }
             "map" => ExprKind::Map(

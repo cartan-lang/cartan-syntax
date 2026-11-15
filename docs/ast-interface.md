@@ -80,6 +80,15 @@ the operator ends an open range. A line opening with `..` begins a new item.
 `..=` with no end is a grammar error outside List entries and subscripts, where
 analysis refuses it.
 
+A periodic axis is written `..a..b`: a leading `..` before a bounded range
+`a..b` or `a..=b`, whose bounds read as they do without it, so `..0..n + 1`
+wraps `0..(n + 1)`. It stands wherever a range does, as `box = ..0..n` or
+`[..0..ny, 0..nx]`. `a..b periodic` is the other spelling, still accepted, and
+both normalize to `ExprKind::Periodic` around the `ExprKind::Range`, the
+periodic expression's span covering the whole spelling. `..a..`, `..=a..b` and
+`..a..b..c` are range chains, and `..a..b periodic` is refused as periodic
+twice.
+
 A write `u <- e` has empty `Write.keys`. A keyed write `u[k, …] <- e`, with the
 `[` against the state's name as for indexing, keeps the subscript's selectors
 in order, open ranges included. Which sites a key selects and whether the

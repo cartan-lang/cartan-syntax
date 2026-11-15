@@ -97,6 +97,15 @@ pub fn syntax(error: &ast::Error, source: usize) -> Report {
                     "syntax.range_chain",
                     "a range must have only two endpoints".into(),
                 ),
+                PeriodicTwice => {
+                    report
+                        .notes
+                        .push("`..a..b` is already periodic; drop the `periodic`".into());
+                    (
+                        "syntax.periodic_twice",
+                        "this axis is marked periodic twice".into(),
+                    )
+                }
                 BodyResultCount { found } => {
                     report.fields = json!({"found":found});
                     let (message, note) = match found {
