@@ -95,15 +95,16 @@ cargo check --workspace --offline
 cargo test --workspace --offline
 cargo clippy --workspace --all-targets --offline -- -D warnings
 RUSTDOCFLAGS=-Dwarnings cargo doc --workspace --no-deps --offline
-python3 tools/docs.py check --strict
-python3 -m unittest discover -s tools -p 'test_*.py'
+# From the workspace root:
+uv run --no-sync cartdev docs check --root cartan-syntax --strict
 git diff --check
 cargo run -p cartan-syntax --offline --example grammar > out/grammar.js && node --check out/grammar.js
 ```
 
-- `tools/docs.py` and `docs/documentation.md` are byte-identical copies of the
-  workspace validator and conventions; never edit them here. The workspace's
-  `cartdev docs drift` checks them.
+- `docs/documentation.md` is a byte-identical copy of the workspace
+  conventions; never edit it here. The workspace's `cartdev docs drift` checks
+  it. Documentation is checked from the workspace, and a standalone clone has
+  no checker.
 - Offline builds need the cached Clap, serde and JSON crates.
 - Building and running an actual Tree-sitter parser is untested here; only the
   generated JavaScript is syntax-checked.

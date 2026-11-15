@@ -46,13 +46,12 @@ Keep it concise and replace stale information rather than appending a diary.
 It is a local resume aid, not a second status catalogue: durable decisions,
 contracts and task evidence remain in structured docs. The handoff is outside
 `docs/` and does not require document metadata or enter the generated inventory.
-The supervisor coordinates updates to this schema and equivalent validation
-behavior/tests in each repository; standalone clones need no adjacent checkout.
-One validator serves every repository: the workspace module `cartan_dev.docs`
-is the canonical, standard-library-only source, and each component vendors a
-byte-identical copy as `tools/docs.py` so standalone clones stay usable.
-`cartdev docs drift` reports copies of the validator or of this file that differ
-from the workspace. Components keep their own validator tests.
+The supervisor coordinates updates to this schema and its validation.
+One validator serves every repository: the workspace module `cartan_dev.docs`,
+run as `cartdev docs check --root <component>` from the workspace root.
+Documentation is checked from the workspace, and a standalone clone has no
+checker. Each component keeps a byte-identical copy of this file, and
+`cartdev docs drift` reports copies that differ from the workspace.
 Design documents may state approved behavior that is not yet implemented, but
 must identify the gap. Reference material describes implemented behavior.
 
@@ -205,15 +204,13 @@ uv run cartdev docs check --strict
 uv run cartdev docs drift
 ```
 
-In a component, with its vendored validator:
+For a component, also from the workspace root:
 
 ```sh
-python3 tools/docs.py check
-python3 tools/docs.py inventory
-python3 tools/docs.py inventory --kind design --status draft
-python3 tools/docs.py inventory --topic interface
-python3 tools/docs.py inventory --kind work --status active
-python3 tools/docs.py inventory --kind ruling --status open
+uv run --no-sync cartdev docs check --root <component> --strict
+uv run --no-sync cartdev docs inventory --root <component>
+uv run --no-sync cartdev docs inventory --root <component> --kind work --status active
+uv run --no-sync cartdev docs inventory --root <component> --kind ruling --status open
 ```
 
 The inventory is generated JSON. It is a query result, not a second maintained
