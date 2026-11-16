@@ -617,8 +617,9 @@ fn build() -> Grammar {
             def(
                 "source_file",
                 "items separated by newlines alone; an item that does not parse \
-                 becomes an error node to the end of its line, and the next \
-                 item is read",
+                 becomes an error node that ends at a line's end after its \
+                 diagnostic, where its brackets are closed or the next line \
+                 starts no further in than it, and the next item is read",
                 seq(vec![
                     nl(),
                     optional(seq(vec![

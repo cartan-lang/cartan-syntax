@@ -3831,3 +3831,29 @@ fn a_lock_clause_breaks_only_inside_its_parentheses() {
         ("bare_expression", "(a)")
     );
 }
+
+/// A partly bad document reports every error, in source order: the grammar's
+/// for the items it could not read and the form errors of those it could.
+#[test]
+fn a_partly_bad_document_reports_every_error_in_source_order() {
+    let source = "x = 1 2\ny = a < b < c\nz = (\n";
+    let errors = ast::parse_document(source).unwrap_err();
+    let found: Vec<_> = errors
+        .iter()
+        .map(|error| match error {
+            Error::Grammar(_) => ("grammar", error.span().start),
+            Error::Form(form) => {
+                assert_eq!(form.kind, FormDiagnosticKind::ComparisonChain);
+                ("form", error.span().start)
+            }
+        })
+        .collect();
+    assert_eq!(
+        found,
+        [
+            ("grammar", source.find('2').unwrap()),
+            ("form", source.find('a').unwrap()),
+            ("grammar", source.len()),
+        ]
+    );
+}

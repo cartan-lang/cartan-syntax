@@ -16,6 +16,8 @@ fn prompt_text_is_complete_waiting_or_invalid() {
         ("x = = 2", Invalid),
         ("x = [1, 2)", Invalid),
         ("x = 1 2", Invalid),
+        // A bad line stays invalid when a later line, read after it, waits.
+        ("x = 1 2\ny = (", Invalid),
         // Documentation waits for its closing delimiter, wherever it stands.
         ("\"\"\"", Incomplete),
         ("\"\"\"\nThe radius", Incomplete),

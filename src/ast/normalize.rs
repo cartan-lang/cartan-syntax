@@ -4,12 +4,22 @@ use crate::{Node, SyntaxTree};
 
 type Result<T> = std::result::Result<T, Error>;
 
+/// Every item the grammar read is normalized, those beside an item it could
+/// not read included, so a document's errors are all its grammar diagnostics
+/// and the first form error of each item that parsed, in source order.
 pub(super) fn document(tree: SyntaxTree) -> std::result::Result<Document, Vec<Error>> {
-    check_grammar(&tree)?;
+    let mut errors: Vec<Error> = tree
+        .diagnostics
+        .iter()
+        .cloned()
+        .map(Error::Grammar)
+        .collect();
+    if errors.is_empty() && tree.root.has_error() {
+        return Err(vec![unsupported(&tree.root)]);
+    }
     let reader = Reader { tree: &tree };
     let mut prose = None;
     let mut items = Vec::new();
-    let mut errors = Vec::new();
     // Documentation waiting for the item after it.
     let mut pending: Option<Prose> = None;
     let misplaced = |prose: Prose, next_span| {
@@ -19,6 +29,12 @@ pub(super) fn document(tree: SyntaxTree) -> std::result::Result<Document, Vec<Er
         )
     };
     for (index, node) in children(&tree.root).enumerate() {
+        if node.kind == "ERROR" {
+            // its grammar diagnostic stands; whether it could carry the
+            // documentation is not known
+            pending = None;
+            continue;
+        }
         if node.kind == "doc_declaration" {
             match reader.prose(node) {
                 Ok(written) if index == 0 => prose = Some(written),
@@ -58,6 +74,7 @@ pub(super) fn document(tree: SyntaxTree) -> std::result::Result<Document, Vec<Er
     if let Some(written) = pending {
         errors.push(misplaced(written, None));
     }
+    errors.sort_by_key(|error| error.span().start);
     if errors.is_empty() {
         Ok(Document {
             source: tree.source,

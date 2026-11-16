@@ -44,7 +44,12 @@ supported execution shape is the consumer's responsibility.
 `ast::parse_document(&str) -> Result<ast::Document, Vec<ast::Error>>` and
 `ast::parse_expression(&str) -> Result<ast::Expr, Vec<ast::Error>>`.
 Both use the existing grammar parser and then normalize its CST; there is no
-second lexer or expression parser. Grammar errors prevent AST construction.
+second lexer or expression parser. Any error prevents AST construction: there
+is no partial AST. A document's errors are all of its grammar diagnostics, one
+for each item the grammar could not read, and the first form error of each item
+it could, in source order. A consumer wanting the well-formed items of a partly
+bad document, such as an editor, reads the CST, where each failed item is one
+`ERROR` node and every other item is built.
 Text nesting deeper than `MAX_DEPTH` is the grammar diagnostic
 `DiagnosticKind::TooDeep` under the [CST interface's](component.md#diagnostics)
 nesting limit, so an AST is never deeper than that and a consumer's recursive
@@ -544,7 +549,8 @@ names, discards and positional tuples, a type alternative other than `None`,
 misplaced documentation, a lock on a `param` and a keyed write. `Error::span()` returns the full byte range; errors
 derive `Clone`, `Debug`, `PartialEq` and `Eq`. Grammar diagnostics are preserved
 without rewriting. Normalization reports the first form error in each document
-item; it returns no partial AST if any error occurs. Unsupported syntax is
+item, beside the grammar diagnostics of the items that failed to parse; it
+returns no partial AST if any error occurs. Unsupported syntax is
 rejected explicitly; declarations, options and clauses must never be silently
 dropped. This scoped AST does not imply complete
 language validation, and CST acceptance alone remains weaker evidence.

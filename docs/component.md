@@ -30,8 +30,23 @@ the source slice at a node's offsets when those offsets are within the text.
 The helper does not establish that an arbitrary supplied node originated in
 this particular tree.
 
-`has_errors()` checks diagnostics and error nodes. A tree can be returned for
+`has_errors()` checks diagnostics and error nodes. A tree is returned for
 malformed or incomplete input so an editor can inspect the remaining structure.
+A document is read item by item, and an item that does not parse becomes one
+`ERROR` node holding its one diagnostic, after which the next item is read, so
+every well-formed item is in the tree and one bad line hides no other. The
+failed item reaches at least to the end of the line its diagnostic stands on,
+since the parse read the lines before it as that item, continuation lines
+included; it ends at the first line end after that where every bracket it
+opened is closed, or where the next line holding a token starts no further in
+than the item and does not open with a closing bracket. Literals are read whole:
+a quoted string left open ends at its line, and a triple-quoted string left open
+runs to the end of the text. The cost of the rule is that a line the parse read
+into a failed item, such as a line after a bracket left open, belongs to it,
+and that a failed item whose bracketed lines start as far out as the item itself
+is split at them, each piece reporting. Recovery is per document item: a second
+bad line inside the same item, such as in the same block, is not reported until
+the first is repaired.
 
 ## Diagnostics
 

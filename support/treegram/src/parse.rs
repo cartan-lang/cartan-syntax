@@ -1454,7 +1454,8 @@ impl<'g, 's> Engine<'g, 's> {
         Ok(Some(p1))
     }
 
-    /// A recovery region: the rule, or an `ERROR` node to the boundary.
+    /// A recovery region: the rule, or an `ERROR` node over the failed
+    /// item ([`Engine::boundary`]).
     fn recover(
         &mut self,
         r: &Rule,
@@ -1483,7 +1484,7 @@ impl<'g, 's> Engine<'g, 's> {
         if start >= self.src.len() {
             return Ok(None);
         }
-        let end = self.boundary(start, boundary, ctx);
+        let end = self.boundary(start, diag.pos, boundary, ctx);
         self.diags.push(diag);
         // the failure is reported; what was looked for inside the
         // region is no longer what the parse is looking for
@@ -1493,16 +1494,27 @@ impl<'g, 's> Engine<'g, 's> {
         Ok(Some((vec![error_node(start, end)], end)))
     }
 
-    /// The position of the next boundary at bracket depth zero after
-    /// `start`, consuming at least one token, or the end of input.
-    fn boundary(&mut self, start: usize, boundary: &Rule, ctx: Ctx) -> usize {
+    /// **Where a failed item that starts at `start` ends**: at the first
+    /// match of `boundary` — a line's end — that stands after the
+    /// diagnostic at `stuck`, consuming at least one token, where either
+    /// every bracket the item opened is closed, or the next line that
+    /// holds a token starts no further in than the item and does not
+    /// open with a closing bracket; or at the end of the text.
+    ///
+    /// The text the parse read before its diagnostic is the item's, the
+    /// lines it continued onto included, so the region reaches at least
+    /// that far. Brackets are counted, and the literals read whole, by the
+    /// tokens that stand alone ([`Engine::lexical`]): a literal's contents
+    /// are no brackets and no line ends, so a triple-quoted string left
+    /// open runs to the end of the text, and a quoted one, which a line
+    /// ends, ends there. A bracket left open would otherwise take the rest
+    /// of the text, so a line that starts as far out as the item ends the
+    /// item there; a closing bracket at the start of a line continues it.
+    fn boundary(&mut self, start: usize, stuck: usize, boundary: &Rule, ctx: Ctx) -> usize {
         let recording = self.recording;
         self.recording = false;
-        let token_ctx = Ctx {
-            in_token: true,
-            bare: false,
-            exclude: 0,
-        };
+        let column = start - self.src[..start].rfind('\n').map_or(0, |at| at + 1);
+        let lexical = self.lexical();
         let mut depth = 0i32;
         let mut p = start;
         let mut first = true;
@@ -1511,41 +1523,114 @@ impl<'g, 's> Engine<'g, 's> {
             if p >= self.src.len() {
                 break;
             }
-            if depth <= 0 && !first {
-                if let Ok(Some(_)) = self.rule(boundary, p, ctx, None, None) {
-                    break;
+            if !first && p >= stuck {
+                if let Ok(Some((_, next))) = self.rule(boundary, p, ctx, None, None) {
+                    if depth <= 0 || self.outdented(next, column, boundary, ctx) {
+                        break;
+                    }
                 }
             }
             first = false;
-            // the longest token the lexicon knows here
-            let mut best = p;
-            for (open, close) in &self.g.brackets {
-                if self.src[p..].starts_with(open.as_str()) {
-                    depth += 1;
-                    best = best.max(p + open.len());
-                } else if self.src[p..].starts_with(close.as_str()) {
-                    depth -= 1;
-                    best = best.max(p + close.len());
-                }
-            }
-            if best == p {
-                for d in &self.g.rules {
-                    let Body::Rule(r) = &d.body else { continue };
-                    if !matches!(r, Rule::Pat(_) | Rule::Token(_) | Rule::Immediate(_)) {
-                        continue;
-                    }
-                    if let Ok(Some((_, e))) = self.rule(r, p, token_ctx, None, None) {
-                        best = best.max(e);
-                    }
-                }
-            }
-            if best == p {
-                best = p + self.src[p..].chars().next().map_or(1, char::len_utf8);
-            }
-            p = best;
+            p = self.lexical_token(p, &lexical, &mut depth);
         }
         self.recording = recording;
         p.min(self.src.len())
+    }
+
+    /// The position after the token at `p`, counting the brackets it
+    /// opens or closes in `depth`: a bracket, else the longest of the
+    /// standalone tokens `lexical` names, else one character.
+    fn lexical_token(&mut self, p: usize, lexical: &[usize], depth: &mut i32) -> usize {
+        for (open, close) in &self.g.brackets {
+            if self.src[p..].starts_with(open.as_str()) {
+                *depth += 1;
+                return p + open.len();
+            }
+            if self.src[p..].starts_with(close.as_str()) {
+                *depth -= 1;
+                return p + close.len();
+            }
+        }
+        let token_ctx = Ctx {
+            in_token: true,
+            bare: false,
+            exclude: 0,
+        };
+        let mut best = p;
+        for &i in lexical {
+            let name = self.g.rules[i].name.as_str();
+            if let Ok(Some((_, e))) = self.sym(name, p, token_ctx, None, None) {
+                best = best.max(e);
+            }
+        }
+        if best == p {
+            best = p + self.src[p..].chars().next().map_or(1, char::len_utf8);
+        }
+        best
+    }
+
+    /// Whether the next line holding a token after the line end that ends
+    /// at `next` starts no further in than `column` and opens with no
+    /// closing bracket. Blank lines and lines of comments alone are passed
+    /// over; the end of the text is no such line.
+    fn outdented(&mut self, mut next: usize, column: usize, boundary: &Rule, ctx: Ctx) -> bool {
+        loop {
+            let at = self.skip_extras(next);
+            if at >= self.src.len() {
+                return false;
+            }
+            match self.rule(boundary, at, ctx, None, None) {
+                Ok(Some((_, e))) => next = e,
+                _ => {
+                    let closes = self
+                        .g
+                        .brackets
+                        .iter()
+                        .any(|(_, close)| self.src[at..].starts_with(close.as_str()));
+                    return at - next <= column && !closes;
+                }
+            }
+        }
+    }
+
+    /// **The rules whose match is one token standing on its own**, which
+    /// the recovery scan reads the text by: a rule built of literal and
+    /// pattern tokens and of other such rules alone, a quoted literal
+    /// among them, and not itself immediate. An immediate token only
+    /// matches against what precedes it, as the text inside a literal
+    /// does, and read anywhere else it reads too far.
+    fn lexical(&self) -> Vec<usize> {
+        fn tokens(g: &Grammar, r: &Rule, seen: &mut Vec<String>) -> bool {
+            match r {
+                Rule::Blank | Rule::Str(_) | Rule::Pat(_) => true,
+                Rule::Seq(rs) | Rule::Choice(rs) => rs.iter().all(|r| tokens(g, r, seen)),
+                Rule::Repeat(r)
+                | Rule::Repeat1(r)
+                | Rule::Optional(r)
+                | Rule::Prec(_, r)
+                | Rule::PrecLeft(_, r)
+                | Rule::PrecRight(_, r)
+                | Rule::PrecDynamic(_, r)
+                | Rule::Token(r)
+                | Rule::Immediate(r)
+                | Rule::Field(_, r)
+                | Rule::Alias(r, _) => tokens(g, r, seen),
+                Rule::Sym(name) => {
+                    if seen.contains(name) {
+                        return false;
+                    }
+                    seen.push(name.clone());
+                    matches!(g.def(name).map(|d| &d.body), Some(Body::Rule(r)) if tokens(g, r, seen))
+                }
+                _ => false,
+            }
+        }
+        (0..self.g.rules.len())
+            .filter(|&i| match &self.g.rules[i].body {
+                Body::Rule(Rule::Immediate(_)) | Body::Climb(_) => false,
+                Body::Rule(r) => tokens(self.g, r, &mut Vec::new()),
+            })
+            .collect()
     }
 }
 

@@ -390,3 +390,71 @@ fn an_unfinished_call_waits_for_its_paren_rather_than_refusing() {
         );
     }
 }
+
+/// A failed item ends at a line's end after its diagnostic, and every later
+/// item is read: one bad line hides no other. Each case gives the text of
+/// each `ERROR` region, one diagnostic standing in each, and the number of
+/// items read around them.
+#[test]
+fn a_failed_item_ends_at_its_line_and_later_items_are_read() {
+    for (source, errors, items) in [
+        // between good lines, at the end with and without a final newline
+        ("a = 1\nx = 1 2\nb = 2", &["x = 1 2"][..], 2),
+        ("a = 1\nx = 1 2", &["x = 1 2"], 1),
+        ("a = 1\nx = 1 2\n", &["x = 1 2"], 1),
+        // two bad lines apart, each its own region
+        ("x = 1 2\ny = 3\nz = 4 4\nw = 5", &["x = 1 2", "z = 4 4"], 2),
+        // a bad line inside a body: the item ends with the body
+        (
+            "while true {\n  u <- 1 1\n  v <- 2\n}\ny = 3",
+            &["while true {\n  u <- 1 1\n  v <- 2\n}"],
+            1,
+        ),
+        // a statement continued onto the next line is one item when good
+        // and one error when bad
+        ("x = 1 +\n  2\ny = 3", &[], 2),
+        ("x = 1 +\n  2 2\ny = 3", &["x = 1 +\n  2 2"], 1),
+        // a quoted literal left open ends at its line; a triple-quoted one
+        // runs on, and a literal's line ends are no item's
+        ("x = \"abc\ny = 2", &["x = \"abc"], 1),
+        ("x = \"\"\"abc\ny = 2", &["x = \"\"\"abc\ny = 2"], 0),
+        (
+            "x = 1 2 \"\"\"a\nb\"\"\" 3\ny = 2",
+            &["x = 1 2 \"\"\"a\nb\"\"\" 3"],
+            1,
+        ),
+        // a bracket left open: the item reaches the line the parse stopped
+        // on, and a later line as far out as the item begins one
+        ("x = f(1,\ny = 2\nz = 3", &["x = f(1,\ny = 2"], 1),
+        (
+            "x = f(1,\n  2 2,\n  3)\ny = 4",
+            &["x = f(1,\n  2 2,\n  3)"],
+            1,
+        ),
+    ] {
+        let tree = parse_document(source);
+        assert_spans(&tree);
+        let regions: Vec<_> = tree
+            .root
+            .named_children()
+            .filter(|node| node.kind == "ERROR")
+            .collect();
+        let written: Vec<_> = regions
+            .iter()
+            .map(|node| tree.text(node).unwrap())
+            .collect();
+        assert_eq!(written, errors, "{source:?}");
+        assert_eq!(tree.diagnostics.len(), regions.len(), "{source:?}");
+        for (diagnostic, region) in tree.diagnostics.iter().zip(&regions) {
+            let inside =
+                region.start <= diagnostic.span.start && diagnostic.span.start <= region.end;
+            assert!(inside, "{source:?}: {diagnostic:?}");
+        }
+        let read = tree
+            .root
+            .named_children()
+            .filter(|node| node.kind != "ERROR" && !node.extra)
+            .count();
+        assert_eq!(read, items, "{source:?}");
+    }
+}
