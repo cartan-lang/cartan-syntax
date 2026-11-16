@@ -102,9 +102,11 @@ The lock clause written after a `state` declaration's initial value,
 `Binding.lock: Some(Lock { condition, span })`: the condition is an ordinary
 expression with its own span, normalized and refused like any other, and the
 clause span covers the parentheses. The grammar admits at most one clause, on a
-`param` or `state` declaration only, always with `when` and a condition, which
-may continue onto the next line; `(locked)` and `(locked when)` are the grammar
-diagnostic `Rule::LockCondition`. A lock belongs to a State: a Param is fixed
+`param` or `state` declaration only, always with `when` and a condition;
+`(locked)` and `(locked when)` are the grammar diagnostic `Rule::LockCondition`.
+The clause may break anywhere inside its parentheses, but its `(` stands on the
+initial value's line: a line opening with `(` begins a new item, since a
+parenthesis can begin an expression. A lock belongs to a State: a Param is fixed
 over a run, so a lock has nothing to guard, and a `param` written with the
 clause is `FormDiagnosticKind::ParamLock` spanning the clause. An ordinary
 binding has no lock. Syntax states no locking semantics: what a lock forbids

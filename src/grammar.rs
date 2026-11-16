@@ -900,10 +900,17 @@ fn build() -> Grammar {
                  is locked. The condition is an ordinary Bool\n\
                  expression of the document, elaborated into the graph like any\n\
                  other and read live, so a lock states itself at the declaration\n\
-                 rather than being inferred from what a run did.",
+                 rather than being inferred from what a run did.\n\
+                 \n\
+                 **Inside its parens the clause breaks where it likes**, as any\n\
+                 bracketed run does. The `(` stands on the initial's line: a line\n\
+                 opening with `(` begins an item, since a paren can begin an\n\
+                 expression and so never continues the line above.",
                 seq(vec![
                     "(".into(),
+                    nl(),
                     LOCKED.into(),
+                    nl(),
                     expecting(
                         WHEN,
                         Stated::LockCondition.label(),
@@ -913,6 +920,7 @@ fn build() -> Grammar {
                         field("condition", expr()),
                         Stated::LockCondition.label(),
                     ),
+                    nl(),
                     ")".into(),
                 ]),
             ),

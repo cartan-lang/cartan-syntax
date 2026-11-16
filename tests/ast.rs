@@ -3809,3 +3809,48 @@ fn a_param_refuses_a_lock_clause() {
     };
     assert_eq!(&source[span.start..span.end], "(locked when x > 0)");
 }
+
+/// The lock clause breaks anywhere inside its parentheses, as a bracketed run
+/// does, but its `(` stays on the initial's line: a line opening with `(`
+/// begins an item, so a parenthesized item after a declaration stays one.
+#[test]
+fn a_lock_clause_breaks_only_inside_its_parentheses() {
+    for source in [
+        "state s = 0 (\n  locked when c\n)",
+        "state s = 0 (locked when c\n)",
+        "state s = 0 (locked\n  when c)",
+        "state s = 0 (locked when\n  c)",
+    ] {
+        let document = document(source);
+        let ItemKind::Binding(Binding {
+            lock: Some(lock), ..
+        }) = &document.items[0].kind
+        else {
+            panic!("{source:?}: {document:?}")
+        };
+        assert!(source[lock.span.start..].starts_with('('), "{source:?}");
+        assert_eq!(lock.span.end, source.len(), "{source:?}");
+        assert_eq!(
+            &source[lock.condition.span.start..lock.condition.span.end],
+            "c"
+        );
+    }
+    let errors = ast::parse_document("state s = 0\n  (locked when c)").unwrap_err();
+    assert!(
+        matches!(errors.as_slice(), [Error::Grammar(_)]),
+        "{errors:?}"
+    );
+    let source = "state s = f\n(a)";
+    let errors = ast::parse_document(source).unwrap_err();
+    let [Error::Form(FormDiagnostic {
+        kind: FormDiagnosticKind::UnsupportedConstruct { kind },
+        span,
+    })] = errors.as_slice()
+    else {
+        panic!("{errors:?}")
+    };
+    assert_eq!(
+        (kind.as_str(), &source[span.start..span.end]),
+        ("bare_expression", "(a)")
+    );
+}
