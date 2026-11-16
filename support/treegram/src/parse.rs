@@ -126,8 +126,21 @@ pub fn parse(g: &Grammar, src: &str, root: &str) -> Parse {
             (vec![error_node(0, src.len())], src.len())
         }
     };
+    // **The extras after the root's match are the root's**, as an extra
+    // the root's own last token skipped would have been: a comment ending
+    // the text with no newline after it stands inside the root node rather
+    // than beside it, where it would make the root a second node around the
+    // first.
     let (trailing, rest) = e.take_extras(end);
-    children.extend(trailing);
+    match children.as_mut_slice() {
+        [node] if node.named && node.kind == root => {
+            if let Some(last) = trailing.last() {
+                node.end = node.end.max(last.end);
+            }
+            node.children.extend(trailing);
+        }
+        _ => children.extend(trailing),
+    }
     if rest < src.len() {
         diags.push(if e.furthest >= rest {
             e.soft_diag()

@@ -3654,3 +3654,52 @@ fn qualified_type_names_and_constructor_heads_keep_their_namespace() {
     assert_eq!(arguments.len(), 2);
     assert_expr_spans(source, &binding.value);
 }
+
+/// A comment ending the text, with or without a newline after it, changes
+/// nothing a document or an expression parses to: the uncommented text is
+/// the reference, so every span is compared as well as acceptance.
+#[test]
+fn a_comment_may_end_the_text_with_or_without_a_newline() {
+    let uncommented = |source: &str| -> String {
+        source
+            .split('\n')
+            .map(|line| line.split_once('#').map_or(line, |(code, _)| code))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    for source in [
+        "a = 1 # one",
+        "a = 1\n# the end",
+        "# only a comment",
+        "a = 1\n\n\n# after blank lines",
+    ] {
+        for ending in ["", "\n"] {
+            let written = format!("{source}{ending}");
+            let reference = document(&uncommented(&written));
+            assert_eq!(document(&written).items, reference.items, "{written:?}");
+            // The comment stands inside the one root node.
+            let tree = cartan_syntax::parse_document(&written);
+            assert_eq!(tree.root.kind, "source_file");
+            assert!(tree
+                .root
+                .children
+                .iter()
+                .all(|child| child.kind != "source_file"));
+            assert_eq!(
+                tree.root
+                    .children
+                    .iter()
+                    .filter(|child| child.kind == "comment")
+                    .count(),
+                1
+            );
+        }
+    }
+    // The expression entry point reads one line, and a comment ending it is
+    // the line's: a newline after it is read as it is with no comment.
+    assert_eq!(expression("gamma * 2 # twice"), expression("gamma * 2"));
+    assert_eq!(
+        ast::parse_expression("gamma * 2 # twice\n").is_ok(),
+        ast::parse_expression("gamma * 2\n").is_ok()
+    );
+}
