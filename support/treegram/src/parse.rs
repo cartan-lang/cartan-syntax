@@ -26,12 +26,26 @@
 //! region reports the soft failure, which stands at the defect. A
 //! `refuse` matched the text it refuses, so it states a fact about the
 //! document wherever it fired and stands whatever the parse reached.
+//!
+//! **A parse is given the depth its tree may reach**, and nesting beyond
+//! it is a diagnostic rather than a stack overflow. Two checks state it.
+//! Every node is built with its height, and a node taller than the depth
+//! is refused where it is built, which bounds the tree a parse returns —
+//! a long chain of a left-grouping operator included, which the parser
+//! reads in a loop. And the parse counts the rules it is reading that
+//! start further into the text than the one around them, each a level of
+//! the text's nesting, and refuses to read a level past the depth, which
+//! bounds the parser's own recursion where no node is built, as in a run
+//! of brackets that never closes. A tree within the depth never meets the
+//! second check, since every such level holds a node of the tree. The
+//! refusal is final: no lookahead or alternative reads past it, and the
+//! item it stands in becomes an `ERROR` node.
 
 use std::collections::{HashMap, HashSet};
 use std::hash::{BuildHasherDefault, Hasher};
 
 use crate::pattern::Pat;
-use crate::rule::{is_hidden, Assoc, Body, Climb, Form, Grammar, Label, Rule};
+use crate::rule::{is_hidden, Assoc, Body, Climb, Form, Grammar, Label, Op, Rule};
 use crate::tree::{Diag, Field, Node, Opener, Said};
 
 /// **The hash the parser's tables use.** A packrat parse asks its memo
@@ -108,9 +122,11 @@ pub struct Parse {
     pub diags: Vec<Diag>,
 }
 
-/// Parse `src` against the rule `root` of `g`.
-pub fn parse(g: &Grammar, src: &str, root: &str) -> Parse {
-    let mut e = Engine::new(g, src);
+/// Parse `src` against the rule `root` of `g`, building no tree deeper
+/// than `limit` nodes from the root to a token ([`Node::height`]); text
+/// that nests deeper is [`Said::TooDeep`].
+pub fn parse(g: &Grammar, src: &str, root: &str, limit: usize) -> Parse {
+    let mut e = Engine::new(g, src, limit);
     let ctx = Ctx::default();
     let outcome = e.sym(root, 0, ctx, None, None);
     let mut diags = std::mem::take(&mut e.diags);
@@ -137,6 +153,9 @@ pub fn parse(g: &Grammar, src: &str, root: &str) -> Parse {
             if let Some(last) = trailing.last() {
                 node.end = node.end.max(last.end);
             }
+            node.height = trailing
+                .iter()
+                .fold(node.height, |height, extra| height.max(extra.height + 1));
             node.children.extend(trailing);
         }
         _ => children.extend(trailing),
@@ -151,21 +170,34 @@ pub fn parse(g: &Grammar, src: &str, root: &str) -> Parse {
         });
         children.push(error_node(rest, src.len()));
     }
-    let root = if children.len() == 1 && children[0].named && children[0].kind == root {
+    let mut root = if children.len() == 1 && children[0].named && children[0].kind == root {
         children.pop().unwrap()
     } else {
-        Node {
-            kind: root.to_string(),
-            named: true,
-            field: None,
-            extra: false,
-            start: 0,
-            end: src.len(),
-            children,
-        }
+        let mut node = wrap(root, children, 0, src.len());
+        node.start = 0;
+        node.end = src.len();
+        node
     };
+    if root.height > limit {
+        diags.push(e.too_deep_in(&root));
+        root.children = vec![error_node(0, src.len())];
+        root.height = 2;
+    }
     diags.sort_by_key(|d| d.pos);
     Parse { root, diags }
+}
+
+/// An ordinary rule's memo key: no exclusion is in force, and the variant
+/// says whether it is read inside a token or as an extra.
+fn named_key(i: usize, pos: usize, ctx: Ctx) -> MemoKey {
+    let variant = if ctx.in_token {
+        -2
+    } else if ctx.bare {
+        -3
+    } else {
+        -1
+    };
+    (i, pos, 0, variant)
 }
 
 fn error_node(start: usize, end: usize) -> Node {
@@ -177,6 +209,7 @@ fn error_node(start: usize, end: usize) -> Node {
         start,
         end,
         children: Vec::new(),
+        height: 1,
     }
 }
 
@@ -200,6 +233,10 @@ struct HardDiag {
 /// nothing where the rule does not match.
 type Soft = Option<(Vec<Node>, usize)>;
 type Outcome = Result<Soft, Hard>;
+
+/// (rule, position, exclusion, variant): what a remembered match is
+/// keyed by ([`Engine::memo`]).
+type MemoKey = (usize, usize, usize, i64);
 
 /// What the rule being matched inherits from its surroundings.
 #[derive(Clone, Copy, Default)]
@@ -266,7 +303,7 @@ struct Engine<'g, 's> {
     /// with about one and a half entries per byte of the text it read,
     /// so the table is asked for that room at the outset rather than
     /// doubled and rehashed a dozen times on the way there.
-    memo: FxMap<(usize, usize, usize, i64), Soft>,
+    memo: FxMap<MemoKey, Soft>,
     /// Position → the position after the extras there, for the
     /// positions whose extras hold no named node ([`Engine::take_extras`]).
     extras_at: FxMap<usize, usize>,
@@ -289,10 +326,22 @@ struct Engine<'g, 's> {
     diags: Vec<Diag>,
     /// The alias in force, which names an aliased token in a diagnostic.
     alias: Option<String>,
+    /// The depth a tree may reach ([`parse`]).
+    limit: usize,
+    /// The levels of nesting being read: the rules on the parse path that
+    /// start further into the text than the level around them
+    /// ([`Engine::nest`]).
+    levels: usize,
+    /// Where the innermost level being read starts.
+    level_at: usize,
+    /// The text nests deeper than `limit`: the hard failure stating it is
+    /// final, read past by no lookahead, until the recovery region around
+    /// it reports it.
+    too_deep: bool,
 }
 
 impl<'g, 's> Engine<'g, 's> {
-    fn new(g: &'g Grammar, src: &'s str) -> Self {
+    fn new(g: &'g Grammar, src: &'s str, limit: usize) -> Self {
         let mut index = FxMap::default();
         let mut op_nodes = FxMap::default();
         for (i, d) in g.rules.iter().enumerate() {
@@ -330,6 +379,10 @@ impl<'g, 's> Engine<'g, 's> {
             hard: None,
             diags: Vec::new(),
             alias: None,
+            limit,
+            levels: 0,
+            level_at: 0,
+            too_deep: false,
         }
     }
 
@@ -457,6 +510,71 @@ impl<'g, 's> Engine<'g, 's> {
             });
         }
         Err(Hard)
+    }
+
+    /// Text nesting deeper than [`Engine::limit`], stated at `pos` about
+    /// the text to `end`.
+    fn deep_diag(&self, pos: usize, end: Option<usize>) -> Diag {
+        self.stuck_at(pos, end, false, Said::TooDeep { limit: self.limit })
+    }
+
+    /// The diagnostic for `node`, a node taller than [`Engine::limit`]: it
+    /// stands at the first token below that depth.
+    fn too_deep_in(&self, node: &Node) -> Diag {
+        let token = below(node, self.limit);
+        self.deep_diag(token.start, Some(token.end))
+    }
+
+    /// A refusal of depth: a hard failure that is final
+    /// ([`Engine::too_deep`]).
+    fn fail_deep(&mut self, diag: Diag) -> Hard {
+        self.hard = Some(HardDiag {
+            diag,
+            outranked: false,
+        });
+        self.too_deep = true;
+        Hard
+    }
+
+    /// A named node over `children`, refused where it would be taller than
+    /// [`Engine::limit`].
+    fn node(
+        &mut self,
+        kind: &str,
+        children: Vec<Node>,
+        pos: usize,
+        end: usize,
+    ) -> Result<Node, Hard> {
+        let node = wrap(kind, children, pos, end);
+        if node.height <= self.limit {
+            return Ok(node);
+        }
+        let diag = self.too_deep_in(&node);
+        Err(self.fail_deep(diag))
+    }
+
+    /// Enter a rule starting at `pos`: a level of nesting where it starts
+    /// further into the text than the innermost level being read, refused
+    /// past [`Engine::limit`]. The level to restore on leaving is returned.
+    fn nest(&mut self, pos: usize) -> Result<Option<usize>, Hard> {
+        if self.levels > 0 && pos <= self.level_at {
+            return Ok(None);
+        }
+        if self.levels == self.limit {
+            let p = self.skip_extras(pos);
+            let diag = self.deep_diag(p, None);
+            return Err(self.fail_deep(diag));
+        }
+        self.levels += 1;
+        Ok(Some(std::mem::replace(&mut self.level_at, pos)))
+    }
+
+    /// Leave a rule [`Engine::nest`] entered.
+    fn unnest(&mut self, level: Option<usize>) {
+        if let Some(at) = level {
+            self.levels -= 1;
+            self.level_at = at;
+        }
     }
 
     // ---- tokens -----------------------------------------------------
@@ -591,7 +709,49 @@ impl<'g, 's> Engine<'g, 's> {
 
     /// Match `r` at `pos`. `field` is the name the nodes matched take;
     /// `scope` is the enclosing sequences' fields, for diagnostics.
-    fn rule(
+    ///
+    /// **Every level of a document's nesting passes through here many
+    /// times**, so this frame is kept to a dispatch: each case that holds
+    /// locals of its own is a method of its own, whose frame stands on the
+    /// stack only while that case is being read, and the wrappers that
+    /// change nothing but the field name are peeled in a loop rather than
+    /// recursed through.
+    fn rule<'r>(
+        &mut self,
+        mut r: &'r Rule,
+        pos: usize,
+        ctx: Ctx,
+        mut field: Option<&'r str>,
+        scope: Option<&Scope>,
+    ) -> Outcome {
+        loop {
+            match r {
+                Rule::Prec(_, inner)
+                | Rule::PrecLeft(_, inner)
+                | Rule::PrecRight(_, inner)
+                | Rule::PrecDynamic(_, inner) => r = inner,
+                Rule::Field(name, inner) => {
+                    field = Some(name);
+                    r = inner;
+                }
+                _ => break,
+            }
+        }
+        match r {
+            Rule::Sym(name) => self.sym(name, pos, ctx, field, scope),
+            Rule::Seq(rs) => self.seq(rs, pos, ctx, field, scope),
+            Rule::Choice(rs) => self.choice(rs, pos, ctx, field, scope),
+            Rule::Optional(r) => self.optional(r, pos, ctx, field, scope),
+            Rule::Repeat(r) => self.repeat(r, pos, ctx, field, scope, 0),
+            Rule::Repeat1(r) => self.repeat(r, pos, ctx, field, scope, 1),
+            r => self.rule_rest(r, pos, ctx, field, scope),
+        }
+    }
+
+    /// The cases [`Engine::rule`] leaves to a dispatch of their own, which
+    /// stands on the stack only while one of them is read: the tokens, the
+    /// lookaheads, the stated diagnostics and the rest.
+    fn rule_rest(
         &mut self,
         r: &Rule,
         pos: usize,
@@ -599,162 +759,255 @@ impl<'g, 's> Engine<'g, 's> {
         field: Option<&str>,
         scope: Option<&Scope>,
     ) -> Outcome {
-        let r_outer = r;
-        Ok(match r {
-            Rule::Blank => Some((Vec::new(), pos)),
-            Rule::Str(s) => self.literal(s, pos, false, ctx, field),
-            Rule::Pat(p) => self.pattern(p, pos, false, ctx, field, None),
-            Rule::Sym(name) => return self.sym(name, pos, ctx, field, scope),
-            Rule::Without(name, nodes, _) => {
-                let ex = self.intern(nodes);
-                let inner = Ctx { exclude: ex, ..ctx };
-                return self.sym(name, pos, inner, field, scope);
+        match r {
+            Rule::Blank => Ok(Some((Vec::new(), pos))),
+            Rule::Str(s) => Ok(self.literal(s, pos, false, ctx, field)),
+            Rule::Pat(p) => Ok(self.pattern(p, pos, false, ctx, field, None)),
+            Rule::Without(name, nodes, _) => self.without(name, nodes, pos, ctx, field, scope),
+            Rule::Token(r) => self.token(r, pos, ctx, field, scope),
+            Rule::Immediate(r) => self.immediate(r, pos, ctx, field, scope),
+            Rule::Alias(r, name) => self.alias(r, name, pos, ctx, field, scope),
+            Rule::NotAheadSoft(r) => self.not_ahead_soft(r, pos, ctx, scope),
+            Rule::NotAhead(r) => self.ahead(r, false, pos, ctx, scope),
+            Rule::Ahead(r) => self.ahead(r, true, pos, ctx, scope),
+            Rule::Expect(r, label) => self.expect(r, *label, pos, ctx, field, scope),
+            Rule::Refuse(r, label) => self.refuse(r, *label, pos, ctx, scope),
+            Rule::Recover(r, boundary) => self.recover(r, boundary, pos, ctx, field, scope),
+            Rule::Sym(_)
+            | Rule::Seq(_)
+            | Rule::Choice(_)
+            | Rule::Optional(_)
+            | Rule::Repeat(_)
+            | Rule::Repeat1(_)
+            | Rule::Prec(..)
+            | Rule::PrecLeft(..)
+            | Rule::PrecRight(..)
+            | Rule::PrecDynamic(..)
+            | Rule::Field(..) => unreachable!("read by Engine::rule"),
+        }
+    }
+
+    fn without(
+        &mut self,
+        name: &str,
+        nodes: &[String],
+        pos: usize,
+        ctx: Ctx,
+        field: Option<&str>,
+        scope: Option<&Scope>,
+    ) -> Outcome {
+        let ex = self.intern(nodes);
+        let inner = Ctx { exclude: ex, ..ctx };
+        self.sym(name, pos, inner, field, scope)
+    }
+
+    /// The first alternative that matches.
+    fn choice(
+        &mut self,
+        rs: &[Rule],
+        pos: usize,
+        ctx: Ctx,
+        field: Option<&str>,
+        scope: Option<&Scope>,
+    ) -> Outcome {
+        for r in rs {
+            match self.rule(r, pos, ctx, field, scope) {
+                Ok(None) => {}
+                decided => return decided,
             }
-            Rule::Seq(rs) => {
-                let depth = self.open.len();
-                let outcome = self.seq(rs, pos, ctx, field, scope);
-                self.open.truncate(depth);
-                return outcome;
-            }
-            Rule::Choice(rs) => {
-                for r in rs {
-                    if let Some(hit) = self.rule(r, pos, ctx, field, scope)? {
-                        return Ok(Some(hit));
-                    }
+        }
+        Ok(None)
+    }
+
+    fn optional(
+        &mut self,
+        r: &Rule,
+        pos: usize,
+        ctx: Ctx,
+        field: Option<&str>,
+        scope: Option<&Scope>,
+    ) -> Outcome {
+        match self.rule(r, pos, ctx, field, scope) {
+            Ok(None) => Ok(Some((Vec::new(), pos))),
+            decided => decided,
+        }
+    }
+
+    fn token(
+        &mut self,
+        r: &Rule,
+        pos: usize,
+        ctx: Ctx,
+        field: Option<&str>,
+        scope: Option<&Scope>,
+    ) -> Outcome {
+        let (mut nodes, p) = if ctx.skips() {
+            self.take_extras(pos)
+        } else {
+            (Vec::new(), pos)
+        };
+        let inner = Ctx {
+            in_token: true,
+            ..ctx
+        };
+        Ok(match self.rule(r, p, inner, None, scope)? {
+            Some((_, end)) => {
+                if !ctx.in_token {
+                    nodes.push(leaf(&self.src[p..end], false, p, end, field));
                 }
-                None
+                Some((nodes, end))
             }
-            Rule::Repeat(r) => self.repeat(r, pos, ctx, field, scope, 0)?,
-            Rule::Repeat1(r) => self.repeat(r, pos, ctx, field, scope, 1)?,
-            Rule::Optional(r) => Some(
-                self.rule(r, pos, ctx, field, scope)?
-                    .unwrap_or((Vec::new(), pos)),
-            ),
-            Rule::Prec(_, r)
-            | Rule::PrecLeft(_, r)
-            | Rule::PrecRight(_, r)
-            | Rule::PrecDynamic(_, r) => return self.rule(r, pos, ctx, field, scope),
-            Rule::Token(r) => {
-                let (mut nodes, p) = if ctx.skips() {
-                    self.take_extras(pos)
-                } else {
-                    (Vec::new(), pos)
-                };
+            None => None,
+        })
+    }
+
+    fn immediate(
+        &mut self,
+        r: &Rule,
+        pos: usize,
+        ctx: Ctx,
+        field: Option<&str>,
+        scope: Option<&Scope>,
+    ) -> Outcome {
+        Ok(match r {
+            Rule::Str(s) => self.literal(s, pos, true, ctx, field),
+            Rule::Pat(p) => self.pattern(p, pos, true, ctx, field, None),
+            r => {
                 let inner = Ctx {
                     in_token: true,
                     ..ctx
                 };
-                match self.rule(r, p, inner, None, scope)? {
+                match self.rule(r, pos, inner, None, scope)? {
                     Some((_, end)) => {
-                        if !ctx.in_token {
-                            nodes.push(leaf(&self.src[p..end], false, p, end, field));
-                        }
-                        Some((nodes, end))
-                    }
-                    None => None,
-                }
-            }
-            Rule::Immediate(r) => match &**r {
-                Rule::Str(s) => self.literal(s, pos, true, ctx, field),
-                Rule::Pat(p) => self.pattern(p, pos, true, ctx, field, None),
-                r => {
-                    let inner = Ctx {
-                        in_token: true,
-                        ..ctx
-                    };
-                    match self.rule(r, pos, inner, None, scope)? {
-                        Some((_, end)) => {
-                            let nodes = if ctx.in_token {
-                                Vec::new()
-                            } else {
-                                vec![leaf(&self.src[pos..end], false, pos, end, field)]
-                            };
-                            Some((nodes, end))
-                        }
-                        None => None,
-                    }
-                }
-            },
-            Rule::Field(name, r) => return self.rule(r, pos, ctx, Some(name), scope),
-            Rule::Alias(r, name) => {
-                let outer = self.alias.replace(name.clone());
-                let hit = self.rule(r, pos, ctx, field, scope);
-                self.alias = outer;
-                match hit? {
-                    Some((mut nodes, end)) => {
-                        // the extras skipped before the token keep their names
-                        for n in nodes.iter_mut().filter(|n| !n.extra) {
-                            n.kind = name.clone();
-                        }
-                        Some((nodes, end))
-                    }
-                    None => None,
-                }
-            }
-            Rule::NotAheadSoft(r) => {
-                let recording = self.recording;
-                let hard = self.hard.take();
-                let furthest = self.furthest;
-                let expected = std::mem::take(&mut self.expected);
-                let unclosed = self.unclosed.take();
-                let diagnostics = self.diags.len();
-                self.recording = false;
-                let hit = self.rule(r, pos, ctx, None, scope);
-                self.recording = recording;
-                self.hard = hard;
-                self.furthest = furthest;
-                self.expected = expected;
-                self.unclosed = unclosed;
-                self.diags.truncate(diagnostics);
-                match hit {
-                    Ok(Some(_)) => None,
-                    Ok(None) | Err(Hard) => Some((Vec::new(), pos)),
-                }
-            }
-            Rule::NotAhead(r) | Rule::Ahead(r) => {
-                let recording = self.recording;
-                self.recording = false;
-                let hit = self.rule(r, pos, ctx, None, scope);
-                self.recording = recording;
-                let wants = matches!(r_outer, Rule::Ahead(_));
-                match hit?.is_some() == wants {
-                    true => Some((Vec::new(), pos)),
-                    false => None,
-                }
-            }
-            Rule::Expect(r, label) => match self.rule(r, pos, ctx, field, scope)? {
-                Some(hit) => Some(hit),
-                None => {
-                    let p = self.skip_extras(pos);
-                    return self.fail_hard(p, None, *label, scope);
-                }
-            },
-            Rule::Refuse(r, label) => {
-                let recording = self.recording;
-                self.recording = false;
-                let hit = self.rule(r, pos, ctx, None, scope);
-                self.recording = recording;
-                match hit? {
-                    Some((nodes, end)) => {
-                        let p = self.skip_extras(pos);
-                        let own = Scope {
-                            nodes: &nodes,
-                            parent: scope,
+                        let nodes = if ctx.in_token {
+                            Vec::new()
+                        } else {
+                            vec![leaf(&self.src[pos..end], false, pos, end, field)]
                         };
-                        return self.fail_hard(p, Some(end.max(p)), *label, Some(&own));
+                        Some((nodes, end))
                     }
-                    None => Some((Vec::new(), pos)),
+                    None => None,
                 }
             }
-            Rule::Recover(r, boundary) => return self.recover(r, boundary, pos, ctx, field, scope),
         })
     }
 
-    /// `r` as many times as it matches, at least `least` times; an
-    /// iteration that consumes nothing ends the run.
+    fn alias(
+        &mut self,
+        r: &Rule,
+        name: &str,
+        pos: usize,
+        ctx: Ctx,
+        field: Option<&str>,
+        scope: Option<&Scope>,
+    ) -> Outcome {
+        let outer = self.alias.replace(name.to_string());
+        let hit = self.rule(r, pos, ctx, field, scope);
+        self.alias = outer;
+        Ok(match hit? {
+            Some((mut nodes, end)) => {
+                // the extras skipped before the token keep their names
+                for n in nodes.iter_mut().filter(|n| !n.extra) {
+                    n.kind = name.to_string();
+                }
+                Some((nodes, end))
+            }
+            None => None,
+        })
+    }
+
+    fn not_ahead_soft(&mut self, r: &Rule, pos: usize, ctx: Ctx, scope: Option<&Scope>) -> Outcome {
+        let recording = self.recording;
+        let hard = self.hard.take();
+        let furthest = self.furthest;
+        let expected = std::mem::take(&mut self.expected);
+        let unclosed = self.unclosed.take();
+        let diagnostics = self.diags.len();
+        self.recording = false;
+        let hit = self.rule(r, pos, ctx, None, scope);
+        self.recording = recording;
+        if self.too_deep {
+            // final: the probe's own refusal stands, and no reading of the
+            // text past it is tried
+            return Err(Hard);
+        }
+        self.hard = hard;
+        self.furthest = furthest;
+        self.expected = expected;
+        self.unclosed = unclosed;
+        self.diags.truncate(diagnostics);
+        Ok(match hit {
+            Ok(Some(_)) => None,
+            Ok(None) | Err(Hard) => Some((Vec::new(), pos)),
+        })
+    }
+
+    /// Lookahead: succeeds, consuming nothing, where `r` matching here is
+    /// what `wants` says.
+    fn ahead(
+        &mut self,
+        r: &Rule,
+        wants: bool,
+        pos: usize,
+        ctx: Ctx,
+        scope: Option<&Scope>,
+    ) -> Outcome {
+        let recording = self.recording;
+        self.recording = false;
+        let hit = self.rule(r, pos, ctx, None, scope);
+        self.recording = recording;
+        Ok(match hit?.is_some() == wants {
+            true => Some((Vec::new(), pos)),
+            false => None,
+        })
+    }
+
+    fn expect(
+        &mut self,
+        r: &Rule,
+        label: Label,
+        pos: usize,
+        ctx: Ctx,
+        field: Option<&str>,
+        scope: Option<&Scope>,
+    ) -> Outcome {
+        match self.rule(r, pos, ctx, field, scope)? {
+            Some(hit) => Ok(Some(hit)),
+            None => {
+                let p = self.skip_extras(pos);
+                self.fail_hard(p, None, label, scope)
+            }
+        }
+    }
+
+    fn refuse(
+        &mut self,
+        r: &Rule,
+        label: Label,
+        pos: usize,
+        ctx: Ctx,
+        scope: Option<&Scope>,
+    ) -> Outcome {
+        let recording = self.recording;
+        self.recording = false;
+        let hit = self.rule(r, pos, ctx, None, scope);
+        self.recording = recording;
+        match hit? {
+            Some((nodes, end)) => {
+                let p = self.skip_extras(pos);
+                let own = Scope {
+                    nodes: &nodes,
+                    parent: scope,
+                };
+                self.fail_hard(p, Some(end.max(p)), label, Some(&own))
+            }
+            None => Ok(Some((Vec::new(), pos))),
+        }
+    }
+
     /// A sequence's members in order, tracking the grammar's brackets
-    /// it opens and closes ([`Engine::open`]); the caller drops what it
-    /// leaves open.
+    /// it opens and closes ([`Engine::open`]) and dropping, on leaving,
+    /// any it left open.
     fn seq(
         &mut self,
         rs: &[Rule],
@@ -763,6 +1016,7 @@ impl<'g, 's> Engine<'g, 's> {
         field: Option<&str>,
         scope: Option<&Scope>,
     ) -> Outcome {
+        let depth = self.open.len();
         let mut nodes: Vec<Node> = Vec::new();
         let mut p = pos;
         for r in rs {
@@ -770,18 +1024,39 @@ impl<'g, 's> Engine<'g, 's> {
                 nodes: &nodes,
                 parent: scope,
             };
-            match self.rule(r, p, ctx, field, Some(&inner))? {
-                Some((ns, e)) => {
-                    nodes.extend(ns);
-                    if let Some(s) = bracket_literal(r) {
-                        self.track_bracket(s, e);
-                    }
-                    p = e;
+            let outcome = self.rule(r, p, ctx, field, Some(&inner));
+            match self.member(r, outcome, &mut nodes) {
+                Some(Ok(e)) => p = e,
+                missed => {
+                    self.open.truncate(depth);
+                    return missed.transpose().map(|_| None);
                 }
-                None => return Ok(None),
             }
         }
+        self.open.truncate(depth);
         Ok(Some((nodes, p)))
+    }
+
+    /// A sequence's member `r` matched as `outcome`: its nodes appended to
+    /// `nodes` and the bracket it opens or closes tracked, and the position
+    /// after it; `None` where it did not match.
+    fn member(
+        &mut self,
+        r: &Rule,
+        outcome: Outcome,
+        nodes: &mut Vec<Node>,
+    ) -> Option<Result<usize, Hard>> {
+        match outcome {
+            Ok(Some((ns, e))) => {
+                nodes.extend(ns);
+                if let Some(s) = bracket_literal(r) {
+                    self.track_bracket(s, e);
+                }
+                Some(Ok(e))
+            }
+            Ok(None) => None,
+            Err(hard) => Some(Err(hard)),
+        }
     }
 
     /// Opens or closes a bracket the sequence just matched, ending at `end`.
@@ -799,6 +1074,8 @@ impl<'g, 's> Engine<'g, 's> {
         }
     }
 
+    /// `r` as many times as it matches, at least `least` times; an
+    /// iteration that consumes nothing ends the run.
     fn repeat(
         &mut self,
         r: &Rule,
@@ -852,69 +1129,110 @@ impl<'g, 's> Engine<'g, 's> {
         let Some(&i) = self.index.get(name) else {
             panic!("treegram: the grammar names no rule `{name}`");
         };
-        let def = &self.g.rules[i];
-        match &def.body {
+        let g = self.g;
+        match &g.rules[i].body {
             Body::Climb(_) => self.climb(i, pos, 0, ctx, None, field),
-            Body::Rule(r) => {
-                // an ordinary rule starts a fresh exclusion scope
-                let inner = Ctx {
-                    in_token: ctx.in_token,
-                    bare: ctx.bare,
-                    exclude: 0,
-                };
-                let key = (
-                    i,
-                    pos,
-                    0,
-                    if ctx.in_token {
-                        -2
-                    } else if ctx.bare {
-                        -3
-                    } else {
-                        -1
-                    },
-                );
-                if let Some(hit) = self.memo.get(&key) {
-                    return Ok(hit.clone().map(|(ns, e)| (with_field(ns, field), e)));
-                }
-                let label = match r {
-                    Rule::Pat(_) | Rule::Token(_) | Rule::Immediate(_) => Some(def.name.as_str()),
-                    _ => None,
-                };
-                let label_text = label.map(|l| l.trim_start_matches('_').replace('_', " "));
-                let label = label_text.as_deref();
-                let hit = match r {
-                    Rule::Pat(p) => self.pattern(p, pos, false, inner, None, label),
-                    Rule::Immediate(inner_rule) if matches!(**inner_rule, Rule::Pat(_)) => {
-                        let Rule::Pat(p) = &**inner_rule else {
-                            unreachable!()
-                        };
-                        self.pattern(p, pos, true, inner, None, label)
-                    }
-                    r => {
-                        let named = !is_hidden(&def.name);
-                        if named {
-                            self.names.push(&def.name);
-                        }
-                        let outcome = self.rule(r, pos, inner, None, scope);
-                        if named {
-                            self.names.pop();
-                        }
-                        outcome?
-                    }
-                };
-                let hit = hit.map(|(nodes, end)| {
-                    let nodes = if ctx.in_token || is_hidden(&def.name) {
-                        nodes
-                    } else {
-                        vec![wrap(&def.name, nodes, pos, end, self.src)]
-                    };
-                    (nodes, end)
-                });
-                self.memo.insert(key, hit.clone());
-                Ok(hit.map(|(ns, e)| (with_field(ns, field), e)))
-            }
+            Body::Rule(r) => self.named(i, r, pos, ctx, field, scope),
         }
+    }
+
+    /// The ordinary rule `i`, whose body is `r`, at `pos`: its match
+    /// wrapped in its node unless it is hidden, and remembered.
+    fn named(
+        &mut self,
+        i: usize,
+        r: &'g Rule,
+        pos: usize,
+        ctx: Ctx,
+        field: Option<&str>,
+        scope: Option<&Scope>,
+    ) -> Outcome {
+        let key = named_key(i, pos, ctx);
+        if let Some(hit) = self.recall(&key, field) {
+            return Ok(hit);
+        }
+        // an ordinary rule starts a fresh exclusion scope
+        let inner = Ctx {
+            in_token: ctx.in_token,
+            bare: ctx.bare,
+            exclude: 0,
+        };
+        match self.named_body(i, r, pos, inner, scope) {
+            Ok(hit) => self.named_node(key, hit, ctx, field),
+            failed => failed,
+        }
+    }
+
+    /// A named rule's match wrapped in its node unless it is hidden or read
+    /// inside a token, remembered at `key` and returned with `field` set.
+    fn named_node(&mut self, key: MemoKey, hit: Soft, ctx: Ctx, field: Option<&str>) -> Outcome {
+        let name = self.g.rules[key.0].name.as_str();
+        let hit = match hit {
+            Some((nodes, end)) if !ctx.in_token && !is_hidden(name) => {
+                Some((vec![self.node(name, nodes, key.1, end)?], end))
+            }
+            hit => hit,
+        };
+        Ok(self.store(key, hit, field))
+    }
+
+    /// A pattern token, which a diagnostic names by the rule `i`'s name.
+    fn named_pattern(&mut self, i: usize, p: &Pat, pos: usize, immediate: bool, ctx: Ctx) -> Soft {
+        let label = self.g.rules[i]
+            .name
+            .trim_start_matches('_')
+            .replace('_', " ");
+        self.pattern(p, pos, immediate, ctx, None, Some(&label))
+    }
+
+    /// A rule's body: one pattern token, which a diagnostic names by the
+    /// rule's own name, or a rule read with the rule standing among
+    /// [`Engine::names`] unless it is hidden.
+    fn named_body(
+        &mut self,
+        i: usize,
+        r: &Rule,
+        pos: usize,
+        ctx: Ctx,
+        scope: Option<&Scope>,
+    ) -> Outcome {
+        match r {
+            Rule::Pat(p) => return Ok(self.named_pattern(i, p, pos, false, ctx)),
+            Rule::Immediate(inner) => {
+                if let Rule::Pat(p) = &**inner {
+                    return Ok(self.named_pattern(i, p, pos, true, ctx));
+                }
+            }
+            _ => {}
+        }
+        // a token's rule reads no level of nesting
+        let level = match r {
+            Rule::Token(_) | Rule::Immediate(_) => None,
+            _ => self.nest(pos)?,
+        };
+        let name = self.g.rules[i].name.as_str();
+        let named = !is_hidden(name);
+        if named {
+            self.names.push(name);
+        }
+        let outcome = self.rule(r, pos, ctx, None, scope);
+        if named {
+            self.names.pop();
+        }
+        self.unnest(level);
+        outcome
+    }
+
+    /// The remembered match at `key`, with `field` set.
+    fn recall(&self, key: &MemoKey, field: Option<&str>) -> Option<Soft> {
+        let hit = self.memo.get(key)?;
+        Some(hit.clone().map(|(ns, e)| (with_field(ns, field), e)))
+    }
+
+    /// Remember `hit` at `key`, and return it with `field` set.
+    fn store(&mut self, key: MemoKey, hit: Soft, field: Option<&str>) -> Soft {
+        self.memo.insert(key, hit.clone());
+        hit.map(|(ns, e)| (with_field(ns, field), e))
     }
 
     /// Precedence climbing over the climb at `ci`, allowing operators
@@ -929,17 +1247,26 @@ impl<'g, 's> Engine<'g, 's> {
         rooted: Option<&str>,
         field: Option<&str>,
     ) -> Outcome {
-        let variant = match rooted {
+        let key = (ci, pos, ctx.exclude, self.climb_variant(ci, min, rooted));
+        if let Some(hit) = self.recall(&key, field) {
+            return Ok(hit);
+        }
+        let level = self.nest(pos)?;
+        let outcome = self.climb_uncached(ci, pos, min, ctx, rooted);
+        self.unnest(level);
+        match outcome {
+            Ok(hit) => Ok(self.store(key, hit, field)),
+            failed => failed,
+        }
+    }
+
+    /// A climb's memo variant: the least precedence allowed, or the
+    /// operator node a reference from outside the climb asks for.
+    fn climb_variant(&self, ci: usize, min: i32, rooted: Option<&str>) -> i64 {
+        match rooted {
             None => min as i64,
             Some(r) => -1000 - self.op_index(ci, r) as i64,
-        };
-        let key = (ci, pos, ctx.exclude, variant);
-        if let Some(hit) = self.memo.get(&key) {
-            return Ok(hit.clone().map(|(ns, e)| (with_field(ns, field), e)));
         }
-        let hit = self.climb_uncached(ci, pos, min, ctx, rooted)?;
-        self.memo.insert(key, hit.clone());
-        Ok(hit.map(|(ns, e)| (with_field(ns, field), e)))
     }
 
     fn op_index(&self, ci: usize, node: &str) -> usize {
@@ -956,6 +1283,8 @@ impl<'g, 's> Engine<'g, 's> {
         self.excludes[ctx.exclude].iter().any(|n| n == node)
     }
 
+    /// A left operand — a prefix operator's or a primary — and then the
+    /// infix and postfix operators that apply after it, left to right.
     fn climb_uncached(
         &mut self,
         ci: usize,
@@ -964,13 +1293,38 @@ impl<'g, 's> Engine<'g, 's> {
         ctx: Ctx,
         rooted: Option<&str>,
     ) -> Outcome {
-        let Body::Climb(c) = &self.g.rules[ci].body else {
+        let g = self.g;
+        let Body::Climb(c) = &g.rules[ci].body else {
             unreachable!()
         };
-        let c: &'g Climb = c;
-        let name = self.g.rules[ci].name.as_str();
-        // the left operand: a prefix operator, or a primary
-        let mut left: Option<(Vec<Node>, usize)> = None;
+        let left = match self.prefix(c, ci, pos, ctx)? {
+            Some(left) => left,
+            None => match self.rule(&c.primary, pos, ctx, None, None)? {
+                Some(left) => left,
+                None => return Ok(None),
+            },
+        };
+        let (mut nodes, mut p) = left;
+        let mut best: Option<(Vec<Node>, usize)> = None;
+        loop {
+            if let Some(r) = rooted {
+                if nodes.len() == 1 && nodes[0].kind == r {
+                    best = Some((nodes.clone(), p));
+                }
+            }
+            match self.operator(c, ci, pos, p, min, ctx, &mut nodes)? {
+                Some(end) => p = end,
+                None => break,
+            }
+        }
+        Ok(match rooted {
+            Some(_) => best,
+            None => Some((nodes, p)),
+        })
+    }
+
+    /// The first prefix operator that applies at `pos`, with its operand.
+    fn prefix(&mut self, c: &'g Climb, ci: usize, pos: usize, ctx: Ctx) -> Outcome {
         for op in &c.ops {
             let Form::Prefix { head, operand } = &op.form else {
                 continue;
@@ -986,103 +1340,118 @@ impl<'g, 's> Engine<'g, 's> {
             if p == pos {
                 continue;
             }
-            let scope = Scope {
-                nodes: &nodes,
-                parent: None,
-            };
-            let _ = &scope;
             let Some((ons, end)) = self.climb(ci, p, op.prec, ctx, None, Some(operand))? else {
                 continue;
             };
             nodes.extend(ons);
-            left = Some((vec![wrap(&op.node, nodes, pos, end, self.src)], end));
-            break;
+            return Ok(Some((vec![self.node(&op.node, nodes, pos, end)?], end)));
         }
-        let (mut nodes, mut p) = match left {
-            Some(l) => l,
-            None => match self.rule(&c.primary, pos, ctx, None, None)? {
-                Some(l) => l,
-                None => return Ok(None),
-            },
+        Ok(None)
+    }
+
+    /// One turn of the operator loop: the first infix or postfix operator
+    /// of precedence `min` or above that applies at `p`, after the left
+    /// operand `nodes` that starts at `start`, wraps it in place, and the
+    /// position after it is returned. `None` where no operator applies.
+    #[allow(clippy::too_many_arguments)]
+    fn operator(
+        &mut self,
+        c: &'g Climb,
+        ci: usize,
+        start: usize,
+        p: usize,
+        min: i32,
+        ctx: Ctx,
+        nodes: &mut Vec<Node>,
+    ) -> Result<Option<usize>, Hard> {
+        for op in &c.ops {
+            if op.prec < min || self.excluded(ctx, &op.node) {
+                continue;
+            }
+            let applied = match &op.form {
+                Form::Prefix { .. } => None,
+                Form::Infix { .. } => self.infix(ci, op, start, p, ctx, nodes)?,
+                Form::Postfix { .. } => self.postfix(op, start, p, ctx, nodes)?,
+            };
+            if applied.is_some() {
+                return Ok(applied);
+            }
+        }
+        Ok(None)
+    }
+
+    /// The infix operator `op` at `p` and its right operand.
+    fn infix(
+        &mut self,
+        ci: usize,
+        op: &Op,
+        start: usize,
+        p: usize,
+        ctx: Ctx,
+        nodes: &mut Vec<Node>,
+    ) -> Result<Option<usize>, Hard> {
+        let Form::Infix { left, op: o, right } = &op.form else {
+            unreachable!()
         };
-        let mut best: Option<(Vec<Node>, usize)> = None;
-        loop {
-            if let Some(r) = rooted {
-                if nodes.len() == 1 && nodes[0].kind == r {
-                    best = Some((nodes.clone(), p));
-                }
-            }
-            let mut applied = false;
-            for op in &c.ops {
-                if op.prec < min || self.excluded(ctx, &op.node) {
-                    continue;
-                }
-                match &op.form {
-                    Form::Prefix { .. } => {}
-                    Form::Infix { left, op: o, right } => {
-                        let Some((ons, p1)) = self.rule(o, p, ctx, None, None)? else {
-                            continue;
-                        };
-                        let rmin = if op.assoc == Assoc::Right {
-                            op.prec
-                        } else {
-                            op.prec + 1
-                        };
-                        let Some((rns, p2)) = self.climb(ci, p1, rmin, ctx, None, Some(right))?
-                        else {
-                            continue;
-                        };
-                        if p2 == p {
-                            continue;
-                        }
-                        let mut children = with_field(std::mem::take(&mut nodes), Some(left));
-                        children.extend(ons);
-                        children.extend(rns);
-                        nodes = vec![wrap(&op.node, children, pos, p2, self.src)];
-                        p = p2;
-                        applied = true;
-                        break;
-                    }
-                    Form::Postfix {
-                        target,
-                        tail,
-                        targets,
-                    } => {
-                        if let Some(ks) = targets {
-                            if !(nodes.len() == 1 && ks.contains(&nodes[0].kind)) {
-                                continue;
-                            }
-                        }
-                        let scope = Scope {
-                            nodes: &nodes,
-                            parent: None,
-                        };
-                        let Some((tns, p1)) = self.rule(tail, p, ctx, None, Some(&scope))? else {
-                            continue;
-                        };
-                        // an operator that consumed nothing — a refusal
-                        // that did not fire — is no operator here
-                        if p1 == p {
-                            continue;
-                        }
-                        let mut children = with_field(std::mem::take(&mut nodes), Some(target));
-                        children.extend(tns);
-                        nodes = vec![wrap(&op.node, children, pos, p1, self.src)];
-                        p = p1;
-                        applied = true;
-                        break;
-                    }
-                }
-            }
-            if !applied {
-                break;
+        let Some((ons, p1)) = self.rule(o, p, ctx, None, None)? else {
+            return Ok(None);
+        };
+        let rmin = if op.assoc == Assoc::Right {
+            op.prec
+        } else {
+            op.prec + 1
+        };
+        let Some((rns, p2)) = self.climb(ci, p1, rmin, ctx, None, Some(right))? else {
+            return Ok(None);
+        };
+        if p2 == p {
+            return Ok(None);
+        }
+        let mut children = with_field(std::mem::take(nodes), Some(left));
+        children.extend(ons);
+        children.extend(rns);
+        *nodes = vec![self.node(&op.node, children, start, p2)?];
+        Ok(Some(p2))
+    }
+
+    /// The postfix operator `op` at `p`, where it stands on `nodes`.
+    fn postfix(
+        &mut self,
+        op: &Op,
+        start: usize,
+        p: usize,
+        ctx: Ctx,
+        nodes: &mut Vec<Node>,
+    ) -> Result<Option<usize>, Hard> {
+        let Form::Postfix {
+            target,
+            tail,
+            targets,
+        } = &op.form
+        else {
+            unreachable!()
+        };
+        if let Some(ks) = targets {
+            if !(nodes.len() == 1 && ks.contains(&nodes[0].kind)) {
+                return Ok(None);
             }
         }
-        let _ = name;
-        Ok(match rooted {
-            Some(_) => best,
-            None => Some((nodes, p)),
-        })
+        let scope = Scope {
+            nodes,
+            parent: None,
+        };
+        let Some((tns, p1)) = self.rule(tail, p, ctx, None, Some(&scope))? else {
+            return Ok(None);
+        };
+        // an operator that consumed nothing — a refusal that did not
+        // fire — is no operator here
+        if p1 == p {
+            return Ok(None);
+        }
+        let mut children = with_field(std::mem::take(nodes), Some(target));
+        children.extend(tns);
+        *nodes = vec![self.node(&op.node, children, start, p1)?];
+        Ok(Some(p1))
     }
 
     /// A recovery region: the rule, or an `ERROR` node to the boundary.
@@ -1101,6 +1470,9 @@ impl<'g, 's> Engine<'g, 's> {
             Ok(Some(hit)) => return Ok(Some(hit)),
             Ok(None) => self.soft_diag(),
             Err(Hard) => {
+                // a refusal of depth is final only up to the region it
+                // stands in, which reports it; the next item is read anew
+                self.too_deep = false;
                 let hard = self
                     .hard
                     .take()
@@ -1196,14 +1568,15 @@ fn leaf(kind: &str, named: bool, start: usize, end: usize, field: Option<&str>) 
         start,
         end,
         children: Vec::new(),
+        height: 1,
     }
 }
 
 /// A named node over its children.
-fn wrap(kind: &str, children: Vec<Node>, pos: usize, end: usize, src: &str) -> Node {
+fn wrap(kind: &str, children: Vec<Node>, pos: usize, end: usize) -> Node {
     let start = children.first().map_or(pos, |c| c.start);
     let end = children.last().map_or(end, |c| c.end);
-    let _ = src;
+    let height = 1 + children.iter().map(|c| c.height).max().unwrap_or(0);
     Node {
         kind: kind.to_string(),
         named: true,
@@ -1212,7 +1585,20 @@ fn wrap(kind: &str, children: Vec<Node>, pos: usize, end: usize, src: &str) -> N
         start,
         end,
         children,
+        height,
     }
+}
+
+/// The first token, in the text's order, `steps` nodes below `node` on a
+/// longest path down from it.
+fn below(mut node: &Node, steps: usize) -> &Node {
+    for _ in 0..steps {
+        match node.children.iter().find(|c| c.height + 1 == node.height) {
+            Some(child) => node = child,
+            None => break,
+        }
+    }
+    node
 }
 
 /// The nodes with a field name set where they have none.

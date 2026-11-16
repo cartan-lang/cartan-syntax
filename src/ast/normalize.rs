@@ -152,6 +152,26 @@ fn keyed_write(subscript: &Node) -> Error {
     )
 }
 
+fn binary_operator(written: &str) -> Option<BinaryOperator> {
+    Some(match written {
+        "+" => BinaryOperator::Add,
+        "-" => BinaryOperator::Subtract,
+        "*" => BinaryOperator::Multiply,
+        "/" => BinaryOperator::Divide,
+        "//" => BinaryOperator::FloorDivide,
+        "^" => BinaryOperator::Power,
+        "==" => BinaryOperator::Equal,
+        "!=" => BinaryOperator::NotEqual,
+        "<" => BinaryOperator::Less,
+        "<=" => BinaryOperator::LessEqual,
+        ">" => BinaryOperator::Greater,
+        ">=" => BinaryOperator::GreaterEqual,
+        "and" => BinaryOperator::And,
+        "or" => BinaryOperator::Or,
+        _ => return None,
+    })
+}
+
 fn unsupported(node: &Node) -> Error {
     form(
         node,
@@ -1084,372 +1104,413 @@ impl Reader<'_> {
         })
     }
 
+    /// **Every level of an expression's nesting passes through here**, so
+    /// this frame is kept to a dispatch: each form is read by a method of
+    /// its own, whose frame stands on the stack only while that form is
+    /// read, and the arms share one result.
     fn expr(&self, node: &Node) -> Result<Expr> {
         let kind = match node.kind.as_str() {
-            "number" => ExprKind::Number(self.text(node).into()),
-            "boolean" => ExprKind::Bool(self.text(node) == "true"),
-            "string" | "triple_string" => ExprKind::String(self.string_literal(node)?),
-            "template_string" => ExprKind::Template(self.template(node)?),
-            "identifier" => ExprKind::Name(self.name(node)?),
-            "qualified_identifier" => ExprKind::QualifiedName(self.qualified_name(node)?),
-            "parenthesized_expression" | "selector" => {
-                let mut expr = self.expr(single(node)?)?;
-                expr.span = span(node);
-                return Ok(expr);
-            }
-            "unary_expression" => {
-                shape(node, &["operator", "operand"], &[])?;
-                let operator = field(node, "operator")?;
-                let operator = match self.text(operator).trim() {
-                    "-" => UnaryOperator::Negate,
-                    "+" => UnaryOperator::Plus,
-                    "not" => UnaryOperator::Not,
-                    _ => return Err(unsupported(operator)),
-                };
-                ExprKind::Unary {
-                    operator,
-                    operand: Box::new(self.expr(field(node, "operand")?)?),
-                }
-            }
-            "binary_expression" => {
-                shape(node, &["operator", "left", "right"], &[])?;
-                let left = field(node, "left")?;
-                if self.comparison(node) && self.comparison(left) {
-                    return Err(form(node, FormDiagnosticKind::ComparisonChain));
-                }
-                let operator = field(node, "operator")?;
-                if self.text(operator).trim() == "??" {
-                    // Continuation tokens carry surrounding whitespace.
-                    let start = operator.start
-                        + self
-                            .text(operator)
-                            .find("??")
-                            .ok_or_else(|| unsupported(operator))?;
-                    return Ok(Expr {
-                        kind: ExprKind::Default {
-                            value: Box::new(self.expr(left)?),
-                            fallback: Box::new(self.expr(field(node, "right")?)?),
-                            operator_span: Span {
-                                start,
-                                end: start + 2,
-                            },
-                        },
-                        span: span(node),
-                    });
-                }
-                if self.text(operator).trim() == "<>" {
-                    return Ok(Expr {
-                        kind: ExprKind::MapJoin {
-                            left: Box::new(self.expr(left)?),
-                            right: Box::new(self.expr(field(node, "right")?)?),
-                            operator_span: Span {
-                                start: operator.end - 2,
-                                end: operator.end,
-                            },
-                        },
-                        span: span(node),
-                    });
-                }
-                let operator = match self.text(operator).trim() {
-                    "+" => BinaryOperator::Add,
-                    "-" => BinaryOperator::Subtract,
-                    "*" => BinaryOperator::Multiply,
-                    "/" => BinaryOperator::Divide,
-                    "//" => BinaryOperator::FloorDivide,
-                    "^" => BinaryOperator::Power,
-                    "==" => BinaryOperator::Equal,
-                    "!=" => BinaryOperator::NotEqual,
-                    "<" => BinaryOperator::Less,
-                    "<=" => BinaryOperator::LessEqual,
-                    ">" => BinaryOperator::Greater,
-                    ">=" => BinaryOperator::GreaterEqual,
-                    "and" => BinaryOperator::And,
-                    "or" => BinaryOperator::Or,
-                    _ => return Err(unsupported(operator)),
-                };
-                ExprKind::Binary {
-                    operator,
-                    left: Box::new(self.expr(left)?),
-                    right: Box::new(self.expr(field(node, "right")?)?),
-                }
-            }
-            "conditional_expression" => {
-                shape(node, &["condition", "consequence", "alternative"], &[])?;
-                ExprKind::If {
-                    condition: Box::new(self.expr(field(node, "condition")?)?),
-                    consequence: Box::new(self.expr(field(node, "consequence")?)?),
-                    alternative: node
-                        .child("alternative")
-                        .map(|alternative| self.expr(alternative).map(Box::new))
-                        .transpose()?,
-                }
-            }
-            "none" => ExprKind::None,
-            "absent_expression" => {
-                shape(node, &["value"], &[])?;
-                let mark = node
-                    .children
-                    .iter()
-                    .rev()
-                    .find(|child| child.kind == "?")
-                    .ok_or_else(|| unsupported(node))?;
-                ExprKind::Lift {
-                    value: Box::new(self.expr(field(node, "value")?)?),
-                    mark_span: Span {
-                        start: mark.end - 1,
-                        end: mark.end,
-                    },
-                }
-            }
+            "parenthesized_expression" | "selector" => return self.grouped(node),
+            "binary_expression" => return self.binary(node),
+            "number" | "boolean" | "identifier" | "none" => self.word(node),
+            "string" | "triple_string" => self.string_literal(node).map(ExprKind::String),
+            "template_string" => self.template(node).map(ExprKind::Template),
+            "qualified_identifier" => self.qualified_name(node).map(ExprKind::QualifiedName),
+            "unary_expression" => self.unary(node),
+            "conditional_expression" => self.conditional(node),
+            "absent_expression" => self.lift(node),
             "call_expression"
                 if node.child("variants").is_some() || node.child("described").is_some() =>
             {
-                self.construct(node)?
+                self.construct(node)
             }
-            "call_expression" => {
-                shape(node, &["function", "arguments"], &[])?;
-                ExprKind::Call {
-                    function: self.name_ref(field(node, "function")?)?,
-                    arguments: children(field(node, "arguments")?)
-                        .map(|node| self.expr(node))
-                        .collect::<Result<_>>()?,
-                }
-            }
-            "index_expression" => {
-                shape(node, &["target", "index"], &[])?;
-                ExprKind::Index {
-                    target: Box::new(self.expr(field(node, "target")?)?),
-                    indices: children(field(node, "index")?)
-                        .map(|node| self.expr(node))
-                        .collect::<Result<_>>()?,
-                }
-            }
-            "component_expression" => {
-                shape(node, &["key", "value"], &[])?;
-                let key = field(node, "key")?;
-                // A component key wraps a name, a number or a parenthesized run.
-                let key = match children(key).collect::<Vec<_>>().as_slice() {
-                    [single] => self.component_key(single)?,
-                    _ => self.component_key(key)?,
-                };
-                ExprKind::Projection {
-                    key,
-                    value: Box::new(self.expr(field(node, "value")?)?),
-                }
-            }
-            "product" => ExprKind::Product(
-                children(node)
-                    .map(|entry| {
-                        if entry.kind != "product_component" {
-                            return Err(unsupported(entry));
-                        }
-                        shape(entry, &["name", "value"], &[])?;
-                        Ok(ProductEntry {
-                            key: self.component_key(field(entry, "name")?)?,
-                            value: self.expr(field(entry, "value")?)?,
-                            span: span(entry),
-                        })
-                    })
-                    .collect::<Result<_>>()?,
-            ),
-            "but_expression" => {
-                shape(node, &["target", "override"], &[])?;
-                let keyword = node
-                    .children
-                    .iter()
-                    .find(|child| child.kind == "but")
-                    .ok_or_else(|| unsupported(node))?;
-                // Continuation keyword tokens carry surrounding whitespace.
-                let start = keyword.start
+            "call_expression" => self.call(node),
+            "index_expression" => self.index(node),
+            "component_expression" => self.projection(node),
+            "product" => self.product(node),
+            "but_expression" => self.update(node),
+            "site_update_expression" => self.site_update(node),
+            "list" => self.list(node),
+            "range_expression" | "open_range" | "header_open_range" | "range_from" | "range_to"
+            | "full_range" => self.range(node),
+            "periodic_expression" => self.periodic(node),
+            "periodic_range" => self.periodic_range(node),
+            "map" => self.map(node),
+            "configurable_expression" => self.configurable(node),
+            "config_expression" | "configure_dot_expression" => self.configure(node),
+            "body" => self.body(node).map(ExprKind::Body),
+            "for_expression" | "each_expression" => self.comprehension(node),
+            "fold_expression" => self.reduction(node),
+            "match_expression" => self
+                .match_expression(node)
+                .map(|m| ExprKind::Match(Box::new(m))),
+            _ => Err(unsupported(node)),
+        };
+        Ok(Expr {
+            kind: kind?,
+            span: span(node),
+        })
+    }
+
+    /// A literal number, Boolean or `none`, or a name.
+    fn word(&self, node: &Node) -> Result<ExprKind> {
+        Ok(match node.kind.as_str() {
+            "number" => ExprKind::Number(self.text(node).into()),
+            "boolean" => ExprKind::Bool(self.text(node) == "true"),
+            "none" => ExprKind::None,
+            _ => ExprKind::Name(self.name(node)?),
+        })
+    }
+
+    /// Grouping parentheses normalize away, the span covering them.
+    fn grouped(&self, node: &Node) -> Result<Expr> {
+        let mut expr = self.expr(single(node)?)?;
+        expr.span = span(node);
+        Ok(expr)
+    }
+
+    fn unary(&self, node: &Node) -> Result<ExprKind> {
+        shape(node, &["operator", "operand"], &[])?;
+        let operator = field(node, "operator")?;
+        let operator = match self.text(operator).trim() {
+            "-" => UnaryOperator::Negate,
+            "+" => UnaryOperator::Plus,
+            "not" => UnaryOperator::Not,
+            _ => return Err(unsupported(operator)),
+        };
+        Ok(ExprKind::Unary {
+            operator,
+            operand: Box::new(self.expr(field(node, "operand")?)?),
+        })
+    }
+
+    fn binary(&self, node: &Node) -> Result<Expr> {
+        shape(node, &["operator", "left", "right"], &[])?;
+        let left = field(node, "left")?;
+        if self.comparison(node) && self.comparison(left) {
+            return Err(form(node, FormDiagnosticKind::ComparisonChain));
+        }
+        let operator = field(node, "operator")?;
+        let kind = match self.text(operator).trim() {
+            "??" => {
+                // Continuation tokens carry surrounding whitespace.
+                let start = operator.start
                     + self
-                        .text(keyword)
-                        .find("but")
-                        .ok_or_else(|| unsupported(keyword))?;
-                ExprKind::Update {
-                    base: Box::new(self.expr(field(node, "target")?)?),
-                    overrides: Box::new(self.expr(field(node, "override")?)?),
+                        .text(operator)
+                        .find("??")
+                        .ok_or_else(|| unsupported(operator))?;
+                ExprKind::Default {
+                    value: Box::new(self.expr(left)?),
+                    fallback: Box::new(self.expr(field(node, "right")?)?),
                     operator_span: Span {
                         start,
-                        end: start + 3,
+                        end: start + 2,
                     },
                 }
             }
-            "site_update_expression" => {
-                let key = field(node, "key")?;
-                let colon = node
-                    .children
-                    .iter()
-                    .find(|child| child.kind == ":" && child.start >= key.end)
-                    .ok_or_else(|| unsupported(node))?;
-                return Err(form_at(
-                    Span {
-                        start: colon.end - 1,
-                        end: colon.end,
-                    },
-                    FormDiagnosticKind::RemovedSpatialUpdate {
-                        key_span: span(key),
-                    },
-                ));
-            }
-            "list" => ExprKind::List(
-                children(node)
-                    .map(|node| self.expr(node))
-                    .collect::<Result<_>>()?,
-            ),
-            "range_expression" | "open_range" | "header_open_range" | "range_from" | "range_to"
-            | "full_range" => {
-                shape(node, &["left", "right", "start", "end", "operator"], &[])?;
-                let start = node.child("left").or_else(|| node.child("start"));
-                let end = node.child("right").or_else(|| node.child("end"));
-                if start.into_iter().chain(end).any(|child| {
-                    matches!(
-                        child.kind.as_str(),
-                        "range_expression"
-                            | "range_from"
-                            | "range_to"
-                            | "full_range"
-                            | "periodic_range"
-                    )
-                }) {
-                    return Err(form(node, FormDiagnosticKind::RangeChain));
-                }
-                ExprKind::Range {
-                    start: start
-                        .map(|node| self.expr(node).map(Box::new))
-                        .transpose()?,
-                    end: end.map(|node| self.expr(node).map(Box::new)).transpose()?,
-                    inclusive: self.text(field(node, "operator")?).trim() == "..=",
-                }
-            }
-            "periodic_expression" => {
-                shape(node, &["axis"], &[])?;
-                let axis = field(node, "axis")?;
-                if axis.kind == "periodic_range" {
-                    return Err(form(node, FormDiagnosticKind::PeriodicTwice));
-                }
-                ExprKind::Periodic(Box::new(self.expr(axis)?))
-            }
-            "periodic_range" => {
-                shape(node, &["operator", "axis"], &[])?;
-                ExprKind::Periodic(Box::new(self.expr(field(node, "axis")?)?))
-            }
-            "map" => ExprKind::Map(
-                children(node)
-                    .map(|entry| {
-                        if entry.kind != "map_entry" {
-                            return Err(unsupported(entry));
-                        }
-                        shape(entry, &["key", "value", "separator"], &[])?;
-                        let separator = field(entry, "separator")?;
-                        let written = self.text(separator).trim();
-                        let key = field(entry, "key")?;
-                        let key = match written {
-                            ":" => MapKey::Static(self.name(key)?),
-                            "=>" => MapKey::Computed(self.expr(key)?),
-                            _ => return Err(unsupported(separator)),
-                        };
-                        Ok(MapEntry {
-                            key,
-                            value: self.expr(field(entry, "value")?)?,
-                            span: span(entry),
-                            separator_span: Span {
-                                start: separator.end - written.len(),
-                                end: separator.end,
-                            },
-                        })
-                    })
-                    .collect::<Result<_>>()?,
-            ),
-            "configurable_expression" => {
-                shape(node, &["operator", "config", "body"], &[])?;
-                let values: Vec<_> = node.children_named("config").collect();
-                let operators: Vec<_> = node.children_named("operator").collect();
-                if values.is_empty() || values.len() != operators.len() {
-                    return Err(unsupported(node));
-                }
-                let settings = values
-                    .into_iter()
-                    .zip(operators)
-                    .map(|(value, operator)| {
-                        Ok(SettingsAtom {
-                            value: self.expr(value)?,
-                            operator_span: Span {
-                                start: operator.end - 1,
-                                end: operator.end,
-                            },
-                        })
-                    })
-                    .collect::<Result<_>>()?;
-                ExprKind::Configurable {
-                    settings,
-                    body: self.body(field(node, "body")?)?,
-                }
-            }
-            "config_expression" | "configure_dot_expression" => {
-                shape(node, &["target", "config", "operator"], &[])?;
-                let operator = field(node, "operator")?;
-                ExprKind::Configure {
-                    kind: if node.kind == "config_expression" {
-                        ConfigureKind::Colon
-                    } else {
-                        ConfigureKind::Dot
-                    },
-                    target: Box::new(self.expr(field(node, "target")?)?),
-                    settings: Box::new(self.expr(field(node, "config")?)?),
-                    operator_span: Span {
-                        start: operator.end - 1,
-                        end: operator.end,
-                    },
-                }
-            }
-            "body" => ExprKind::Body(self.body(node)?),
-            "for_expression" => {
-                shape(node, &["binders", "space", "body"], &[])?;
-                ExprKind::For(Box::new(Comprehension {
-                    binder: self.pattern(field(node, "binders")?)?,
-                    collection: self.expr(field(node, "space")?)?,
-                    body: self.expr(field(node, "body")?)?,
-                }))
-            }
-            "each_expression" => {
-                shape(node, &["binders", "collection", "body"], &[])?;
-                ExprKind::Each(Box::new(Comprehension {
-                    binder: self.pattern(field(node, "binders")?)?,
-                    collection: self.expr(field(node, "collection")?)?,
-                    body: self.expr(field(node, "body")?)?,
-                }))
-            }
-            "fold_expression" => {
-                shape(
-                    node,
-                    &[
-                        "keyword",
-                        "accumulator",
-                        "seed",
-                        "element",
-                        "driver",
-                        "body",
-                    ],
-                    &[],
-                )?;
-                if self.text(field(node, "keyword")?) != "reduce" {
-                    return Err(unsupported(node));
-                }
-                ExprKind::Reduce(Box::new(Reduction {
-                    accumulator: self.name(field(node, "accumulator")?)?,
-                    seed: self.expr(field(node, "seed")?)?,
-                    binder: self.pattern(field(node, "element")?)?,
-                    collection: self.expr(field(node, "driver")?)?,
-                    body: self.body(field(node, "body")?)?,
-                }))
-            }
-            "match_expression" => ExprKind::Match(Box::new(self.match_expression(node)?)),
-            _ => return Err(unsupported(node)),
+            "<>" => ExprKind::MapJoin {
+                left: Box::new(self.expr(left)?),
+                right: Box::new(self.expr(field(node, "right")?)?),
+                operator_span: Span {
+                    start: operator.end - 2,
+                    end: operator.end,
+                },
+            },
+            written => ExprKind::Binary {
+                operator: binary_operator(written).ok_or_else(|| unsupported(operator))?,
+                left: Box::new(self.expr(left)?),
+                right: Box::new(self.expr(field(node, "right")?)?),
+            },
         };
         Ok(Expr {
             kind,
             span: span(node),
         })
+    }
+
+    fn conditional(&self, node: &Node) -> Result<ExprKind> {
+        shape(node, &["condition", "consequence", "alternative"], &[])?;
+        Ok(ExprKind::If {
+            condition: Box::new(self.expr(field(node, "condition")?)?),
+            consequence: Box::new(self.expr(field(node, "consequence")?)?),
+            alternative: node
+                .child("alternative")
+                .map(|alternative| self.expr(alternative).map(Box::new))
+                .transpose()?,
+        })
+    }
+
+    fn lift(&self, node: &Node) -> Result<ExprKind> {
+        shape(node, &["value"], &[])?;
+        let mark = node
+            .children
+            .iter()
+            .rev()
+            .find(|child| child.kind == "?")
+            .ok_or_else(|| unsupported(node))?;
+        Ok(ExprKind::Lift {
+            value: Box::new(self.expr(field(node, "value")?)?),
+            mark_span: Span {
+                start: mark.end - 1,
+                end: mark.end,
+            },
+        })
+    }
+
+    fn call(&self, node: &Node) -> Result<ExprKind> {
+        shape(node, &["function", "arguments"], &[])?;
+        Ok(ExprKind::Call {
+            function: self.name_ref(field(node, "function")?)?,
+            arguments: self.exprs(field(node, "arguments")?)?,
+        })
+    }
+
+    /// The expressions a node holds, in order.
+    fn exprs(&self, node: &Node) -> Result<Vec<Expr>> {
+        children(node).map(|node| self.expr(node)).collect()
+    }
+
+    fn index(&self, node: &Node) -> Result<ExprKind> {
+        shape(node, &["target", "index"], &[])?;
+        Ok(ExprKind::Index {
+            target: Box::new(self.expr(field(node, "target")?)?),
+            indices: self.exprs(field(node, "index")?)?,
+        })
+    }
+
+    fn projection(&self, node: &Node) -> Result<ExprKind> {
+        shape(node, &["key", "value"], &[])?;
+        let key = field(node, "key")?;
+        // A component key wraps a name, a number or a parenthesized run.
+        let key = match children(key).collect::<Vec<_>>().as_slice() {
+            [single] => self.component_key(single)?,
+            _ => self.component_key(key)?,
+        };
+        Ok(ExprKind::Projection {
+            key,
+            value: Box::new(self.expr(field(node, "value")?)?),
+        })
+    }
+
+    fn product(&self, node: &Node) -> Result<ExprKind> {
+        children(node)
+            .map(|entry| {
+                if entry.kind != "product_component" {
+                    return Err(unsupported(entry));
+                }
+                shape(entry, &["name", "value"], &[])?;
+                Ok(ProductEntry {
+                    key: self.component_key(field(entry, "name")?)?,
+                    value: self.expr(field(entry, "value")?)?,
+                    span: span(entry),
+                })
+            })
+            .collect::<Result<_>>()
+            .map(ExprKind::Product)
+    }
+
+    fn update(&self, node: &Node) -> Result<ExprKind> {
+        shape(node, &["target", "override"], &[])?;
+        let keyword = node
+            .children
+            .iter()
+            .find(|child| child.kind == "but")
+            .ok_or_else(|| unsupported(node))?;
+        // Continuation keyword tokens carry surrounding whitespace.
+        let start = keyword.start
+            + self
+                .text(keyword)
+                .find("but")
+                .ok_or_else(|| unsupported(keyword))?;
+        Ok(ExprKind::Update {
+            base: Box::new(self.expr(field(node, "target")?)?),
+            overrides: Box::new(self.expr(field(node, "override")?)?),
+            operator_span: Span {
+                start,
+                end: start + 3,
+            },
+        })
+    }
+
+    /// The removed spatial replacement `base but key: value`, refused at its
+    /// colon.
+    fn site_update(&self, node: &Node) -> Result<ExprKind> {
+        let key = field(node, "key")?;
+        let colon = node
+            .children
+            .iter()
+            .find(|child| child.kind == ":" && child.start >= key.end)
+            .ok_or_else(|| unsupported(node))?;
+        Err(form_at(
+            Span {
+                start: colon.end - 1,
+                end: colon.end,
+            },
+            FormDiagnosticKind::RemovedSpatialUpdate {
+                key_span: span(key),
+            },
+        ))
+    }
+
+    fn list(&self, node: &Node) -> Result<ExprKind> {
+        self.exprs(node).map(ExprKind::List)
+    }
+
+    fn range(&self, node: &Node) -> Result<ExprKind> {
+        shape(node, &["left", "right", "start", "end", "operator"], &[])?;
+        let start = node.child("left").or_else(|| node.child("start"));
+        let end = node.child("right").or_else(|| node.child("end"));
+        if start.into_iter().chain(end).any(|child| {
+            matches!(
+                child.kind.as_str(),
+                "range_expression" | "range_from" | "range_to" | "full_range" | "periodic_range"
+            )
+        }) {
+            return Err(form(node, FormDiagnosticKind::RangeChain));
+        }
+        Ok(ExprKind::Range {
+            start: start
+                .map(|node| self.expr(node).map(Box::new))
+                .transpose()?,
+            end: end.map(|node| self.expr(node).map(Box::new)).transpose()?,
+            inclusive: self.text(field(node, "operator")?).trim() == "..=",
+        })
+    }
+
+    fn periodic(&self, node: &Node) -> Result<ExprKind> {
+        shape(node, &["axis"], &[])?;
+        let axis = field(node, "axis")?;
+        if axis.kind == "periodic_range" {
+            return Err(form(node, FormDiagnosticKind::PeriodicTwice));
+        }
+        Ok(ExprKind::Periodic(Box::new(self.expr(axis)?)))
+    }
+
+    fn periodic_range(&self, node: &Node) -> Result<ExprKind> {
+        shape(node, &["operator", "axis"], &[])?;
+        Ok(ExprKind::Periodic(Box::new(
+            self.expr(field(node, "axis")?)?,
+        )))
+    }
+
+    fn map(&self, node: &Node) -> Result<ExprKind> {
+        children(node)
+            .map(|entry| self.map_entry(entry))
+            .collect::<Result<_>>()
+            .map(ExprKind::Map)
+    }
+
+    fn map_entry(&self, entry: &Node) -> Result<MapEntry> {
+        if entry.kind != "map_entry" {
+            return Err(unsupported(entry));
+        }
+        shape(entry, &["key", "value", "separator"], &[])?;
+        let separator = field(entry, "separator")?;
+        let written = self.text(separator).trim();
+        let key = field(entry, "key")?;
+        let key = match written {
+            ":" => MapKey::Static(self.name(key)?),
+            "=>" => MapKey::Computed(self.expr(key)?),
+            _ => return Err(unsupported(separator)),
+        };
+        Ok(MapEntry {
+            key,
+            value: self.expr(field(entry, "value")?)?,
+            span: span(entry),
+            separator_span: Span {
+                start: separator.end - written.len(),
+                end: separator.end,
+            },
+        })
+    }
+
+    fn configurable(&self, node: &Node) -> Result<ExprKind> {
+        shape(node, &["operator", "config", "body"], &[])?;
+        let values: Vec<_> = node.children_named("config").collect();
+        let operators: Vec<_> = node.children_named("operator").collect();
+        if values.is_empty() || values.len() != operators.len() {
+            return Err(unsupported(node));
+        }
+        let settings = values
+            .into_iter()
+            .zip(operators)
+            .map(|(value, operator)| {
+                Ok(SettingsAtom {
+                    value: self.expr(value)?,
+                    operator_span: Span {
+                        start: operator.end - 1,
+                        end: operator.end,
+                    },
+                })
+            })
+            .collect::<Result<_>>()?;
+        Ok(ExprKind::Configurable {
+            settings,
+            body: self.body(field(node, "body")?)?,
+        })
+    }
+
+    fn configure(&self, node: &Node) -> Result<ExprKind> {
+        shape(node, &["target", "config", "operator"], &[])?;
+        let operator = field(node, "operator")?;
+        Ok(ExprKind::Configure {
+            kind: if node.kind == "config_expression" {
+                ConfigureKind::Colon
+            } else {
+                ConfigureKind::Dot
+            },
+            target: Box::new(self.expr(field(node, "target")?)?),
+            settings: Box::new(self.expr(field(node, "config")?)?),
+            operator_span: Span {
+                start: operator.end - 1,
+                end: operator.end,
+            },
+        })
+    }
+
+    /// `for` and `each`, which share their header.
+    fn comprehension(&self, node: &Node) -> Result<ExprKind> {
+        let collection = if node.kind == "for_expression" {
+            "space"
+        } else {
+            "collection"
+        };
+        shape(node, &["binders", collection, "body"], &[])?;
+        let comprehension = Box::new(Comprehension {
+            binder: self.pattern(field(node, "binders")?)?,
+            collection: self.expr(field(node, collection)?)?,
+            body: self.expr(field(node, "body")?)?,
+        });
+        Ok(if node.kind == "for_expression" {
+            ExprKind::For(comprehension)
+        } else {
+            ExprKind::Each(comprehension)
+        })
+    }
+
+    fn reduction(&self, node: &Node) -> Result<ExprKind> {
+        shape(
+            node,
+            &[
+                "keyword",
+                "accumulator",
+                "seed",
+                "element",
+                "driver",
+                "body",
+            ],
+            &[],
+        )?;
+        if self.text(field(node, "keyword")?) != "reduce" {
+            return Err(unsupported(node));
+        }
+        Ok(ExprKind::Reduce(Box::new(Reduction {
+            accumulator: self.name(field(node, "accumulator")?)?,
+            seed: self.expr(field(node, "seed")?)?,
+            binder: self.pattern(field(node, "element")?)?,
+            collection: self.expr(field(node, "driver")?)?,
+            body: self.body(field(node, "body")?)?,
+        })))
     }
 
     fn match_expression(&self, node: &Node) -> Result<Match> {

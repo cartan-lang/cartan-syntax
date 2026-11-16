@@ -45,6 +45,10 @@ supported execution shape is the consumer's responsibility.
 `ast::parse_expression(&str) -> Result<ast::Expr, Vec<ast::Error>>`.
 Both use the existing grammar parser and then normalize its CST; there is no
 second lexer or expression parser. Grammar errors prevent AST construction.
+Text nesting deeper than `MAX_DEPTH` is the grammar diagnostic
+`DiagnosticKind::TooDeep` under the [CST interface's](component.md#diagnostics)
+nesting limit, so an AST is never deeper than that and a consumer's recursive
+walk of one is bounded by it.
 The document owns its source text and ordered items. Expressions and all
 declarations, patterns, names and annotations retain half-open UTF-8 byte spans
 in the supplied source. Numeric literals retain their spelling; machine number

@@ -23,6 +23,17 @@ pub use diagnostic::{Comprehension, Diagnostic, DiagnosticKind, Field, Rule, Spa
 pub use lexer::{KEYWORDS, LOCKED, NAMESPACE, PARAM, PERIODIC, WHEN};
 pub use treegram::Node;
 
+/// **The deepest a syntax tree may nest**: the nodes on the longest path from
+/// its root to a token, the root and the token included
+/// ([`Node::height`]). Text that nests deeper is
+/// [`DiagnosticKind::TooDeep`] on every entry point, before parsing can
+/// exhaust the stack, so a tree that reaches a consumer is never deeper; a
+/// binding such as `x = ((1))` takes four levels besides its parentheses
+/// (the document, the binding, the number and its token). The depth bounds
+/// the stack that parsing, normalization and any recursive walk of a tree
+/// take, and is chosen to be safe on a 2 MB thread in a debug build.
+pub const MAX_DEPTH: usize = 96;
+
 /// Source text, its concrete syntax tree, and recoverable grammar diagnostics.
 #[derive(Clone, Debug)]
 pub struct SyntaxTree {
@@ -54,7 +65,7 @@ pub fn parse_expression(source: &str) -> SyntaxTree {
 }
 
 fn parse(source: &str, entry: &str) -> SyntaxTree {
-    let parsed = treegram::parse(grammar::grammar(), source, entry);
+    let parsed = treegram::parse(grammar::grammar(), source, entry, MAX_DEPTH);
     SyntaxTree {
         source: source.to_owned(),
         root: parsed.root,

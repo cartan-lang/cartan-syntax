@@ -19,9 +19,20 @@ pub struct Node {
     pub start: usize,
     pub end: usize,
     pub children: Vec<Node>,
+    /// The nodes on the longest path from this one down to a token, itself
+    /// and the token included: 1 for a token.
+    pub(crate) height: usize,
 }
 
 impl Node {
+    /// The nodes on the longest path from this one down to a token, itself
+    /// and the token included: 1 for a token. A parse builds no node taller
+    /// than the depth it was given ([`crate::parse()`]), so neither does any
+    /// tree it returns nest deeper than that.
+    pub fn height(&self) -> usize {
+        self.height
+    }
+
     /// The node's own text.
     pub fn text<'s>(&self, src: &'s str) -> &'s str {
         &src[self.start..self.end]
@@ -137,6 +148,10 @@ pub enum Said {
         refused: bool,
         fields: Vec<Field>,
     },
+    /// **The text nests deeper than a tree may**: the depth the parse was
+    /// given ([`crate::parse()`]). The diagnostic stands at the first token
+    /// found below that depth, or where the parse went past it.
+    TooDeep { limit: usize },
 }
 
 /// One field a [`Said::Stated`] diagnostic read: its name and the byte
@@ -157,7 +172,7 @@ impl Diag {
                 .iter()
                 .find(|f| f.name == name)
                 .map(|f| &src[f.start..f.end]),
-            Said::Expected(_) => None,
+            Said::Expected(_) | Said::TooDeep { .. } => None,
         }
     }
 }

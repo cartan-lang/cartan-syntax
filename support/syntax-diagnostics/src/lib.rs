@@ -54,6 +54,16 @@ pub fn syntax(error: &ast::Error, source: usize) -> Report {
                     }
                     report.fields = json!({"refused":refused,"captures":fields.iter().map(|field|json!({"name":field.name,"span":{"start":field.span.start,"end":field.span.end}})).collect::<Vec<_>>()});
                 }
+                DiagnosticKind::TooDeep { limit } => {
+                    report.code = "syntax.too_deep";
+                    report.message =
+                        format!("this nests deeper than the {limit} levels a syntax tree may hold");
+                    report.notes.push(
+                        "bind part of it to a name; each bracket, operand and operator in a chain is a level"
+                            .into(),
+                    );
+                    report.fields = json!({"limit":limit});
+                }
             }
             report.fields["found"] = json!(error.found);
             report.fields["incomplete"] = json!(error.incomplete);

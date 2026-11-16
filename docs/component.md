@@ -36,14 +36,32 @@ malformed or incomplete input so an editor can inspect the remaining structure.
 ## Diagnostics
 
 `Diagnostic` preserves a byte `Span`, found text, whether input is incomplete,
-`DiagnosticKind` and `unclosed`. A kind is an expected-token set, an unexpected token, or
-a stated grammar rule with its refusal flag and captured fields. A captured
+`DiagnosticKind` and `unclosed`. A kind is an expected-token set, an unexpected token,
+a stated grammar rule with its refusal flag and captured fields, or the nesting
+limit below. A captured
 field has a name and span; it is not a rendered error sentence. `unclosed` is
 the innermost bracket open on the parse path at the furthest failure when its
 closer was among the expected tokens: the opener's span, the opening and closing
 text and the grammar node kind that opened it, such as `list`. The parser keeps
 these brackets per sequence, so a remembered rule's match never leaks one, and
 acceptance is unaffected. A rule's own stated diagnostic carries none.
+
+Nesting has a limit. No tree is deeper than `MAX_DEPTH` nodes on its longest
+path from the root to a token, the root and the token included
+(`Node::height`); a binding `x = ((1))` takes four besides its parentheses.
+Text nesting deeper is `DiagnosticKind::TooDeep { limit }` on every entry
+point, before parsing can exhaust the stack. A node taller than the limit is
+refused where it is built, the diagnostic spanning the first token below the
+limit in text order; and the parser refuses to read a level of nesting past the
+limit where it builds no node, as in a run of brackets that never closes, the
+diagnostic standing where it went past. Each operand of a chain of a
+left-grouping operator nests one level, as it does in the tree, so a long sum
+reaches the limit too. The refusal is final for the item that holds it, which
+becomes an `ERROR` node. The limit bounds the stack that parsing, normalization
+and every recursive walk of a tree take, and is chosen to be safe on a 2 MB
+thread in a debug build; the [depth tests](../tests/depth.rs) parse at it and
+beyond it on such a thread. `highlight` never descends, so it colors text of
+any depth.
 
 The owner requires diagnostics and errors to remain typed variants with payloads,
 source spans and underlying causes until one top-level formatter in a central

@@ -29,6 +29,12 @@ pub enum DiagnosticKind {
         refused: bool,
         fields: Vec<Field>,
     },
+    /// The text nests deeper than a syntax tree may, `limit` being
+    /// [`crate::MAX_DEPTH`]. The span is the first token found below that
+    /// depth, or where the parse went past it.
+    TooDeep {
+        limit: usize,
+    },
 }
 
 /// A recoverable grammar diagnostic and its source location.
@@ -79,6 +85,7 @@ impl Diagnostic {
                     })
                     .collect(),
             },
+            treegram::Said::TooDeep { limit } => DiagnosticKind::TooDeep { limit },
         };
         Self {
             span: Span {
