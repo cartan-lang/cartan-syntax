@@ -56,7 +56,7 @@ The source constructs are:
 
 | Area | Supported source representation |
 | --- | --- |
-| Items | Imports, ordinary and `param` bindings, `state` declarations, the lock clauses of `param` and `state` declarations, fiber declarations, struct declarations, function equations, guarded `while` update blocks and `require` statements; documentation strings on the document and on declarations. |
+| Items | Imports, ordinary and `param` bindings, `state` declarations and their lock clauses, fiber declarations, struct declarations, function equations, guarded `while` update blocks and `require` statements; documentation strings on the document and on declarations. |
 | Functions | Name, ordered parameters with patterns and optional value or function-signature annotations, and expression body. |
 | Fibers | Name and ordered named components with annotations; field kinds determine algebra, in graph. |
 | Annotations | Local or qualified named types, generic applications, inline struct, product and sum types and fixed positional tuple annotations, preserving names and numeric arguments such as `Array<Primitive, 1>` without interpreting rank. |
@@ -97,16 +97,18 @@ body. Reductions retain accumulator, seed, driver pattern, collection and body.
 Support beyond the listed forms and interfaces below is not implied.
 
 A `param` or `state` declaration is a `Binding` of kind `Parameter` or `State`.
-The lock clause written after its initial value,
-`param nj = 200 (locked when cons != none)`, is
+The lock clause written after a `state` declaration's initial value,
+`state cons = initial (locked when running)`, is
 `Binding.lock: Some(Lock { condition, span })`: the condition is an ordinary
 expression with its own span, normalized and refused like any other, and the
 clause span covers the parentheses. The grammar admits at most one clause, on a
 `param` or `state` declaration only, always with `when` and a condition, which
 may continue onto the next line; `(locked)` and `(locked when)` are the grammar
-diagnostic `Rule::LockCondition`. An ordinary binding has no lock. Syntax states
-no locking semantics: whether a `state` may be locked and what a lock forbids
-belong to analysis.
+diagnostic `Rule::LockCondition`. A lock belongs to a State: a Param is fixed
+over a run, so a lock has nothing to guard, and a `param` written with the
+clause is `FormDiagnosticKind::ParamLock` spanning the clause. An ordinary
+binding has no lock. Syntax states no locking semantics: what a lock forbids
+belongs to analysis.
 
 ## Imports and qualified names
 
@@ -532,8 +534,8 @@ relevant payloads: unsupported construct and its CST kind, comparison/range
 chain, body result count, a use alias combined with selectors, malformed
 format precision or notation, misplaced signatures, component keys of the
 wrong length, the removed spatial update, stated types on patterns other than
-names, discards and positional tuples, a type alternative other than `None`
-and misplaced documentation. `Error::span()` returns the full byte range; errors
+names, discards and positional tuples, a type alternative other than `None`,
+misplaced documentation and a lock on a `param`. `Error::span()` returns the full byte range; errors
 derive `Clone`, `Debug`, `PartialEq` and `Eq`. Grammar diagnostics are preserved
 without rewriting. Normalization reports the first form error in each document
 item; it returns no partial AST if any error occurs. Unsupported syntax is

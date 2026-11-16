@@ -215,6 +215,15 @@ pub fn syntax(error: &ast::Error, source: usize) -> Report {
                             .into(),
                     )
                 }
+                ParamLock => {
+                    report
+                        .notes
+                        .push("a lock belongs to a State; declare it with `state`".into());
+                    (
+                        "syntax.param_lock",
+                        "a Param is fixed over a run, so it takes no lock".into(),
+                    )
+                }
             };
             report.code = code;
             report.message = message;

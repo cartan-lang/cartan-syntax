@@ -135,13 +135,14 @@ pub struct Binding {
     pub pattern: Pattern,
     pub annotation: Option<Annotation>,
     pub value: Expr,
-    /// The lock clause written after a `param` or `state` declaration's
-    /// initial value; always absent on an ordinary binding.
+    /// The lock clause written after a `state` declaration's initial value;
+    /// always absent on any other binding. A `param` written with one is
+    /// [`FormDiagnosticKind::ParamLock`].
     pub lock: Option<Lock>,
 }
 
 /// `(locked when condition)`: the condition, an ordinary expression, under
-/// which a port is locked. Syntax states no locking semantics. `span` covers
+/// which a State is locked. Syntax states no locking semantics. `span` covers
 /// the parentheses.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
@@ -858,6 +859,9 @@ pub enum FormDiagnosticKind {
     MisplacedDocumentation {
         next_span: Option<Span>,
     },
+    /// A lock clause written on a `param`, which is fixed over a run and so
+    /// takes no lock; a lock belongs to a `state`. The span is the clause.
+    ParamLock,
 }
 
 /// Parse and normalize the supported source subset. No partial AST is returned.

@@ -502,12 +502,21 @@ impl Reader<'_> {
                     Some("state") => BindingKind::State,
                     _ => return Err(unsupported(node)),
                 };
+                let annotation = self.optional_annotation(node, SignaturePosition::Binding)?;
+                let value = self.expr(field(node, "value")?)?;
+                let lock = match (kind, node.child("lock")) {
+                    // A Param is fixed over a run, so a lock has nothing to guard.
+                    (BindingKind::Parameter, Some(lock)) => {
+                        return Err(form(lock, FormDiagnosticKind::ParamLock))
+                    }
+                    (_, lock) => lock.map(|lock| self.lock(lock)).transpose()?,
+                };
                 ItemKind::Binding(Binding {
                     kind,
                     pattern,
-                    annotation: self.optional_annotation(node, SignaturePosition::Binding)?,
-                    value: self.expr(field(node, "value")?)?,
-                    lock: node.child("lock").map(|lock| self.lock(lock)).transpose()?,
+                    annotation,
+                    value,
+                    lock,
                 })
             }
             "fiber_declaration" if node.child("variant").is_some() => {

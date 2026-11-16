@@ -3703,11 +3703,11 @@ fn a_comment_may_end_the_text_with_or_without_a_newline() {
     );
 }
 
-/// A port's lock clause is carried with its condition rather than refused or
+/// A State's lock clause is carried with its condition rather than refused or
 /// dropped, and its condition is normalized as any other expression.
 #[test]
-fn a_port_carries_its_lock_clause_and_condition() {
-    let source = "param nj = 200 (locked when cons != none)\n\
+fn a_state_carries_its_lock_clause_and_condition() {
+    let source = "state nj = 200 (locked when cons != none)\n\
                   state time: Real|None = none (locked when\n  running)\n\
                   param n = 1\n";
     let document = document(source);
@@ -3737,7 +3737,7 @@ fn a_port_carries_its_lock_clause_and_condition() {
         locks,
         [
             (
-                BindingKind::Parameter,
+                BindingKind::State,
                 Some(("(locked when cons != none)", "cons != none"))
             ),
             (
@@ -3761,7 +3761,7 @@ fn a_port_carries_its_lock_clause_and_condition() {
         }
     ));
     // A malformed condition is the condition's own form diagnostic.
-    let source = "param n = 1 (locked when 1 < 2 < 3)";
+    let source = "state n = 1 (locked when 1 < 2 < 3)";
     let errors = ast::parse_document(source).unwrap_err();
     let [Error::Form(FormDiagnostic {
         kind: FormDiagnosticKind::ComparisonChain,
@@ -3773,8 +3773,8 @@ fn a_port_carries_its_lock_clause_and_condition() {
     assert_eq!(&source[span.start..span.end], "1 < 2 < 3");
     // A clause without `when` and a condition never reaches the tree.
     for (source, at) in [
-        ("param n = 1 (locked)", 19),
-        ("param n = 1 (locked when)", 24),
+        ("state n = 1 (locked)", 19),
+        ("state n = 1 (locked when)", 24),
     ] {
         let errors = ast::parse_document(source).unwrap_err();
         assert!(
@@ -3792,4 +3792,20 @@ fn a_port_carries_its_lock_clause_and_condition() {
             "{source:?}: {errors:?}"
         );
     }
+}
+
+/// A Param is fixed over a run, so a lock written on one is refused by name at
+/// the clause rather than carried or reported as a generic parse failure.
+#[test]
+fn a_param_refuses_a_lock_clause() {
+    let source = "x = 1\nparam nj: Int = 200 (locked when x > 0)\n";
+    let errors = ast::parse_document(source).unwrap_err();
+    let [Error::Form(FormDiagnostic {
+        kind: FormDiagnosticKind::ParamLock,
+        span,
+    })] = errors.as_slice()
+    else {
+        panic!("{errors:?}")
+    };
+    assert_eq!(&source[span.start..span.end], "(locked when x > 0)");
 }

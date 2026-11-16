@@ -878,11 +878,11 @@ fn build() -> Grammar {
                  `state x: Vector<Real, 2>|None = vec(0, 0)`, and the initial is\n\
                  held to it.\n\
                  \n\
-                 **A parenthetical after the initial states when the port is\n\
-                 locked**: `param res: Int = 100 (locked when\n\
-                 physics != none)`. It belongs to a `param`, whose three writers\n\
-                 a lock reaches; a `state` belongs to the run, which a later\n\
-                 analysis stage states where one writes the clause.",
+                 **A parenthetical after the initial states when the state is\n\
+                 locked**: `state res: Int = 100 (locked when\n\
+                 physics != none)`. It belongs to a `state`: a `param` is fixed\n\
+                 over a run, so a lock has nothing to guard there, and source\n\
+                 normalization refuses the clause written on one by name.",
                 seq(vec![
                     field("kind", choice(vec![PARAM.into(), "state".into()])),
                     field("name", sym("identifier")),
@@ -895,7 +895,7 @@ fn build() -> Grammar {
             ),
             def(
                 "lock_clause",
-                "`(locked when physics != none)` — the parenthetical a `param`\n\
+                "`(locked when physics != none)` — the parenthetical a `state`\n\
                  writes after its initial to state the condition under which it\n\
                  is locked. The condition is an ordinary Bool\n\
                  expression of the document, elaborated into the graph like any\n\
