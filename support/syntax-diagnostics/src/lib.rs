@@ -224,6 +224,10 @@ pub fn syntax(error: &ast::Error, source: usize) -> Report {
                         "a Param is fixed over a run, so it takes no lock".into(),
                     )
                 }
+                KeyedWrite => (
+                    "syntax.keyed_write",
+                    "a write names a whole State, so it takes no keys".into(),
+                ),
             };
             report.code = code;
             report.message = message;

@@ -2487,10 +2487,11 @@ fn build() -> Grammar {
             ),
             def(
                 "write",
-                "`p <- e` — this port takes that expression's value, one batch —\n\
-                 and `u[box] <- e`, `u[lo..hi] <- e`, `u[i, j] <- e`, a write keyed\n\
-                 by a subscript on the state: only the selected sites take the\n\
-                 value. The `[` stands against the name, as an index's does.",
+                "`p <- e` — this port takes that expression's value, one batch.\n\
+                 **A write names a whole State**: `u[i, j] <- e` is no write, and\n\
+                 the subscript is read, its `[` against the name as an index's is,\n\
+                 so that source normalization refuses it by name rather than the\n\
+                 line failing to parse.",
                 seq(vec![
                     field("target", sym("identifier")),
                     optional(field("key", sym("subscript"))),

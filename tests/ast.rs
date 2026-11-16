@@ -3160,43 +3160,20 @@ fn a_leading_range_operator_spells_the_periodic_axis() {
     );
 }
 
+/// A write names a whole State, so a keyed write is refused at its keys rather
+/// than carried with them.
 #[test]
-fn writes_take_a_subscript_key_on_the_state() {
-    let source = "while true {\n  u[box] <- e\n  v[lo..hi] <- 1\n  w[i, j] <- 2\n  y[.., 3] <- 3\n  z <- 4\n}";
-    let document = ast::parse_document(source).unwrap_or_else(|errors| panic!("{errors:?}"));
-    let ItemKind::While(update) = &document.items[0].kind else {
-        panic!();
+fn a_keyed_write_is_refused_at_its_keys() {
+    let source = "while true {\n  z <- 4\n  w[i, ..3] <- 2\n}";
+    let errors = ast::parse_document(source).unwrap_err();
+    let [Error::Form(FormDiagnostic {
+        kind: FormDiagnosticKind::KeyedWrite,
+        span,
+    })] = errors.as_slice()
+    else {
+        panic!("{errors:?}")
     };
-    let written: Vec<_> = update
-        .writes
-        .iter()
-        .map(|write| {
-            assert_name_span(source, &write.target);
-            for key in &write.keys {
-                assert_expr_spans(source, key);
-            }
-            assert_expr_spans(source, &write.value);
-            assert!(source[write.span.start..write.span.end].starts_with(&write.target.text));
-            let keys: Vec<_> = write
-                .keys
-                .iter()
-                .map(|key| &source[key.span.start..key.span.end])
-                .collect();
-            (write.target.text.as_str(), keys)
-        })
-        .collect();
-    assert_eq!(
-        written,
-        [
-            ("u", vec!["box"]),
-            ("v", vec!["lo..hi"]),
-            ("w", vec!["i", "j"]),
-            ("y", vec!["..", "3"]),
-            ("z", vec![]),
-        ]
-    );
-    // The `[` stands against the name, as an index's does.
-    assert!(ast::parse_document("while true { u [i] <- e }").is_err());
+    assert_eq!(&source[span.start..span.end], "i, ..3");
 }
 
 #[test]

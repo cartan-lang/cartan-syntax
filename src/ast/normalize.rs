@@ -137,6 +137,21 @@ fn form_at(span: Span, kind: FormDiagnosticKind) -> Error {
     Error::Form(FormDiagnostic { kind, span })
 }
 
+/// `u[k, …] <- e`: a write names a whole State. The span covers the keys
+/// inside the brackets.
+fn keyed_write(subscript: &Node) -> Error {
+    let mut keys = children(subscript);
+    let first = keys.next().unwrap_or(subscript);
+    let last = keys.last().unwrap_or(first);
+    form_at(
+        Span {
+            start: first.start,
+            end: last.end,
+        },
+        FormDiagnosticKind::KeyedWrite,
+    )
+}
+
 fn unsupported(node: &Node) -> Error {
     form(
         node,
@@ -580,13 +595,11 @@ impl Reader<'_> {
                             return Err(unsupported(write));
                         }
                         shape(write, &["target", "key", "value"], &[])?;
+                        if let Some(key) = write.child("key") {
+                            return Err(keyed_write(key));
+                        }
                         Ok(Write {
                             target: self.name(field(write, "target")?)?,
-                            keys: write
-                                .child("key")
-                                .map(|key| children(key).map(|node| self.expr(node)).collect())
-                                .transpose()?
-                                .unwrap_or_default(),
                             value: self.expr(field(write, "value")?)?,
                             span: span(write),
                         })

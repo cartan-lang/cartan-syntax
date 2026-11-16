@@ -273,13 +273,12 @@ pub struct Require {
     pub span: Span,
 }
 
-/// `p <- e`, or the keyed `u[k, …] <- e` writing only the selected sites.
+/// `u <- e`: a write names a whole State. A keyed `u[k, …] <- e` is
+/// [`FormDiagnosticKind::KeyedWrite`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Write {
     pub target: Name,
-    /// The subscript's selectors in order; empty for a whole-state write.
-    pub keys: Vec<Expr>,
     pub value: Expr,
     pub span: Span,
 }
@@ -862,6 +861,9 @@ pub enum FormDiagnosticKind {
     /// A lock clause written on a `param`, which is fixed over a run and so
     /// takes no lock; a lock belongs to a `state`. The span is the clause.
     ParamLock,
+    /// A write naming part of a State, `u[k, …] <- e`; a write names a whole
+    /// State. The span covers the keys inside the brackets.
+    KeyedWrite,
 }
 
 /// Parse and normalize the supported source subset. No partial AST is returned.

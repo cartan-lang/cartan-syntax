@@ -63,7 +63,7 @@ The source constructs are:
 | Patterns | Name, wildcard, list, positional site pattern with its enclosing annotation retained, constructor, named components and brace entries, all nesting. |
 | Expressions | Literal number/boolean/string, tagged template, local/qualified name, unary/binary operation, conditional, local/qualified call, indexing, `of` component read, product value, `but` update, `none`, presence default `??`, absence mark `?`, list, named map, map join, configurable constructor/application, range, `periodic`, body, `for` and value-producing `each` comprehensions, and `reduce`. |
 | Body | Ordered `BodyItem::Local`, `BodyItem::Require` and `BodyItem::Result` entries, with exactly one result. A result need not be last. |
-| Update block | Written guard and ordered writes, preserving target names, subscript keys, values and spans. |
+| Update block | Written guard and ordered writes, preserving target names, values and spans. |
 
 Operators use enums, while names and number spellings remain strings.
 Indexing retains its source expression and index expressions. A list of periodic
@@ -89,10 +89,10 @@ periodic expression's span covering the whole spelling. `..a..`, `..=a..b` and
 `..a..b..c` are range chains, and `..a..b periodic` is refused as periodic
 twice.
 
-A write `u <- e` has empty `Write.keys`. A keyed write `u[k, …] <- e`, with the
-`[` against the state's name as for indexing, keeps the subscript's selectors
-in order, open ranges included. Which sites a key selects and whether the
-state admits it are analysis checks. Comprehensions retain their pattern, collection and
+A write `u <- e` names a whole State: `Write` has its target, value and span.
+A keyed write `u[k, …] <- e`, with the `[` against the State's name as for
+indexing, is `FormDiagnosticKind::KeyedWrite` spanning the keys inside the
+brackets. Comprehensions retain their pattern, collection and
 body. Reductions retain accumulator, seed, driver pattern, collection and body.
 Support beyond the listed forms and interfaces below is not implied.
 
@@ -537,7 +537,7 @@ chain, body result count, a use alias combined with selectors, malformed
 format precision or notation, misplaced signatures, component keys of the
 wrong length, the removed spatial update, stated types on patterns other than
 names, discards and positional tuples, a type alternative other than `None`,
-misplaced documentation and a lock on a `param`. `Error::span()` returns the full byte range; errors
+misplaced documentation, a lock on a `param` and a keyed write. `Error::span()` returns the full byte range; errors
 derive `Clone`, `Debug`, `PartialEq` and `Eq`. Grammar diagnostics are preserved
 without rewriting. Normalization reports the first form error in each document
 item; it returns no partial AST if any error occurs. Unsupported syntax is
