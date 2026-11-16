@@ -147,12 +147,10 @@ Consequently, `has_errors() == false` is not a claim of complete language
 validity. There is also no promise that consumers can analyze or execute every
 construct recognized by either API.
 
-The five fixture programs parse and retain their expected loops and fields.
-Tests also pin precedence, typed versus untyped patterns, scalar versus list
-binders, newline rules, byte spans, Unicode handling and diagnostic identity.
-The fixture copies are tests, not a second authoritative workload collection.
-They hold the five workload programs; Conway's subtraction places its operator at
-the end of the preceding line, as the newline rule requires.
+Tests pin precedence, typed versus untyped patterns, scalar versus list
+binders, newline rules, byte spans, Unicode handling and diagnostic identity,
+each on a few lines of text written for the one construct it tests. Whole
+programs are the application's examples, which it parses through this library.
 
 Inside a body, `i, j := [10, 2]` and `[i, j] := [10, 2]` both parse as one
 `local` with two identifiers in its `pattern` field. Their CST kinds remain

@@ -68,42 +68,40 @@ fn map_entries_distinguish_static_and_computed_separators_in_the_cst() {
     assert_eq!(tree.text(entries[1].child("value").unwrap()), Some("2"));
 }
 
+/// A statement continues onto the next line where the grammar says it does: a
+/// conditional's `then` and `else` open lines, `and` and `or` open lines, and
+/// a trailing operator and an open paren carry the line on.
 #[test]
-fn parses_all_five_current_lab_fixtures_and_retains_loop_structure() {
-    // Owner-supplied kernel-lab examples, copied 2026-10-23. Conway alone
-    // normalizes line continuation: its subtraction operator moves from the
-    // next line's start to the preceding line's end. The original lab checkout
-    // remains frozen; the grammar's leading-minus rule is preserved.
-    for source in [
-        include_str!("fixtures/diffusion.cart"),
-        include_str!("fixtures/transport.cart"),
-        include_str!("fixtures/conway.cart"),
-        include_str!("fixtures/hydro.cart"),
-        include_str!("fixtures/nbody.cart"),
+fn statements_continue_across_lines_where_the_grammar_says() {
+    for (source, tree) in [
+        (
+            "x = if a\n    then 1\n    else if b\n    then 2\n    else 3",
+            "(conditional_expression condition: (identifier) consequence: (number) \
+             alternative: (conditional_expression condition: (identifier) \
+             consequence: (number) alternative: (number)))",
+        ),
+        (
+            "x = a == 1\n    and b\n    or c",
+            "(binary_expression left: (binary_expression left: (binary_expression \
+             left: (identifier) right: (number)) right: (identifier)) right: (identifier))",
+        ),
+        (
+            "x = a -\n    b",
+            "(binary_expression left: (identifier) right: (identifier))",
+        ),
+        (
+            "x = 2 * (\n    a +\n    b\n)",
+            "(binary_expression left: (number) right: (parenthesized_expression \
+             (binary_expression left: (identifier) right: (identifier))))",
+        ),
     ] {
-        let tree = valid_document(source);
-        assert!(!nodes(&tree.root, "for_expression").is_empty());
-        assert_eq!(nodes(&tree.root, "agent").len(), 1);
+        let document = valid_document(source);
+        let [binding] = document.root.named_children().collect::<Vec<_>>()[..] else {
+            panic!("{source:?}: {}", document.root.sexp())
+        };
+        let value = binding.child("value").unwrap().sexp();
+        assert_eq!(value.trim_start_matches("value: "), tree, "{source:?}");
     }
-    for source in [
-        include_str!("fixtures/hydro.cart"),
-        include_str!("fixtures/nbody.cart"),
-    ] {
-        let tree = valid_document(source);
-        let reductions = nodes(&tree.root, "fold_expression");
-        assert!(!reductions.is_empty());
-        for reduction in reductions {
-            assert_eq!(
-                tree.text(reduction.child("keyword").unwrap()),
-                Some("reduce")
-            );
-            assert!(reduction.child("accumulator").is_some());
-            assert!(reduction.child("driver").is_some());
-            assert!(reduction.child("body").is_some());
-        }
-    }
-    let hydro = valid_document(include_str!("fixtures/hydro.cart"));
-    assert!(!nodes(&hydro.root, "site_pattern").is_empty());
 }
 
 #[test]

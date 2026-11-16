@@ -101,6 +101,8 @@ cargo run -p cartan-syntax --offline --example grammar > out/grammar.js && node 
 - Offline builds of the `serde` feature need the cached serde crates.
 - Building and running an actual Tree-sitter parser is untested here; only the
   generated JavaScript is syntax-checked.
-- Test syntax-tree structure and spans, malformed input and representative
-  programs; parser acceptance is not semantic validation. Tests assert typed
+- Test syntax-tree structure and spans and malformed input; parser acceptance
+  is not semantic validation. A test's Cartan text is as close to a one-liner
+  as it can be and tests one capability; programs live only in the
+  application's examples, and no document is copied here from elsewhere. Tests assert typed
   diagnostics, never wording.
