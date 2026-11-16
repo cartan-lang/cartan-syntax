@@ -60,23 +60,15 @@ implementations without an explicit scope and retirement condition.
 
 ## Layout
 
-- The root package `cartan-syntax` is the reusable library. It has no registry
-  dependency by default; its optional `serde` feature is for the CLI only.
-- `support/treegram` is the grammar engine; `support/diagnostics`
-  (`cartan-diagnostics`) renders reports; `support/syntax-diagnostics`
-  (`cartan-syntax-diagnostics`) is the one home of Syntax diagnostic wording.
-  The library depends on neither diagnostic package. `support/cli`
-  (`cartan-cli-support`) holds the help, outline, `--describe-cli`, `--color`
-  and `--json` envelope conventions every component CLI shares; extend it
-  rather than copying helpers into a CLI.
-- `cli/` (`cartan-syntax-cli`, binary `cartan-syntax`) is the default workspace
-  member: `cartan-syntax SOURCE [BINDING|UPDATE] [--ast] [--json]`. With no
-  arguments it prints help and exits 0; usage errors exit 2 and failures 1;
-  under `--json` every outcome is a JSON result on stdout. Library examples need
-  `-p cartan-syntax`.
-- There is no Python package. The workspace `cartdev syntax` adapter is generic
-  root code driven only by `--describe-cli` (including each command's `notes`,
-  its after-help) and `--json`; keep both accurate.
+- The root package `cartan-syntax` is the library. It has no registry
+  dependency by default; its optional `serde` feature serializes the source AST
+  for a consumer that stores or prints it.
+- `support/treegram` is the grammar engine the library reads and prints the
+  grammar with.
+- There is no command-line tool, no diagnostic wording and no Python package.
+  The library returns typed diagnostics; the application words them and reaches
+  syntax through its own executable. `examples/grammar.rs` prints the
+  Tree-sitter grammar.
 
 ## Dependencies
 
@@ -94,6 +86,7 @@ Run from this directory:
 ```sh
 cargo fmt --check
 cargo check --workspace --offline
+cargo check --features serde --offline
 cargo test --workspace --offline
 cargo clippy --workspace --all-targets --offline -- -D warnings
 RUSTDOCFLAGS=-Dwarnings cargo doc --workspace --no-deps --offline
@@ -105,9 +98,9 @@ cargo run -p cartan-syntax --offline --example grammar > out/grammar.js && node 
 
 - Documentation is checked from the workspace, and a standalone clone has no
   checker.
-- Offline builds need the cached Clap, serde and JSON crates.
+- Offline builds of the `serde` feature need the cached serde crates.
 - Building and running an actual Tree-sitter parser is untested here; only the
   generated JavaScript is syntax-checked.
 - Test syntax-tree structure and spans, malformed input and representative
-  programs; parser acceptance is not semantic validation. Wording tests belong
-  to `support/syntax-diagnostics`.
+  programs; parser acceptance is not semantic validation. Tests assert typed
+  diagnostics, never wording.

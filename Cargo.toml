@@ -7,8 +7,7 @@ publish = false
 description = "Cartan concrete syntax parsing and shared grammar tooling"
 
 [workspace]
-members = ["cli", "support/treegram", "support/diagnostics", "support/syntax-diagnostics", "support/cli"]
-default-members = ["cli"]
+members = ["support/treegram"]
 resolver = "2"
 
 [dependencies]
@@ -16,6 +15,6 @@ treegram = { path = "support/treegram" }
 serde = { version = "1.0", features = ["derive"], optional = true }
 
 [features]
-# Serialize the source AST; off by default so the library needs no registry
-# dependency. The CLI enables it for its JSON and tree views.
+# Serialize the source AST for a consumer that stores or prints it; off by
+# default so the library needs no registry dependency.
 serde = ["dep:serde"]

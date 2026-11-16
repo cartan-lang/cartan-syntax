@@ -602,11 +602,7 @@ source numbers through it, so source and `--set` values agree.
 `literal::parse_assignment(text)` splits `NAME=VALUE` at the first `=`. The name
 must be a word that is not a reserved word. Errors are `MissingEquals`,
 `InvalidName` and `Value`, whose literal-error spans index the whole assignment
-text. `cartan_syntax_diagnostics::literal` and `assignment` word them, with
-codes `syntax.literal_expected`, `syntax.literal_int_range`,
-`syntax.literal_real_range`, `syntax.assignment_equals` and
-`syntax.assignment_name`; register the assignment text as a source (for example
-named `--set`) to show the value in place. Whether a value specializes code or
+text, so a consumer can show the value in place. Whether a value specializes code or
 is passed at run time, and checking it against a param's declared type, belong
 to the consumer.
 
@@ -635,10 +631,7 @@ root document that the selector names, reading written syntax only:
 Selection resolves no imports, scopes or types and plans no updates; whether a
 selected item is a meaningful program value belongs to graph. Only `while`
 blocks normalize as update blocks, namespace bodies are not normalized and
-imported documents are never searched. Selection wording lives in
-`cartan-syntax-diagnostics` (`selection`, `selector`), with codes
-`syntax.selection_unknown`, `syntax.selection_ambiguous` and
-`syntax.selection_malformed`.
+imported documents are never searched.
 
 ## Adopted source contracts
 
