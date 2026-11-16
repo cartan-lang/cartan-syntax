@@ -620,7 +620,6 @@ fn preserves_annotations_site_patterns_and_source_spelling() {
 fn unsupported_constructs_and_optional_clauses_are_not_discarded() {
     for source in [
         "use std::* with (x: 1)",
-        "param n = 1 (locked when true)",
         "fiber Cell<k> = (v: Real)",
         "f(x: Real = 1) = x",
         "f(x) : { pad: 1 } = x",
@@ -3702,4 +3701,95 @@ fn a_comment_may_end_the_text_with_or_without_a_newline() {
         ast::parse_expression("gamma * 2 # twice\n").is_ok(),
         ast::parse_expression("gamma * 2\n").is_ok()
     );
+}
+
+/// A port's lock clause is carried with its condition rather than refused or
+/// dropped, and its condition is normalized as any other expression.
+#[test]
+fn a_port_carries_its_lock_clause_and_condition() {
+    let source = "param nj = 200 (locked when cons != none)\n\
+                  state time: Real|None = none (locked when\n  running)\n\
+                  param n = 1\n";
+    let document = document(source);
+    let text = |span: Span| &source[span.start..span.end];
+    let locks: Vec<_> = document
+        .items
+        .iter()
+        .map(|item| {
+            let ItemKind::Binding(binding) = &item.kind else {
+                panic!("{item:?}")
+            };
+            if let Some(lock) = &binding.lock {
+                // The item covers the clause; the initial value does not.
+                assert_eq!(item.span.end, lock.span.end);
+                assert!(binding.value.span.end < lock.span.start);
+            }
+            (
+                binding.kind,
+                binding
+                    .lock
+                    .as_ref()
+                    .map(|lock| (text(lock.span), text(lock.condition.span))),
+            )
+        })
+        .collect();
+    assert_eq!(
+        locks,
+        [
+            (
+                BindingKind::Parameter,
+                Some(("(locked when cons != none)", "cons != none"))
+            ),
+            (
+                BindingKind::State,
+                Some(("(locked when\n  running)", "running"))
+            ),
+            (BindingKind::Parameter, None),
+        ]
+    );
+    let ItemKind::Binding(Binding {
+        lock: Some(lock), ..
+    }) = &document.items[0].kind
+    else {
+        panic!()
+    };
+    assert!(matches!(
+        lock.condition.kind,
+        ExprKind::Binary {
+            operator: BinaryOperator::NotEqual,
+            ..
+        }
+    ));
+    // A malformed condition is the condition's own form diagnostic.
+    let source = "param n = 1 (locked when 1 < 2 < 3)";
+    let errors = ast::parse_document(source).unwrap_err();
+    let [Error::Form(FormDiagnostic {
+        kind: FormDiagnosticKind::ComparisonChain,
+        span,
+    })] = errors.as_slice()
+    else {
+        panic!("{errors:?}")
+    };
+    assert_eq!(&source[span.start..span.end], "1 < 2 < 3");
+    // A clause without `when` and a condition never reaches the tree.
+    for (source, at) in [
+        ("param n = 1 (locked)", 19),
+        ("param n = 1 (locked when)", 24),
+    ] {
+        let errors = ast::parse_document(source).unwrap_err();
+        assert!(
+            matches!(
+                errors.as_slice(),
+                [Error::Grammar(cartan_syntax::Diagnostic {
+                    kind: cartan_syntax::DiagnosticKind::Stated {
+                        rule: cartan_syntax::Rule::LockCondition,
+                        ..
+                    },
+                    span: Span { start, .. },
+                    ..
+                })] if *start == at
+            ),
+            "{source:?}: {errors:?}"
+        );
+    }
 }

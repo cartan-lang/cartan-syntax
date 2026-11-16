@@ -61,6 +61,21 @@ fn highlighting_colors_partial_text_from_the_grammar_lexis() {
         range.iter().map(|h| h.class).collect::<Vec<_>>(),
         [Number, Operator, Number]
     );
+    // A lock clause's words are keywords, though only the clause spells them.
+    let text = "(locked when c)";
+    assert_eq!(
+        highlight(text)
+            .iter()
+            .map(|h| (&text[h.span.start..h.span.end], h.class))
+            .collect::<Vec<_>>(),
+        [
+            ("(", Punctuation),
+            ("locked", Keyword),
+            ("when", Keyword),
+            ("c", Name),
+            (")", Punctuation),
+        ]
+    );
     // Unfinished documentation colors as a string to the end of the text.
     let text = "\"\"\"\nThe radius \"of\" a\n# face";
     assert_eq!(

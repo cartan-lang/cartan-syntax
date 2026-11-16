@@ -135,6 +135,19 @@ pub struct Binding {
     pub pattern: Pattern,
     pub annotation: Option<Annotation>,
     pub value: Expr,
+    /// The lock clause written after a `param` or `state` declaration's
+    /// initial value; always absent on an ordinary binding.
+    pub lock: Option<Lock>,
+}
+
+/// `(locked when condition)`: the condition, an ordinary expression, under
+/// which a port is locked. Syntax states no locking semantics. `span` covers
+/// the parentheses.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+pub struct Lock {
+    pub condition: Box<Expr>,
+    pub span: Span,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -881,8 +881,8 @@ fn build() -> Grammar {
                  **A parenthetical after the initial states when the port is\n\
                  locked**: `param res: Int = 100 (locked when\n\
                  physics != none)`. It belongs to a `param`, whose three writers\n\
-                 a lock reaches; a `state` belongs to the run, and the parser\n\
-                 states that where one writes the clause.",
+                 a lock reaches; a `state` belongs to the run, which a later\n\
+                 analysis stage states where one writes the clause.",
                 seq(vec![
                     field("kind", choice(vec![PARAM.into(), "state".into()])),
                     field("name", sym("identifier")),

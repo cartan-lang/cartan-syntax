@@ -448,6 +448,16 @@ impl Reader<'_> {
             .transpose()
     }
 
+    /// `(locked when condition)`; the grammar states a clause without `when`
+    /// and a condition, so a `lock_clause` always holds both.
+    fn lock(&self, node: &Node) -> Result<Lock> {
+        shape(node, &["condition"], &[])?;
+        Ok(Lock {
+            condition: Box::new(self.expr(field(node, "condition")?)?),
+            span: span(node),
+        })
+    }
+
     fn item(&self, node: &Node) -> Result<Item> {
         let kind = match node.kind.as_str() {
             "use_declaration" => {
@@ -475,7 +485,11 @@ impl Reader<'_> {
                 })
             }
             "binding" | "pattern_binding" | "port_declaration" => {
-                shape(node, &["name", "pattern", "type", "kind", "value"], &[])?;
+                shape(
+                    node,
+                    &["name", "pattern", "type", "kind", "value", "lock"],
+                    &[],
+                )?;
                 let pattern = self.typed_pattern(
                     node.child("pattern")
                         .or_else(|| node.child("name"))
@@ -493,6 +507,7 @@ impl Reader<'_> {
                     pattern,
                     annotation: self.optional_annotation(node, SignaturePosition::Binding)?,
                     value: self.expr(field(node, "value")?)?,
+                    lock: node.child("lock").map(|lock| self.lock(lock)).transpose()?,
                 })
             }
             "fiber_declaration" if node.child("variant").is_some() => {

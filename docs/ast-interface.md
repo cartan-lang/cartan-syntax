@@ -56,7 +56,7 @@ The source constructs are:
 
 | Area | Supported source representation |
 | --- | --- |
-| Items | Imports, ordinary and `param` bindings, `state` declarations, fiber declarations, struct declarations, function equations, guarded `while` update blocks and `require` statements; documentation strings on the document and on declarations. |
+| Items | Imports, ordinary and `param` bindings, `state` declarations, the lock clauses of `param` and `state` declarations, fiber declarations, struct declarations, function equations, guarded `while` update blocks and `require` statements; documentation strings on the document and on declarations. |
 | Functions | Name, ordered parameters with patterns and optional value or function-signature annotations, and expression body. |
 | Fibers | Name and ordered named components with annotations; field kinds determine algebra, in graph. |
 | Annotations | Local or qualified named types, generic applications, inline struct, product and sum types and fixed positional tuple annotations, preserving names and numeric arguments such as `Array<Primitive, 1>` without interpreting rank. |
@@ -95,6 +95,18 @@ in order, open ranges included. Which sites a key selects and whether the
 state admits it are analysis checks. Comprehensions retain their pattern, collection and
 body. Reductions retain accumulator, seed, driver pattern, collection and body.
 Support beyond the listed forms and interfaces below is not implied.
+
+A `param` or `state` declaration is a `Binding` of kind `Parameter` or `State`.
+The lock clause written after its initial value,
+`param nj = 200 (locked when cons != none)`, is
+`Binding.lock: Some(Lock { condition, span })`: the condition is an ordinary
+expression with its own span, normalized and refused like any other, and the
+clause span covers the parentheses. The grammar admits at most one clause, on a
+`param` or `state` declaration only, always with `when` and a condition, which
+may continue onto the next line; `(locked)` and `(locked when)` are the grammar
+diagnostic `Rule::LockCondition`. An ordinary binding has no lock. Syntax states
+no locking semantics: whether a `state` may be locked and what a lock forbids
+belong to analysis.
 
 ## Imports and qualified names
 
@@ -544,7 +556,7 @@ ordered writes only; other update-body forms are outside this AST subset.
 
 Only the value annotations described above, the imports above,
 and the listed expression forms are normalized. Default arguments,
-function-header configuration/lock clauses,
+function-header configuration clauses,
 general `fold`, guard/configuration clauses on reductions and inline-description pattern heads
 return unsupported errors. Broader syntax restrictions such as periodic operands
 or annotation-placement rules are not comprehensively validated. Names, type
