@@ -21,23 +21,20 @@ and broader grammar inspection.
 ## Boundary
 
 Syntax owns source parsing, normalization, source locations and syntax-form
-errors. Graph owns configurable semantics and its source adapter. Its
-[semantic graph contract](../../cartan-graph/docs/records/semantic-graph.md)
-and the workspace [language scope](../../docs/records/language-scope.md) describe
-current semantic support and limits. Retained configurable
+errors. The [compiler](../../cartan-compiler/docs/design.md) owns name resolution,
+type checking, configurable semantics, overload selection, domain interpretation
+and computational graph construction under the workspace's
+[language scope](../../docs/records/language-scope.md). Retained configurable
 syntax does not imply runtime function values, returned functions or dynamic
-callees. Syntax normalizes function-signature parameter annotations; overload
-resolution and static function-argument binding belong to graph.
+callees. Syntax normalizes function-signature parameter annotations without
+selecting overloads or binding static function arguments.
 
-Graph is the only direct consumer of this AST. It owns its source adapter, name
-resolution, type checking, overload selection, constants, domain interpretation
-and graph construction. Codegen consumes graph's typed computational
-representation, using only the diagnostic packages from this repository, and owns array composition and
-numerical lowering. The syntax AST therefore contains no inferred types,
-selected update target, resource references or chosen computational units. It
-preserves declarations and imports instead of assuming a document has exactly one
-`while true` update or discarding `use std::*` or `main = 0`. Enforcing a
-supported execution shape is the consumer's responsibility.
+The compiler consumes this AST; the application also consumes syntax facts
+through this library. Parsing and normalization do not choose an execution
+plan. The AST contains no inferred types, selected update target, resource
+references or chosen computational units. It preserves declarations and imports
+instead of assuming a document has exactly one `while true` update or discarding
+`use std::*` or `main = 0`. Semantic eligibility belongs to the compiler.
 
 ## Entry points and data
 
@@ -67,7 +64,7 @@ The source constructs are:
 | --- | --- |
 | Items | Imports, ordinary and `param` bindings, `state` declarations and their lock clauses, fiber declarations, struct declarations, function equations, guarded `while` update blocks and `require` statements; documentation strings on the document and on declarations. |
 | Functions | Name, ordered parameters with patterns and optional value or function-signature annotations, and expression body. |
-| Fibers | Name and ordered named components with annotations; field kinds determine algebra, in graph. |
+| Fibers | Name and ordered named components with annotations; field kinds determine algebra, in the compiler. |
 | Annotations | Local or qualified named types, generic applications, inline struct, product and sum types and fixed positional tuple annotations, preserving names and numeric arguments such as `Array<Primitive, 1>` without interpreting rank. |
 | Patterns | Name, wildcard, list, positional site pattern with its enclosing annotation retained, constructor, named components and brace entries, all nesting. |
 | Expressions | Literal number/boolean/string, tagged template, local/qualified name, unary/binary operation, conditional, local/qualified call, indexing, `of` component read, product value, `but` update, `none`, presence default `??`, absence mark `?`, list, named map, map join, configurable constructor/application, range, `periodic`, body, `for` and value-producing `each` comprehensions, and `reduce`. |
@@ -164,17 +161,17 @@ An explicit alias combined with any selector produces
 The CST grammar permits the combination; this AST source-form check rejects it.
 `with`/hole clauses remain typed unsupported constructs rather than being dropped.
 Namespace declarations and functors are not added. File selectors retain the file
-head and absence of explicit alias so graph analysis can apply its adopted default
+head and absence of explicit alias so compiler analysis can apply its adopted default
 namespace binding; this AST does not synthesize bindings, resolve names or decide
 exports, collisions, cycles or builtin availability.
 
 Changes to the `Use` fields or call head type need a deliberate update in
-graph's adapter and lockfile. Accepting a form in syntax does not promise
+the compiler's source analysis and lockfile. Accepting a form in syntax does not promise
 execution support.
 
 ## Strings, templates and structs
 
-String and template normalization is the interface agreed with graph under the
+String and template normalization is the source interface under the
 workspace's
 [settled string semantics](../../docs/records/collections.md#structs-tuples-lists-and-strings).
 `ExprKind::String(StringLiteral { form, raw, value })` covers `"…"` and, in
@@ -232,7 +229,7 @@ count that fits `u32` yields `FormDiagnosticKind::FormatPrecision { written }`
 spanning the point and digits. Remaining text other than `sci`/`eng` yields
 `FormatNotation { written }` spanning that text. The precision range, which
 values a format applies to, desugaring into joins, conversion and formatting
-belong to graph, codegen and runtime. Syntax provides no runtime template parser.
+belong to the compiler and application. Syntax provides no runtime template parser.
 
 `require(condition)` and `require(condition, message)` are statements, not
 expressions. `require` is a reserved word. At document level the statement is
@@ -242,14 +239,14 @@ result. The optional message is a quoted, triple-quoted or tagged template
 literal; any other message is the grammar diagnostic `Rule::RequireMessage`,
 and a missing parenthesized condition is `Rule::RequireCondition`. Syntax
 states no checking semantics; whether and when a requirement is checked
-belongs to graph and later stages.
+belongs to the compiler and application.
 
 `ItemKind::Struct(Struct { name, entries })` covers `struct P = {x: Real, …}`.
 Each `StructEntry` retains `name`, `annotation` and the entry span in source
-order, including duplicate keys; graph diagnoses duplicates and empty structs.
+order, including duplicate keys; the compiler checks their semantic validity.
 Annotations naming a struct use `AnnotationKind::Named`, and a brace
 value remains `ExprKind::Map`. A struct declaration is a structural alias, not a
-nominal constructor or type identity; graph interprets an annotated brace value
+nominal constructor or type identity; the compiler interprets an annotated brace value
 structurally through the alias, never from AST spelling alone.
 
 An inline struct type `{a: Real, b: Int}` written where an annotation stands is
@@ -257,8 +254,9 @@ An inline struct type `{a: Real, b: Int}` written where an annotation stands is
 declaration: source order, duplicate keys and an empty `{}` are preserved, and
 entry types nest. The annotation span covers the braces. It is admitted wherever
 a value annotation stands, including signature slots and results, struct entries,
-fiber components and generic type arguments. Graph interns an inline struct like
-a `struct` alias and decides where a struct is semantically eligible.
+fiber components and generic type arguments. The compiler decides the semantic
+identity and eligibility of an inline Struct annotation; the parser records
+its written fields.
 An inline product `(a: Real, b: Real)` written where a fiber type stands is
 `AnnotationKind::Product(Vec<Component>)`, the components a `fiber`
 declaration's body has, in source order with duplicates preserved; components
@@ -277,14 +275,14 @@ nested and optional forms. The interpreter recognizes the annotated-local prefix
 through `:=` before trying the competing map-value reading; actual repeated
 literals such as `[1; 2]` still receive `ListRepeat`. Tree-sitter uses its existing
 GLR alternatives; actual generated-parser execution remains unverified.
-Graph resolves width names and checks numeric validity and
+The compiler resolves width names and checks numeric validity and
 eligibility. The existing grammar requires at least one explicit slot and does
 not admit an empty `[]` annotation. `List<T>` remains an ordinary generic `Apply`.
 
 Bracket literals retain `ExprKind::List(Vec<Expr>)` for API compatibility. The
 accepted language contract assigns them fixed positional tuple identity; this
-AST spelling does not classify them as runtime-length Lists. Graph owns the
-migration of its existing literal interpretation. See the workspace
+AST spelling does not classify them as Lists. The compiler assigns their
+semantic type. See the workspace
 [pattern contract](../../docs/records/patterns.md).
 
 `each x in xs { value }` uses `ExprKind::Each(Box<Comprehension>)`, distinct from
@@ -292,15 +290,17 @@ migration of its existing literal interpretation. See the workspace
 bodies and nested walks retain their original spans. Braced bodies keep their
 ordinary local/result ordering and require exactly one result. Syntax preserves
 collection expressions without deciding their eligibility, element type or
-runtime length; graph owns those checks under the
+runtime length; the compiler owns those checks under the
 [collection contract](../../docs/records/collections.md). Map-producing entry
 bodies remain outside this normalization slice. AST admission does not establish
 portable List storage or execution on any backend.
 
 ## Function-signature parameters
 
-Function-signature parameters are the interface agreed with graph; graph's [resolution table](../../cartan-graph/docs/work/static-dispatch.md)
-owns overload semantics. `Parameter.annotation` is
+Function-signature parameters preserve written signatures. The compiler owns
+overload semantics under the [language scope](../../docs/records/language-scope.md);
+the [static-dispatch proposal](../../docs/work/static-multiple-dispatch.md)
+records unresolved extensions, not parser guarantees. `Parameter.annotation` is
 `Option<ParameterAnnotation>`: `ParameterAnnotation::Value(Annotation)` for an
 ordinary type, or `ParameterAnnotation::Signature(Signature { arguments, result,
 arrow_span, span })` for `g: (T1, …, Tn) -> R`, including `() -> R` and
@@ -317,7 +317,7 @@ unchanged.
 A signature describes a statically named function a parameter receives. It is not
 a function value. Syntax adds no overload marker, no result annotation on
 definitions, and no checks of whether a formal must be annotated; overload sets,
-matching, specificity, conformance and binding belong to graph.
+matching, specificity, conformance and binding belong to the compiler.
 
 A signature written anywhere else yields
 `FormDiagnosticKind::SignatureOutsideParameter { position, signature_span }` with
@@ -429,7 +429,7 @@ result meets and selected-arm demand are analysis checks; an empty or else-only
 
 ## Maps and configurables
 
-The brace-literal interface agreed with graph uses
+The brace-literal source interface uses
 `ExprKind::Map(Vec<MapEntry>)` for static `name: value` entries and computed
 `expression => value` entries, including mixed literals such as
 `{name: 1, k => value}`. The variant name is not a semantic type: under the
@@ -445,7 +445,7 @@ span, including any grouping. A String literal before `=>` stays computed;
 normalization neither folds it into a static name nor synthesizes a String
 expression for a static field. Checking the required String key type belongs
 to semantic analysis. Consumers must classify a literal before applying
-Struct-specific checks; syntax acceptance does not establish graph Map support.
+Struct-specific checks; syntax acceptance does not establish compiler Map support.
 
 The outer expression span includes braces. Entries stay in written order with
 duplicates retained and no evaluation or collision policy inferred. Key/value
@@ -461,12 +461,9 @@ key-value `each` bodies and merge changes are outside this delivery. String
 typing, Map evaluation, duplicate handling and iteration semantics belong to
 consumers and are not implemented here.
 
-This is a Rust source API change from `MapEntry.key: Name` to `MapKey`, plus
-the separator span field. Static Struct consumers must match `Static` explicitly
-and handle `Computed` before their static-field paths. Graph is the sole direct
-consumer and owns deliberate adoption of the tested supplier. Its existing
-locked revision remains usable until then. The
-[AST tests](../tests/ast.rs) cover mixed entries, unchanged static/empty forms,
+Static Struct consumers match `MapKey::Static` explicitly and handle `Computed`
+before applying static-field rules. Each consumer owns its dependency revision.
+The [AST tests](../tests/ast.rs) cover mixed entries, unchanged static/empty forms,
 expression keys, UTF-8/order/spans, malformed arrows and retained unsupported
 forms; the [CST tests](../tests/syntax.rs) cover entry field identity. Actual
 Tree-sitter parser generation/execution remains unverified.
@@ -497,18 +494,18 @@ no source spelling for named closing is inferred. The `operator_span` fields
 cover only the written `:`, `.` or `<>`, excluding continuation whitespace.
 Other expression spans retain the complete written form and grouping.
 
-These forms preserve source only. Graph owns setting/default scopes, type
+These forms preserve source only. The compiler owns setting/default scopes, type
 inference and fitting, duplicate/unknown-key diagnostics, joins, live substitution,
 interface closing, configurable consumption and the prohibition on configurable
 values nested inside settings. Syntax preserves such nested expressions when
-otherwise supported so graph can diagnose them. The retired function-header
+otherwise supported so the compiler can diagnose them. The retired function-header
 configuration `f(x):{c:1}=body` and positional parameter defaults remain
 unsupported normalized forms. No execution support follows from AST acceptance.
 
-The constructor chain and literal closing are the adopted configurable forms;
-[the governing workspace work item](../../docs/work/compile-language-integration.md)
-records their bounded contract. Syntax adopts only the written forms; evaluation
-and expansion machinery are outside this component.
+Constructor chains and literal closing preserve written configurable forms.
+Their meaning belongs to the [compiler](../../cartan-compiler/docs/design.md)
+under the [language scope](../../docs/records/language-scope.md). Syntax
+acceptance does not establish evaluation or expansion support.
 
 ## Normalization and diagnostics
 
@@ -555,9 +552,8 @@ rejected explicitly; declarations, options and clauses must never be silently
 dropped. This scoped AST does not imply complete
 language validation, and CST acceptance alone remains weaker evidence.
 
-The grammar's current precedence and newline rules are authoritative for this
-transfer. The parser it replaced in codegen erased newlines and used different
-power associativity; consumers must not recreate those differences. Unary `+`
+The grammar defines precedence and newline grouping; consumers preserve the
+normalized tree's written association. Unary `+`
 is `UnaryOperator::Plus` and stands wherever unary `-` does, so `+0.5` and
 `-0.5` read alike. A line opening with `+` still continues the line above as
 the binary operator, so `[1\n +2]` is one item while `[1\n -2]` is two; a
@@ -596,7 +592,7 @@ current widths in the workspace integer and Real record.
 
 `literal::number(written)` is the one conversion of a number spelling, such as
 the text of an `ExprKind::Number`, to `Literal::Int` or `Literal::Real` by the
-same rules, failing with `NumberError::IntRange` or `RealRange`. Graph converts
+same rules, failing with `NumberError::IntRange` or `RealRange`. The compiler converts
 source numbers through it, so source and `--set` values agree.
 
 `literal::parse_assignment(text)` splits `NAME=VALUE` at the first `=`. The name
@@ -629,7 +625,7 @@ root document that the selector names, reading written syntax only:
   is `UnknownUpdate` with the block count. `selection::updates` lists them.
 
 Selection resolves no imports, scopes or types and plans no updates; whether a
-selected item is a meaningful program value belongs to graph. Only `while`
+selected item is a meaningful program value belongs to the compiler. Only `while`
 blocks normalize as update blocks, namespace bodies are not normalized and
 imported documents are never searched.
 
@@ -654,30 +650,17 @@ may appear in text.
 
 ## Local dependency delivery
 
-The owner accepts absolute local Git URLs and named branches for this workspace,
-as recorded in the master's [dependency policy](../../docs/records/local-git-dependencies.md).
-The current agreed AST is supplied on syntax's existing `main` branch:
+Workspace consumers follow the shared
+[dependency policy](../../docs/records/local-git-dependencies.md). Each consumer
+owns its dependency declaration and lockfile, which records the consumed commit.
+The supplier includes the local `support/treegram` package. Working-tree edits
+and branch switches do not change a consumer's locked revision; consumers adopt
+a tested supplier commit deliberately. Dependency caches are not editing locations.
 
-```toml
-cartan-syntax = { git = "file:///Users/jzrake/Work/Codes/cartan-lang/cartan-syntax", branch = "main" }
-```
-
-Graph owns this dependency declaration and its `Cargo.lock`, which records the
-consumed commit. Cargo's cached committed source includes the local
-`support/treegram` package. Supplier working-tree edits and branch switches do
-not change a consumer's locked revision; updating that revision is a deliberate
-consumer operation after a tested supplier commit is available.
-
-Syntax owns interface changes, commits and any requested specialized ordinary
-Git branch. Consumer-specific changes come as requests to this component; the
-consumer selects the agreed branch and records its consumed revision and checks.
-Dependency caches are not editing locations. No manual vendoring, working-tree
-path dependency, agent worktree, remote or publication is needed for this setup.
-
-A fresh dependency cache needs access to the supplier Git repository at the
-configured location. The owner accepts this machine-specific address for local
-development; portable public distribution remains a separate decision. Syntax
-itself still builds from its repository without an adjacent checkout.
+Syntax owns interface changes and their verification. The compiler and
+application own their adapters and downstream checks. Public distribution must
+not depend on a particular machine's checkout locations; this library builds
+from its repository without adjacent checkouts.
 
 ## Verification and ownership
 
@@ -685,7 +668,7 @@ The [AST tests](../tests/ast.rs) check representative structure, spans, body
 order, pattern normalization, grouping, precedence, annotations, unsupported
 clauses and complete grammar-error preservation.
 Existing [CST tests](../tests/syntax.rs) retain the grammar/editor checks.
-Graph verifies its adapter and source-to-graph behavior independently.
+The compiler verifies its adapter and source-to-graph behavior independently.
 
-The syntax component owns implementation here; graph owns the adapter and
+The syntax component owns implementation here; the compiler owns the adapter and
 consumer dependency declaration and lockfile in its repository.

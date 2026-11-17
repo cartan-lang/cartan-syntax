@@ -72,7 +72,7 @@ implementations without an explicit scope and retirement condition.
 
 ## Dependencies
 
-Consumers (Graph, Codegen, Compile, Runtime) depend on this repository through
+The compiler and application depend on this repository through
 Cargo Git dependencies on `main` with the absolute local `file://` URL, and take
 all Syntax packages in one lock update. Each consumer's `Cargo.lock` records the
 revision it uses. Agree interface changes with the consuming owner and announce

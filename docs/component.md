@@ -171,8 +171,8 @@ Manifests declare `MIT` and disable crates.io publication.
 
 ## Consumer integration
 
-Graph consumes the source AST and `selection`; Graph, Codegen and Compile use
-the diagnostic packages. Each owns its adapter and locked Git dependency,
+The compiler consumes the source AST, and the application consumes syntax
+facts and typed diagnostics. Each owns its adapter and locked Git dependency,
 following the [local dependency contract](ast-interface.md#local-dependency-delivery);
 its `Cargo.lock` is the record of the revision it consumes. Name resolution,
 overload selection, type checking and graph construction remain outside syntax. Integration and execution evidence belongs to the
