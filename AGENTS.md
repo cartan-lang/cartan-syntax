@@ -54,7 +54,7 @@ implementations without an explicit scope and retirement condition.
   projections with other surface syntax for implementation convenience.
 - Reject malformed or unsupported syntax explicitly; never silently drop text.
 - Keep tooling independent of builtin registries and semantic engines;
-  highlighting is lexical, not semantic analysis or a language server.
+  highlighting uses lexical and written syntax contexts, not semantic analysis or a language server.
 - Do not depend on, read or run the legacy checkout; semantic questions go to
   the lead supervisor.
 

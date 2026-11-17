@@ -43,7 +43,7 @@ fn highlighting_colors_partial_text_from_the_grammar_lexis() {
             ("while", Keyword),
             ("u", Name),
             ("<", Operator),
-            ("f", Name),
+            ("f", Function),
             ("(", Punctuation),
             ("1.5e3", Number),
             (",", Punctuation),
@@ -87,4 +87,48 @@ fn highlighting_colors_partial_text_from_the_grammar_lexis() {
             .collect::<Vec<_>>(),
         [(0, text.len(), String)]
     );
+}
+
+#[test]
+fn function_heads_and_annotation_names_keep_their_syntax_context() {
+    use HighlightClass::*;
+    for (text, expected) in [
+        (
+            "f(x: List<Real>, g: (Real) -> Int) = g(x)",
+            vec![
+                ("f", Function),
+                ("x", Name),
+                ("List", Type),
+                ("Real", Type),
+                ("g", Name),
+                ("Real", Type),
+                ("Int", Type),
+                ("g", Function),
+                ("x", Name),
+            ],
+        ),
+        (
+            "x: orbit::Body = body",
+            vec![("x", Name), ("orbit", Type), ("Body", Type), ("body", Name)],
+        ),
+        (
+            "m = {key: value}",
+            vec![("m", Name), ("key", Name), ("value", Name)],
+        ),
+        (
+            "f'(x) + ns::g(",
+            vec![("f", Function), ("x", Name), ("ns", Name), ("g", Function)],
+        ),
+        (
+            "bad = = 2\ny: Real = 1",
+            vec![("bad", Name), ("y", Name), ("Real", Type)],
+        ),
+    ] {
+        let names: Vec<_> = highlight(text)
+            .iter()
+            .filter(|h| matches!(h.class, Name | Function | Type))
+            .map(|h| (&text[h.span.start..h.span.end], h.class))
+            .collect();
+        assert_eq!(names, expected, "{text}");
+    }
 }

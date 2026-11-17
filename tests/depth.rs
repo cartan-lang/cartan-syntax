@@ -68,7 +68,7 @@ fn a_hundred_thousand_levels_are_refused_without_overflow() {
         too_deep(&ast::parse_document(&format!("x = {parens}")).unwrap_err());
         too_deep(&ast::parse_expression(&parens).unwrap_err());
         assert_eq!(completeness(&parens), Completeness::Invalid);
-        // highlighting is lexical and never descends
+        // With no annotation context, highlighting needs only its lexical scan.
         assert_eq!(highlight(&parens).len(), 200_001);
         let sum = format!("x = 1{}", " + 1".repeat(100_000));
         let span = too_deep(&ast::parse_document(&sum).unwrap_err());

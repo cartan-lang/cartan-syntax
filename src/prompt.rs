@@ -3,9 +3,9 @@
 //!
 //! [`completeness`] reads the text as a document and as one expression, using
 //! only the typed [`Diagnostic::incomplete`](crate::Diagnostic::incomplete)
-//! fact. [`highlight`] colors text line by line from the grammar's lexical
-//! layer, the same keyword, constant and operator sets the editor grammars
-//! print, so partially typed text colors before it parses.
+//! fact. [`highlight`] colors text from the grammar's lexical layer, with
+//! function heads recognized even before a call is complete and type names
+//! identified in the recoverable syntax tree. Neither needs name resolution.
 
 use crate::grammar::{grammar, CONSTANTS};
 use crate::{parse_document, parse_expression, Span, SyntaxTree};
@@ -37,6 +37,10 @@ pub enum HighlightClass {
     Operator,
     /// Brackets and commas.
     Punctuation,
+    /// A function definition or call head, including an unfinished call.
+    Function,
+    /// A name in a written type annotation.
+    Type,
     /// Any other word.
     Name,
 }
@@ -131,6 +135,8 @@ pub fn highlight(text: &str) -> Vec<Highlight> {
                 HighlightClass::Constant
             } else if lexis.lexical.keywords.iter().any(|w| w == word) {
                 HighlightClass::Keyword
+            } else if text[end..].trim_start_matches('\'').starts_with('(') {
+                HighlightClass::Function
             } else {
                 HighlightClass::Name
             };
@@ -154,7 +160,32 @@ pub fn highlight(text: &str) -> Vec<Highlight> {
         });
         pos = end;
     }
+    // Only a parsed type context can distinguish an annotation from a Map
+    // entry or a named constructor argument. Recovery preserves good items
+    // beside an unfinished one; its lexical colors remain in place.
+    if text.contains(':') {
+        type_names(&parse_document(text).root, &mut highlights);
+    }
     highlights
+}
+
+fn type_names(node: &crate::Node, highlights: &mut [Highlight]) {
+    if node.kind == "fiber_type" {
+        if let Some(name) = node.child("name") {
+            let start = highlights.partition_point(|h| h.span.end <= name.start);
+            for h in highlights[start..]
+                .iter_mut()
+                .take_while(|h| h.span.start < name.end)
+            {
+                if h.class == HighlightClass::Name {
+                    h.class = HighlightClass::Type;
+                }
+            }
+        }
+    }
+    for child in &node.children {
+        type_names(child, highlights);
+    }
 }
 
 fn line_end(text: &str, pos: usize) -> usize {

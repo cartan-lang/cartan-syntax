@@ -75,8 +75,8 @@ reaches the limit too. The refusal is final for the item that holds it, which
 becomes an `ERROR` node. The limit bounds the stack that parsing, normalization
 and every recursive walk of a tree take, and is chosen to be safe on a 2 MB
 thread in a debug build; the [depth tests](../tests/depth.rs) parse at it and
-beyond it on such a thread. `highlight` never descends, so it colors text of
-any depth.
+beyond it on such a thread. `highlight` keeps lexical colors at any depth; its type-name overlay
+walks only the bounded recovered tree.
 
 The owner requires diagnostics and errors to remain typed variants with payloads,
 source spans and underlying causes until one top-level formatter in a central
@@ -119,12 +119,17 @@ does but one stopped at the end of the text (the typed `incomplete` flag), and
 the text is parsed with `ast::parse_document`.
 
 `highlight(text)` returns non-overlapping byte spans with a `HighlightClass`
-(`Keyword`, `Constant`, `Number`, `String`, `Comment`, `Operator`, `Punctuation`
-or `Name`). It scans lexically, so partially typed text colors: words, constants
+(`Keyword`, `Constant`, `Number`, `String`, `Comment`, `Operator`, `Punctuation`,
+`Function`, `Type` or `Name`). Its lexical scan colors partially typed text: words, constants
 and operators come from the grammar's lexical layer, the same sets the editor
 grammars print, and only comments, strings and numbers are scanned by their
 token shapes. Template holes color as part of their literal, and an unterminated
 literal colors to its line's end. The reserved words are `KEYWORDS`.
+Function heads are names immediately followed by optional primes and `(`, even
+when the call is unfinished. Type names come from `fiber_type` nodes in the
+recovered document tree, including qualified and nested annotations. This
+distinguishes annotations from Map entries without name resolution. An item
+that cannot yet parse retains its lexical colors.
 
 An unfinished call is incomplete rather than refused: the call-head refusal
 applies only to a complete argument list, and the positional-argument refusal
