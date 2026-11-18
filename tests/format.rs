@@ -94,6 +94,10 @@ fn reports_grammar_and_source_form_failures() {
 #[test]
 fn function_separation_preserves_comment_attachment() {
     formats(
+        "f(x)=x\n\"\"\"The next function.\"\"\"\ng(x)=x",
+        "f(x) = x\n\n\"\"\"The next function.\"\"\"\ng(x) = x",
+    );
+    formats(
         "f(x)=x\ng(x)=x\n\n\n\nh(x)=x\n",
         "f(x) = x\n\ng(x) = x\n\nh(x) = x\n",
     );

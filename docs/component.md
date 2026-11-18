@@ -118,7 +118,7 @@ including the final line break if present, and indents broken bracketed forms
 by four spaces per open delimiter. Literal contents, including interpolation
 text and holes, comments and whitespace inside continuation tokens are copied
 as written. Adjacent top-level function definitions have exactly one blank line
-between them, after any trailing comment and before the next leading comment.
+between them, after any trailing comment and before the next leading comment or documentation string.
 Other blank-line placement and line wrapping remain as written.
 
 A changed document is parsed again and returned only if every written token,

@@ -156,7 +156,9 @@ impl Writer<'_> {
                 .children
                 .iter()
                 .enumerate()
-                .filter(|(_, node)| !node.extra && node.kind != "\n")
+                .filter(|(_, node)| {
+                    !node.extra && !matches!(node.kind.as_str(), "\n" | "doc_declaration")
+                })
                 .collect();
             separator = Some(
                 items
