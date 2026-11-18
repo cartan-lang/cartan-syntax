@@ -188,8 +188,6 @@ pub enum Rule {
     AnnotationAlternative,
     /// An update block with no braced writes.
     UpdateBody,
-    /// A `while` block with no guard.
-    WhileGuard,
     /// A conditional with no `then`.
     Then,
     /// A dot spelling a namespace step.
@@ -281,7 +279,6 @@ impl Rule {
         Rule::FunctionBody,
         Rule::AnnotationAlternative,
         Rule::UpdateBody,
-        Rule::WhileGuard,
         Rule::Then,
         Rule::NamespaceDot,
         Rule::ComponentDot,
@@ -370,7 +367,6 @@ impl Rule {
             | Rule::PatternValue
             | Rule::AnnotationAlternative
             | Rule::UpdateBody
-            | Rule::WhileGuard
             | Rule::NamespaceDot
             | Rule::ComponentDot
             | Rule::CallHead

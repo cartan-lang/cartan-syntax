@@ -10,6 +10,8 @@ fn prompt_text_is_complete_waiting_or_invalid() {
         ("main =", Incomplete),
         ("main = [1, 2", Incomplete),
         ("f(x) = {\n  y := x\n", Incomplete),
+        ("step { x <- 1", Incomplete),
+        ("step { x <- 1 }", Complete),
         // An unfinished call waits for its `)`; it is not a refused call head.
         ("x = f(1", Incomplete),
         ("x = f(", Incomplete),
@@ -32,7 +34,7 @@ fn prompt_text_is_complete_waiting_or_invalid() {
 #[test]
 fn highlighting_colors_partial_text_from_the_grammar_lexis() {
     use HighlightClass::*;
-    let text = "while u < f(1.5e3, \"a\\\"b\", none) # tail\nx := [true";
+    let text = "step { u <- f(1.5e3, \"a\\\"b\", none) # tail\nx := [true";
     let classes: Vec<(&str, HighlightClass)> = highlight(text)
         .iter()
         .map(|h| (&text[h.span.start..h.span.end], h.class))
@@ -40,9 +42,10 @@ fn highlighting_colors_partial_text_from_the_grammar_lexis() {
     assert_eq!(
         classes,
         [
-            ("while", Keyword),
+            ("step", Keyword),
+            ("{", Punctuation),
             ("u", Name),
-            ("<", Operator),
+            ("<-", Operator),
             ("f", Function),
             ("(", Punctuation),
             ("1.5e3", Number),

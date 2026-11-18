@@ -32,8 +32,8 @@
 //! # What the interpreter alone states
 //!
 //! A loop header's expression is parsed without the payload and
-//! configuration zones (`without`), so the brace after `every P`,
-//! `fold u := u0` and `for i in space` belongs to the header; tree-sitter
+//! configuration zones (`without`), so the brace after `fold u := u0`
+//! or `for i in space` begins its body; tree-sitter
 //! states the same preference with `prec.dynamic`. The parser's own
 //! diagnostics — the one a missing `=` after a port's name is reported
 //! as — stand in `expecting` and `refusing`, each labelled with the
@@ -493,7 +493,7 @@ fn build() -> Grammar {
               alone does not establish Tree-sitter parser conformance.\n\
               \n\
               An item is a binding, a port, a function,\n\
-              an agent, a use, or a bare expression standing alone — which is\n\
+              an update block, a use, or a bare expression standing alone — which is\n\
               the spelling of `main = expr` — and every composite expression reads in four\n\
               zones — `head(constitutive) : config { payload } with control`\n\
               — in that fixed order and any number of turns.\n\
@@ -659,7 +659,7 @@ fn build() -> Grammar {
                     sym("port_declaration"),
                     sym("fiber_declaration"),
                     sym("struct_declaration"),
-                    sym("agent"),
+                    sym("step_block"),
                     // the bare expression stands above the three items
                     // whose heads it shares because each of those states
                     // a sentence at its `=` rather than failing back to a
@@ -857,8 +857,7 @@ fn build() -> Grammar {
                             "use".into(),
                             PARAM.into(),
                             "state".into(),
-                            "every".into(),
-                            "while".into(),
+                            "step".into(),
                         ]),
                         Stated::NamespaceItem.label(),
                     ),
@@ -1328,65 +1327,13 @@ fn build() -> Grammar {
                 ]),
             ),
             def(
-                "agent",
-                "`every P (while G)? (: config)* { p <- e, … }`, and\n\
-                 `while G (: config)* { p <- e, … }` — an agent in its three\n\
-                 spellings, of which the third is sugar. `P` is the\n\
-                 period, of type `Real|None`, and `none` is the block that\n\
-                 fires as fast as the runner allows; **`while G` is the\n\
-                 spelling of `every none while G`**, a guard with no period,\n\
-                 and `while` with no guard is not a form. The brace outranks\n\
-                 the payload zone: an agent\n\
-                 header bars a juxtaposed brace, whichever spelling opens it,\n\
-                 so the brace is the agent's\n\
-                 writes and never `P`'s or `G`'s payload, and the\n\
-                 `:` after the header is the agent's configuration,\n\
-                 `: { precision: \"f64\" }`.",
-                prec_dynamic(
-                    1,
-                    choice(vec![
-                        seq(vec![
-                            "every".into(),
-                            nl(),
-                            field("period", header_expr()),
-                            optional(seq(vec![
-                                nl(),
-                                "while".into(),
-                                nl(),
-                                field("guard", header_expr()),
-                            ])),
-                            config_chain(),
-                            expecting(
-                                field("body", sym("body")),
-                                Stated::UpdateBody.label(),
-                            ),
-                        ]),
-                        // the period this spelling leaves out is `none`, and
-                        // the parser synthesizes it, so the two spellings
-                        // reach the elaborator as one AST
-                        seq(vec![
-                            "while".into(),
-                            nl(),
-                            // the brace standing where the guard belongs is
-                            // the unguarded block written in the guarded
-                            // spelling, and the guard's own rule would read
-                            // it as `G` and then complain that the body is
-                            // missing from a line that has one. The refusal
-                            // prints nowhere in the grammar value, so the
-                            // editors' parser is untouched by it
-                            refusing(
-                                "{",
-                                Stated::WhileGuard.label(),
-                            ),
-                            field("guard", header_expr()),
-                            config_chain(),
-                            expecting(
-                                field("body", sym("body")),
-                                Stated::UpdateBody.label(),
-                            ),
-                        ]),
-                    ]),
-                ),
+                "step_block",
+                "`step { p <- e, … }` declares an unconditional update.",
+                seq(vec![
+                    "step".into(),
+                    nl(),
+                    expecting(field("body", sym("body")), Stated::UpdateBody.label()),
+                ]),
             ),
             // ---- expressions -------------------------------------------
             def(
@@ -1878,8 +1825,7 @@ fn build() -> Grammar {
                  `reduce s := s0 …` — the bounded recurrence and the header that\n\
                  answers its destination. One rule,\n\
                  because it is one header: the keyword is the whole of the\n\
-                 difference. The dynamic precedence gives the brace to the body,\n\
-                 exactly as the agent's header keeps its writes.",
+                 difference. The dynamic precedence gives the brace to the body.",
                 prec_dynamic(
                     1,
                     seq(vec![
@@ -2393,11 +2339,9 @@ fn build() -> Grammar {
             ),
             def(
                 "body",
-                "One brace rule for three jobs, self-describing by its items: `:=`\n\
-                 locals and bare expressions make a payload or a body, `<-` writes\n\
-                 make the writes an `every`, a `tap` or a `key(name)` head takes.\n\
-                 (The node's name follows `ast::Body`, the crates' word for the\n\
-                 general brace.) A durable local refuses here, on A7's ground: a\n\
+                "A braced body can hold `:=` locals, expressions and `<-`\n\
+                 writes. The enclosing construct determines which items it accepts.\n\
+                 A durable local refuses here, on A7's ground: a\n\
                  body's line stands for many instances, and a durable write\n\
                  rewrites one declaring line.",
                 seq(vec![

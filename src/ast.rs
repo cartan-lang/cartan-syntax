@@ -60,7 +60,7 @@ pub enum ItemKind {
     Sum(Sum),
     Struct(Struct),
     Function(Function),
-    While(While),
+    Step(Step),
     Require(Require),
 }
 
@@ -253,10 +253,10 @@ pub enum SignaturePosition {
     SignatureResult,
 }
 
+/// `step { ... }`, an unconditional update block with writes in source order.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
-pub struct While {
-    pub guard: Expr,
+pub struct Step {
     pub writes: Vec<Write>,
     pub body_span: Span,
 }

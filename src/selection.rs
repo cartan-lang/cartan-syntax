@@ -3,10 +3,8 @@
 //! `UPDATE`, a whole authored update block by source order.
 //!
 //! Selection reads written syntax only. It resolves no imports, scopes or
-//! types and plans no updates: an update block is the whole authored block,
-//! its guard and every write, numbered among the root document's top-level
-//! update blocks from zero. Only `while` blocks normalize as update blocks,
-//! and namespace bodies and imported documents are never searched.
+//! types and plans no updates. It selects the entire `step` item and numbers
+//! the root document's top-level update blocks from zero.
 
 use crate::ast::{Document, Item, ItemKind, Pattern, PatternKind};
 use crate::Span;
@@ -95,7 +93,7 @@ pub fn updates(document: &Document) -> impl Iterator<Item = &Item> {
     document
         .items
         .iter()
-        .filter(|item| matches!(item.kind, ItemKind::While(_)))
+        .filter(|item| matches!(item.kind, ItemKind::Step(_)))
 }
 
 /// The one top-level item `selector` names.

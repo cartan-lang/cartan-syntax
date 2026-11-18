@@ -544,9 +544,7 @@ fn unsupported_constructs_and_optional_clauses_are_not_discarded() {
         "fiber Cell<k> = (v: Real)",
         "f(x: Real = 1) = x",
         "f(x) : { pad: 1 } = x",
-        "every 1 while true { x <- 1 }",
-        "while true : { precision: 1 } { x <- 1 }",
-        "while true { x := 1\n p <- x }",
+        "step { x := 1\n p <- x }",
         "x = reduce a := 0 for i in 0..2 while true { a + i }",
         "x = reduce a := 0 for i in 0..2 : { max_iter: 2 } { a + i }",
         "x = fold a := 0 for i in 0..2 { a + i }",
@@ -3085,7 +3083,7 @@ fn a_leading_range_operator_spells_the_periodic_axis() {
 /// than carried with them.
 #[test]
 fn a_keyed_write_is_refused_at_its_keys() {
-    let source = "while true {\n  z <- 4\n  w[i, ..3] <- 2\n}";
+    let source = "step {\n  z <- 4\n  w[i, ..3] <- 2\n}";
     let errors = ast::parse_document(source).unwrap_err();
     let [Error::Form(FormDiagnostic {
         kind: FormDiagnosticKind::KeyedWrite,
@@ -3456,8 +3454,8 @@ fn documentation_before_anything_but_a_declaration_is_refused() {
             Some("use std::*"),
         ),
         (
-            "state t = 0\n\"\"\"Step.\"\"\"\nwhile true {\n  t <- t + 1\n}\n",
-            Some("while true {\n  t <- t + 1\n}"),
+            "state t = 0\n\"\"\"Step.\"\"\"\nstep {\n  t <- t + 1\n}\n",
+            Some("step {\n  t <- t + 1\n}"),
         ),
         (
             "x = 1\n\"\"\"Check.\"\"\"\nrequire(x > 0)\n",

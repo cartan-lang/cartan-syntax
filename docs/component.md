@@ -128,8 +128,8 @@ Grammar and source-form failures return the original diagnostics. A spacing
 change that cannot be verified returns `FormatError::ChangedSyntax` with a
 span in the original text. The function takes borrowed source and never
 modifies it. Tests cover declarations, annotations, Tuples, function equations,
-multiline bodies, calls and comprehensions, along with idempotence, comment
-placement and exact literal spelling.
+update blocks, multiline bodies, calls and comprehensions, along with idempotence,
+comment placement and exact literal spelling.
 
 ## Prompt support
 
@@ -207,8 +207,7 @@ consuming components.
 
 ## Current limitations
 
-- Only `while` blocks normalize as update blocks; `every` blocks, namespace
-  bodies, default arguments, function-header
-  configuration and Tap bodies parse to a CST but are unsupported in the AST.
+- Namespace bodies, default arguments, function-header configuration and Tap
+  bodies parse to a CST but are unsupported in the AST.
 - Generated Tree-sitter JavaScript passes a syntax check; building and running a
   Tree-sitter parser is untested here.

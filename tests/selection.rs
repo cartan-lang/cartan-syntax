@@ -34,7 +34,7 @@ fn selectors_parse_bindings_update_blocks_and_the_update_alias() {
 #[test]
 fn selection_resolves_one_root_item_by_written_name_or_whole_update_block() {
     let text = "param n = 4\nstate u = 0\n[a, b] = [1, 2]\nf(x) = x\nmain = n\n\
-                while u < n {\n  u <- u + 1\n  u <- u\n}\nwhile u >= n { u <- 0 }\n";
+                step {\n  u <- u + 1\n  v <- u\n}\nstep { u <- 0 }\n";
     let document = ast::parse_document(text).unwrap();
     let source = |selector: &str| {
         let item = select(&document, &Selector::parse(selector).unwrap()).unwrap();
@@ -44,13 +44,23 @@ fn selection_resolves_one_root_item_by_written_name_or_whole_update_block() {
     assert_eq!(source("n"), "param n = 4");
     assert_eq!(source("b"), "[a, b] = [1, 2]");
     assert_eq!(source("f"), "f(x) = x");
-    // An update block is the whole authored block, guard and every write.
-    assert!(
-        source("update").starts_with("while u < n {") && source("update").ends_with("u <- u\n}")
-    );
-    assert_eq!(source("update:1"), "while u >= n { u <- 0 }");
+    assert_eq!(source("update"), "step {\n  u <- u + 1\n  v <- u\n}");
+    assert_eq!(source("update:1"), "step { u <- 0 }");
     let first = select(&document, &Selector::Update(0)).unwrap();
-    assert!(matches!(&first.kind, ItemKind::While(update) if update.writes.len() == 2));
+    let ItemKind::Step(block) = &first.kind else {
+        panic!("expected an update block");
+    };
+    assert_eq!(
+        &text[block.body_span.start..block.body_span.end],
+        "{\n  u <- u + 1\n  v <- u\n}"
+    );
+    let [u, v] = block.writes.as_slice() else {
+        panic!("expected two writes");
+    };
+    assert_eq!(u.target.text, "u");
+    assert_eq!(v.target.text, "v");
+    assert_eq!(&text[u.value.span.start..u.value.span.end], "u + 1");
+    assert_eq!(&text[v.span.start..v.span.end], "v <- u");
 
     assert_eq!(
         select(&document, &Selector::Update(2)),

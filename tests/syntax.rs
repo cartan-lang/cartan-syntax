@@ -254,7 +254,7 @@ fn local_list_patterns_require_a_body_for_colon_equals() {
 
 #[test]
 fn reports_typed_rule_identity_sites_and_captured_fields() {
-    let tree = parse_document("while true { x = 1 }");
+    let tree = parse_document("step { x = 1 }");
     assert!(tree.has_errors());
     let diagnostic = &tree.diagnostics[0];
     let DiagnosticKind::Stated {
@@ -268,10 +268,25 @@ fn reports_typed_rule_identity_sites_and_captured_fields() {
     assert_eq!(*rule, Rule::BodyEquals);
     assert!(*refused);
     assert!(!diagnostic.incomplete);
-    assert_eq!(diagnostic.span.start, 13);
+    assert_eq!(diagnostic.span.start, 7);
     assert_eq!(diagnostic.found.as_deref(), Some("x"));
     let name = fields.iter().find(|field| field.name == "name").unwrap();
     assert_eq!(tree.source.get(name.span.start..name.span.end), Some("x"));
+    assert_spans(&tree);
+
+    let tree = parse_document("step true { x <- 1 }");
+    let [diagnostic] = tree.diagnostics.as_slice() else {
+        panic!("{:?}", tree.diagnostics);
+    };
+    assert!(matches!(
+        diagnostic.kind,
+        DiagnosticKind::Stated {
+            rule: Rule::UpdateBody,
+            refused: false,
+            ..
+        }
+    ));
+    assert_eq!(diagnostic.found.as_deref(), Some("true"));
     assert_spans(&tree);
 
     let tree = parse_document("param n =");
@@ -329,6 +344,9 @@ fn all_editor_tooling_reads_the_shared_grammar() {
     assert!(grammar::print_emacs(&["custom_builtin"]).contains("custom_builtin"));
     assert!(grammar::grammar()
         .check_query("(for_expression binders: (binder_list)) @loop")
+        .is_empty());
+    assert!(grammar::grammar()
+        .check_query("(step_block body: (body)) @update")
         .is_empty());
 }
 
@@ -404,8 +422,8 @@ fn a_failed_item_ends_at_its_line_and_later_items_are_read() {
         ("x = 1 2\ny = 3\nz = 4 4\nw = 5", &["x = 1 2", "z = 4 4"], 2),
         // a bad line inside a body: the item ends with the body
         (
-            "while true {\n  u <- 1 1\n  v <- 2\n}\ny = 3",
-            &["while true {\n  u <- 1 1\n  v <- 2\n}"],
+            "step {\n  u <- 1 1\n  v <- 2\n}\ny = 3",
+            &["step {\n  u <- 1 1\n  v <- 2\n}"],
             1,
         ),
         // a statement continued onto the next line is one item when good

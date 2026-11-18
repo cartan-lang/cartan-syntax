@@ -32,9 +32,9 @@ selecting overloads or binding static function arguments.
 The compiler consumes this AST; the application also consumes syntax facts
 through this library. Parsing and normalization do not choose an execution
 plan. The AST contains no inferred types, selected update target, resource
-references or chosen computational units. It preserves declarations and imports
-instead of assuming a document has exactly one `while true` update or discarding
-`use std::*` or `main = 0`. Semantic eligibility belongs to the compiler.
+references or chosen computational units. It preserves imports, declarations,
+and any number of update blocks in source order. Semantic eligibility belongs
+to the compiler.
 
 ## Entry points and data
 
@@ -62,14 +62,14 @@ The source constructs are:
 
 | Area | Supported source representation |
 | --- | --- |
-| Items | Imports, ordinary and `param` bindings, `state` declarations and their lock clauses, fiber declarations, struct declarations, function equations, guarded `while` update blocks and `require` statements; documentation strings on the document and on declarations. |
+| Items | Imports, ordinary and `param` bindings, `state` declarations and their lock clauses, fiber declarations, struct declarations, function equations, `step` update blocks and `require` statements; documentation strings on the document and on declarations. |
 | Functions | Name, ordered parameters with patterns and optional value or function-signature annotations, and expression body. |
 | Fibers | Name and ordered named components with annotations; field kinds determine algebra, in the compiler. |
 | Annotations | Local or qualified named types, generic applications, inline struct, product and sum types and fixed positional tuple annotations, preserving names and numeric arguments such as `Array<Primitive, 1>` without interpreting rank. |
 | Patterns | Name, wildcard, list, positional site pattern with its enclosing annotation retained, constructor, named components and brace entries, all nesting. |
 | Expressions | Literal number/boolean/string, tagged template, local/qualified name, unary/binary operation, conditional, local/qualified call, indexing, `of` component read, product value, `but` update, `none`, presence default `??`, absence mark `?`, list, named map, map join, configurable constructor/application, range, `periodic`, body, `for` and value-producing `each` comprehensions, and `reduce`. |
 | Body | Ordered `BodyItem::Local`, `BodyItem::Require` and `BodyItem::Result` entries, with exactly one result. A result need not be last. |
-| Update block | Written guard and ordered writes, preserving target names, values and spans. |
+| Update block | `ItemKind::Step` for `step { ... }` with the braced body span and ordered writes, preserving target names, values and spans. |
 
 Operators use enums, while names and number spellings remain strings.
 Indexing retains its source expression and index expressions. A list of periodic
@@ -199,7 +199,7 @@ matter:
 - Any other documentation string is `Item.prose` of the item after it, which
   must be a binding (`param`, `state` and pattern bindings included), function,
   fiber, sum or struct item. The item's own span excludes its documentation.
-- Before a `use` line, a `while` block, a `require` statement or another
+- Before a `use` line, a `step` block, a `require` statement or another
   documentation string, or at the end of the document, it is refused with
   `FormDiagnosticKind::MisplacedDocumentation { next_span }`, spanning the
   documentation string; `next_span` covers the following item and is absent at
@@ -620,14 +620,12 @@ root document that the selector names, reading written syntax only:
   statements bind no selectable name. Several matches are
   `SelectionError::AmbiguousBinding` with each candidate's span; none is
   `UnknownBinding` with the names that are written, in source order.
-- `update:N` is the Nth top-level `while` block in source order, from zero: the
-  whole authored block, guard and every write, never one write. A missing index
-  is `UnknownUpdate` with the block count. `selection::updates` lists them.
+- `update:N` selects the entire Nth top-level `step` block in source order,
+  numbered from zero. A missing index is `UnknownUpdate` with the block count.
+  `selection::updates` lists the blocks.
 
-Selection resolves no imports, scopes or types and plans no updates; whether a
-selected item is a meaningful program value belongs to the compiler. Only `while`
-blocks normalize as update blocks, namespace bodies are not normalized and
-imported documents are never searched.
+Selection reads written items in the root document. The compiler determines
+whether a selected item is a meaningful program value.
 
 ## Adopted source contracts
 

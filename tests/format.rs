@@ -11,8 +11,16 @@ fn formats(source: &str, expected: &str) {
 #[test]
 fn declarations_annotations_and_tuples() {
     formats(
-        "\tparam n : Int= 3  \nstate step :Int=0\npair :[ Int,Real ]=[n,1.0]\n",
-        "param n: Int = 3\nstate step: Int = 0\npair: [Int, Real] = [n, 1.0]\n",
+        "\tparam n : Int= 3  \nstate count :Int=0\npair :[ Int,Real ]=[n,1.0]\n",
+        "param n: Int = 3\nstate count: Int = 0\npair: [Int, Real] = [n, 1.0]\n",
+    );
+}
+
+#[test]
+fn formats_step_writes_and_preserves_their_comments() {
+    formats(
+        "step{# swap\n  a<-b,b<-a # together\n }",
+        "step { # swap\n    a <- b, b <- a # together\n}",
     );
 }
 

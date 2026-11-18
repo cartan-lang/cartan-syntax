@@ -58,7 +58,7 @@ pub(super) fn document(
                         | ItemKind::Fiber(_)
                         | ItemKind::Sum(_)
                         | ItemKind::Struct(_) => item.prose = Some(written),
-                        ItemKind::Use(_) | ItemKind::While(_) | ItemKind::Require(_) => {
+                        ItemKind::Use(_) | ItemKind::Step(_) | ItemKind::Require(_) => {
                             errors.push(misplaced(written, Some(item.span)))
                         }
                     }
@@ -617,12 +617,8 @@ impl Reader<'_> {
                     body: self.expr(field(node, "body")?)?,
                 })
             }
-            "agent" => {
-                shape(node, &["guard", "body"], &[])?;
-                // `every` without a guard must not become a `while`.
-                if !node.children.iter().any(|child| child.kind == "while") {
-                    return Err(unsupported(node));
-                }
+            "step_block" => {
+                shape(node, &["body"], &[])?;
                 let body = field(node, "body")?;
                 let writes = children(body)
                     .map(|write| {
@@ -640,8 +636,7 @@ impl Reader<'_> {
                         })
                     })
                     .collect::<Result<_>>()?;
-                ItemKind::While(While {
-                    guard: self.expr(field(node, "guard")?)?,
+                ItemKind::Step(Step {
                     writes,
                     body_span: span(body),
                 })
