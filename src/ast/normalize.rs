@@ -7,7 +7,9 @@ type Result<T> = std::result::Result<T, Error>;
 /// Every item the grammar read is normalized, those beside an item it could
 /// not read included, so a document's errors are all its grammar diagnostics
 /// and the first form error of each item that parsed, in source order.
-pub(super) fn document(tree: SyntaxTree) -> std::result::Result<Document, Vec<Error>> {
+pub(super) fn document(
+    tree: &SyntaxTree,
+) -> std::result::Result<(Option<Prose>, Vec<Item>), Vec<Error>> {
     let mut errors: Vec<Error> = tree
         .diagnostics
         .iter()
@@ -17,7 +19,7 @@ pub(super) fn document(tree: SyntaxTree) -> std::result::Result<Document, Vec<Er
     if errors.is_empty() && tree.root.has_error() {
         return Err(vec![unsupported(&tree.root)]);
     }
-    let reader = Reader { tree: &tree };
+    let reader = Reader { tree };
     let mut prose = None;
     let mut items = Vec::new();
     // Documentation waiting for the item after it.
@@ -76,11 +78,7 @@ pub(super) fn document(tree: SyntaxTree) -> std::result::Result<Document, Vec<Er
     }
     errors.sort_by_key(|error| error.span().start);
     if errors.is_empty() {
-        Ok(Document {
-            source: tree.source,
-            prose,
-            items,
-        })
+        Ok((prose, items))
     } else {
         Err(errors)
     }

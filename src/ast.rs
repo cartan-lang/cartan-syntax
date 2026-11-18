@@ -868,7 +868,17 @@ pub enum FormDiagnosticKind {
 
 /// Parse and normalize the supported source subset. No partial AST is returned.
 pub fn parse_document(source: &str) -> Result<Document, Vec<Error>> {
-    normalize::document(crate::parse_document(source))
+    let tree = crate::parse_document(source);
+    let (prose, items) = normalize::document(&tree)?;
+    Ok(Document {
+        source: tree.source,
+        prose,
+        items,
+    })
+}
+
+pub(crate) fn check_document(tree: &crate::SyntaxTree) -> Result<(), Vec<Error>> {
+    normalize::document(tree).map(drop)
 }
 
 /// Parse and normalize an expression without changing its source offsets.

@@ -13,6 +13,7 @@
 
 pub mod ast;
 pub mod diagnostic;
+pub mod format;
 pub mod grammar;
 mod lexer;
 pub mod literal;
