@@ -13,8 +13,9 @@ pub enum FormatError {
     ChangedSyntax { span: Span },
 }
 
-/// Format a source document. Existing line breaks and literal and comment
-/// text are preserved. Only whitespace between written tokens is changed.
+/// Format a source document. Adjacent top-level functions are separated by one
+/// blank line. Other line breaks and literal and comment text are preserved.
+/// Only whitespace between written tokens is changed.
 /// Formatting requires a document that the source AST accepts, and returns a
 /// separate string only after the formatted text parses to the same concrete
 /// syntax, apart from its byte positions.
@@ -149,8 +150,52 @@ struct Writer<'a> {
 
 impl Writer<'_> {
     fn children(&mut self, parent: &Node) {
-        for node in &parent.children {
-            if node.children.is_empty()
+        let mut separator = None;
+        if parent.kind == "source_file" {
+            let items: Vec<_> = parent
+                .children
+                .iter()
+                .enumerate()
+                .filter(|(_, node)| !node.extra && node.kind != "\n")
+                .collect();
+            separator = Some(
+                items
+                    .windows(2)
+                    .filter(|pair| {
+                        pair.iter()
+                            .all(|(_, node)| node.kind == "function_definition")
+                    })
+                    .filter_map(|pair| {
+                        let start = pair[0].0 + 1;
+                        let end = pair[1].0;
+                        (start..end).find(|&at| parent.children[at].kind == "\n")
+                    })
+                    .collect::<Vec<_>>(),
+            );
+        }
+        let mut at = 0;
+        while at < parent.children.len() {
+            let node = &parent.children[at];
+            if separator
+                .as_ref()
+                .is_some_and(|starts| starts.contains(&at))
+            {
+                self.token(node, parent);
+                let newline = if self.source[..node.start].ends_with('\r') {
+                    "\r\n"
+                } else {
+                    "\n"
+                };
+                self.output.push_str(newline);
+                while parent
+                    .children
+                    .get(at + 1)
+                    .is_some_and(|next| next.kind == "\n")
+                {
+                    at += 1;
+                    self.end = parent.children[at].end;
+                }
+            } else if node.children.is_empty()
                 || node.extra
                 || matches!(
                     node.kind.as_str(),
@@ -161,6 +206,7 @@ impl Writer<'_> {
             } else {
                 self.children(node);
             }
+            at += 1;
         }
     }
 
@@ -212,16 +258,26 @@ fn first_change(before: &Node, after: &Node, source: &str, formatted: &str) -> O
         || before.field != after.field
         || before.named != after.named
         || before.extra != after.extra
-        || before.children.len() != after.children.len()
     {
         return Some(span(before));
     }
     if before.children.is_empty() && before.kind != "source_file" {
         return (before.text(source) != after.text(formatted)).then(|| span(before));
     }
-    before
-        .children
-        .iter()
-        .zip(&after.children)
+    // Only document-level separators may change count. Newlines inside a
+    // function or expression remain part of its exact concrete syntax.
+    fn children(node: &Node) -> Vec<&Node> {
+        node.children
+            .iter()
+            .filter(|child| node.kind != "source_file" || child.kind != "\n")
+            .collect()
+    }
+    let old = children(before);
+    let new = children(after);
+    if old.len() != new.len() {
+        return Some(span(before));
+    }
+    old.into_iter()
+        .zip(new)
         .find_map(|(before, after)| first_change(before, after, source, formatted))
 }

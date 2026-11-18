@@ -113,15 +113,17 @@ generators do not provide a language server or semantic completion features.
 
 [`format::format_document`](../src/format.rs) returns formatted text for a
 document accepted by the source AST. It works from the concrete tree and
-changes horizontal spacing between tokens. It keeps existing line breaks,
+changes whitespace between tokens. It keeps existing line breaks,
 including the final line break if present, and indents broken bracketed forms
 by four spaces per open delimiter. Literal contents, including interpolation
 text and holes, comments and whitespace inside continuation tokens are copied
-as written. The formatter leaves line wrapping and blank-line placement to the
-author.
+as written. Adjacent top-level function definitions have exactly one blank line
+between them, after any trailing comment and before the next leading comment.
+Other blank-line placement and line wrapping remain as written.
 
 A changed document is parsed again and returned only if every written token,
-comment, field and tree node still matches the original besides byte offsets.
+comment, field and tree node still matches the original besides byte offsets
+and the number of document-level separator newlines.
 Grammar and source-form failures return the original diagnostics. A spacing
 change that cannot be verified returns `FormatError::ChangedSyntax` with a
 span in the original text. The function takes borrowed source and never

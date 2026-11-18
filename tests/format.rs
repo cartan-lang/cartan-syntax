@@ -90,3 +90,17 @@ fn reports_grammar_and_source_form_failures() {
         matches!(errors.as_slice(), [Error::Form(error)] if error.kind == FormDiagnosticKind::ComparisonChain)
     );
 }
+
+#[test]
+fn function_separation_preserves_comment_attachment() {
+    formats(
+        "f(x)=x\ng(x)=x\n\n\n\nh(x)=x\n",
+        "f(x) = x\n\ng(x) = x\n\nh(x) = x\n",
+    );
+    formats(
+        "f(x)=x # tail\n# next function\ng(x)=x\n",
+        "f(x) = x # tail\n\n# next function\ng(x) = x\n",
+    );
+    formats("f(x)=x\r\n \r\n\r\ng(x)=x", "f(x) = x\r\n\r\ng(x) = x");
+    formats("f(x)=x\nx=2\ng(x)=x", "f(x) = x\nx = 2\ng(x) = x");
+}
