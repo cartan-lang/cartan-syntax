@@ -348,6 +348,9 @@ fn all_editor_tooling_reads_the_shared_grammar() {
     assert!(grammar::grammar()
         .check_query("(step_block body: (body)) @update")
         .is_empty());
+    assert!(grammar::grammar()
+        .check_query("(periodic_range axis: (range_expression)) @axis")
+        .is_empty());
 }
 
 #[test]

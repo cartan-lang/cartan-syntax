@@ -263,9 +263,17 @@ fn climb_rules(name: &str, doc: &str, c: &Climb, copy: Option<&Copy>) -> Vec<(St
             }
             let expr = climb_sym(name, copy);
             let body = match &op.form {
-                Form::Prefix { head, operand } => {
+                Form::Prefix {
+                    head,
+                    operand,
+                    root,
+                } => {
                     let mut items = seq_items(head);
-                    items.push(Js::call("field", vec![Js::str(operand), expr]));
+                    let operand_rule = match root {
+                        Some(node) => node_ref(node, copy),
+                        None => expr,
+                    };
+                    items.push(Js::call("field", vec![Js::str(operand), operand_rule]));
                     Js::call("seq", items)
                 }
                 Form::Infix { left, op: o, right } => {

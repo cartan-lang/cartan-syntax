@@ -1326,7 +1326,12 @@ impl<'g, 's> Engine<'g, 's> {
     /// The first prefix operator that applies at `pos`, with its operand.
     fn prefix(&mut self, c: &'g Climb, ci: usize, pos: usize, ctx: Ctx) -> Outcome {
         for op in &c.ops {
-            let Form::Prefix { head, operand } = &op.form else {
+            let Form::Prefix {
+                head,
+                operand,
+                root,
+            } = &op.form
+            else {
                 continue;
             };
             if self.excluded(ctx, &op.node) {
@@ -1340,7 +1345,9 @@ impl<'g, 's> Engine<'g, 's> {
             if p == pos {
                 continue;
             }
-            let Some((ons, end)) = self.climb(ci, p, op.prec, ctx, None, Some(operand))? else {
+            let min = if root.is_some() { 0 } else { op.prec };
+            let Some((ons, end)) = self.climb(ci, p, min, ctx, root.as_deref(), Some(operand))?
+            else {
                 continue;
             };
             nodes.extend(ons);

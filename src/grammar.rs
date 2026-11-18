@@ -392,7 +392,10 @@ fn descriptions(guard: Option<Rule>, least_one: bool) -> Vec<Rule> {
 fn open_range(range_op: &Rule, end: fn() -> Rule, start: fn(Rule) -> Rule) -> Rule {
     choice(vec![
         seq(vec![
-            not_ahead_soft(sym("periodic_range")),
+            // Only probe the rooted expression at a possible periodic prefix.
+            // Probing other expressions can memoize matches before diagnostics
+            // are recorded.
+            not_ahead_soft(seq(vec![ahead(".."), sym("periodic_range")])),
             field("operator", range_op.clone()),
             optional(seq(vec![not_ahead("{"), field("end", end())])),
         ]),
@@ -1392,9 +1395,6 @@ fn build() -> Grammar {
                     sym("each_expression"),
                     sym("fold_expression"),
                     sym("match_expression"),
-                    // after the prefix `..e`, which takes the end where one
-                    // follows and no bounded range does
-                    sym("periodic_range"),
                     sym("full_range"),
                 ]),
                 vec![
@@ -1436,7 +1436,10 @@ fn build() -> Grammar {
                     prefix("unary_expression", NEG, seq(vec![field("operator", "-"), nl()]), "operand"),
                     prefix("unary_expression", NEG, seq(vec![field("operator", "+"), nl()]), "operand")
                         .doc("unary `+`, standing wherever unary `-` does, so `+0.5` and `-0.5`\nread alike. A line opening with `+` still continues the line above,\nthe continuation token taking it as the binary operator."),
-                    prefix("range_to", RANGE, seq(vec![not_ahead_soft(sym("periodic_range")), field("operator", range_op.clone()), not_ahead("{")]), "end")
+                    prefix("periodic_range", RANGE + 1, seq(vec![field("operator", ".."), not_ahead("{")]), "axis")
+                        .operand_root("range_expression")
+                        .doc("`..a..b` — a periodic axis. The bounded range after the leading\n`..` takes the expression context's precedence and exclusions. For\nexample, `..0..n + 1` wraps `0..(n + 1)` and `for i in ..0..n { i }`\nleaves the brace for the comprehension body. `a..b periodic` is\nthe equivalent postfix spelling."),
+                    prefix("range_to", RANGE, seq(vec![field("operator", range_op.clone()), not_ahead("{")]), "end")
                         .doc("`..e` / `..=e` — a range with no start, an ordinary value as any\nrange is: `r = ..e`, `f(..=e)`. Its end reads at the range's own\nprecedence, so `..n - 1` is `..(n - 1)`. Where a bounded range follows\nthe `..`, the whole is the periodic axis `..a..b` instead."),
                     infix("range_expression", RANGE, Assoc::Left, "left", seq(vec![field("operator", range_op.clone()), not_ahead("{")]), "right")
                         .doc("`a..b` / `a..=b` — the loosest operator there is, Rust's own\nprecedence, so `0..n - 1` reads `0..(n - 1)`. It groups left here,\nand a later analysis stage refuses `a..b..c`: a range states two endpoints.\nAn end reads no brace, which is a header's body after `for i in 3..`.\nThe end stands on the operator's line: `0..` is complete as the open\nrange, so a newline after the operator ends it."),
@@ -1751,23 +1754,6 @@ fn build() -> Grammar {
                 "`..` — the range with neither end, an ordinary value: `r = ..`,\n\
                  `f(..)`. It stands where no end follows; `..e` takes one.",
                 field("operator", Rule::from("..")),
-            ),
-            def(
-                "periodic_range",
-                "`..a..b` — the periodic axis: the box axis `a..b` that wraps,\n\
-                 as a bare domain `box = ..0..n` or an axis among others\n\
-                 `[..0..ny, 0..nx]`. It is the bounded range after a leading\n\
-                 `..`, whose bounds read as those of `a..b` do, so `..0..n + 1`\n\
-                 wraps `0..(n + 1)`. `a..b periodic` is the other spelling, still\n\
-                 accepted; `..a..`, `..a..b..c` and `..a..b periodic` are refused.",
-                prec(
-                    RANGE + 1,
-                    seq(vec![
-                        field("operator", Rule::from("..")),
-                        not_ahead("{"),
-                        field("axis", sym("range_expression")),
-                    ]),
-                ),
             ),
             def(
                 "open_range",

@@ -3049,6 +3049,18 @@ fn a_leading_range_operator_spells_the_periodic_axis() {
         ),
         ("x = [..0..n, 0..m]", "x = [0..n periodic, 0..m]"),
         ("x = ..lo..hi + 1", "x = lo..hi + 1 periodic"),
+        (
+            "x = for i in ..lo..=hi + 1 { i }",
+            "x = for i in lo..=hi + 1 periodic { i }",
+        ),
+        (
+            "x = each i in ..0..n { i }",
+            "x = each i in 0..n periodic { i }",
+        ),
+        (
+            "x = reduce s := 0 for i in ..0..n { s + i }",
+            "x = reduce s := 0 for i in 0..n periodic { s + i }",
+        ),
     ] {
         assert_eq!(
             without_spans(&binding_value(sugar)),

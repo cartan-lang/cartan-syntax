@@ -34,8 +34,8 @@ fn a_function_body_preserves_leading_and_trailing_comments() {
 
 #[test]
 fn a_comprehension_preserves_calls_indices_and_operator_binding() {
-    let source = "a=for i in 0 .. n {\n    - f( x[ i ],i+1 ) ^2\n  }";
-    let expected = "a = for i in 0..n {\n    -f(x[i], i + 1) ^ 2\n}";
+    let source = "a=for i in .. 0 .. n {\n    - f( x[ i ],i+1 ) ^2\n  }";
+    let expected = "a = for i in ..0..n {\n    -f(x[i], i + 1) ^ 2\n}";
     formats(source, expected);
     for text in [source, expected] {
         let document = ast::parse_document(text).unwrap();

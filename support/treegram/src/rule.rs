@@ -107,8 +107,13 @@ pub enum Assoc {
 pub enum Form {
     /// `head operand` — `head` is any rule (it may hold whole
     /// expressions of its own, as `if c then a else` does), and the
-    /// operand after it is parsed at this operator's precedence.
-    Prefix { head: Rule, operand: String },
+    /// operand after it is parsed at this operator's precedence, or as
+    /// the specified root operator in the same expression context.
+    Prefix {
+        head: Rule,
+        operand: String,
+        root: Option<String>,
+    },
     /// `left op right`.
     Infix {
         left: String,
@@ -400,6 +405,7 @@ pub fn prefix(node: &str, prec: i32, head: impl Into<Rule>, operand: &str) -> Op
         form: Form::Prefix {
             head: head.into(),
             operand: operand.to_string(),
+            root: None,
         },
         dynamic: 0,
     }
@@ -455,6 +461,15 @@ impl Op {
 
     pub fn dynamic(mut self, n: i32) -> Op {
         self.dynamic = n;
+        self
+    }
+
+    /// Require a prefix operand rooted at another operator in this climb.
+    pub fn operand_root(mut self, kind: &str) -> Op {
+        let Form::Prefix { root, .. } = &mut self.form else {
+            panic!("only a prefix operator has an operand root");
+        };
+        *root = Some(kind.to_string());
         self
     }
 

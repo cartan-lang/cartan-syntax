@@ -118,12 +118,19 @@ impl Grammar {
                 }
                 let n = r.nodes.entry(op.node.clone()).or_default();
                 match &op.form {
-                    Form::Prefix { head, operand } => {
+                    Form::Prefix {
+                        head,
+                        operand,
+                        root,
+                    } => {
                         self.walk(head, n, &mut Vec::new());
-                        n.fields
-                            .entry(operand.clone())
-                            .or_default()
-                            .extend(whole.iter().cloned());
+                        let kinds = n.fields.entry(operand.clone()).or_default();
+                        match root {
+                            Some(kind) => {
+                                kinds.insert(kind.clone());
+                            }
+                            None => kinds.extend(whole.iter().cloned()),
+                        }
                     }
                     Form::Infix {
                         left,

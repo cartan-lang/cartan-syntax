@@ -12,6 +12,9 @@ fn prompt_text_is_complete_waiting_or_invalid() {
         ("f(x) = {\n  y := x\n", Incomplete),
         ("step { x <- 1", Incomplete),
         ("step { x <- 1 }", Complete),
+        ("x = for i in ..0..10 { i }", Complete),
+        ("x = for i in ..0..10 { i", Incomplete),
+        ("x = for i in ..0..10 { i ]", Invalid),
         // An unfinished call waits for its `)`; it is not a refused call head.
         ("x = f(1", Incomplete),
         ("x = f(", Incomplete),
