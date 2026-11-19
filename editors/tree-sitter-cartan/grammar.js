@@ -739,9 +739,9 @@ module.exports = grammar({
         $.for_expression,
         $.each_expression,
         $.fold_expression,
+        $.conditional_expression,
         $.match_expression,
         $.full_range,
-        $.conditional_expression,
         $.unary_expression,
         $.periodic_range,
         $.range_to,
@@ -758,39 +758,6 @@ module.exports = grammar({
         $.config_expression,
         $.configure_dot_expression,
         $.payload_expression,
-      ),
-
-    // `if c then a else b` — `then` is required and the `else`
-    // clause is optional, the two alternatives standing here in that
-    // order. `else` is a continuation word, so it may
-    // open a line of its own, and a next line beginning with any
-    // other word closes the conditional at its consequence.
-    // `if c then a` — a later analysis stage supplies `none` for the
-    // alternative. Reading the clause above first is
-    // what binds the `else` of `if a then if b then x else y` to
-    // the inner `if`.
-    conditional_expression: ($) =>
-      choice(
-        prec.right(
-          0,
-          seq(
-            "if",
-            field("condition", $._expression),
-            "then",
-            field("consequence", $._expression),
-            "else",
-            field("alternative", $._expression),
-          ),
-        ),
-        prec.right(
-          0,
-          seq(
-            "if",
-            field("condition", $._expression),
-            "then",
-            field("consequence", $._expression),
-          ),
-        ),
       ),
 
     // `not`, above the comparisons and below `and`
@@ -1144,9 +1111,9 @@ module.exports = grammar({
         $.for_expression,
         $.each_expression,
         $.fold_expression,
+        $.conditional_expression,
         $.match_expression,
         $.full_range,
-        alias($.conditional_expression_key, $.conditional_expression),
         alias($.unary_expression_key, $.unary_expression),
         alias($.periodic_range_key, $.periodic_range),
         alias($.range_to_key, $.range_to),
@@ -1159,30 +1126,6 @@ module.exports = grammar({
         alias($.index_expression_key, $.index_expression),
         alias($.component_expression_key, $.component_expression),
         alias($.configure_dot_expression_key, $.configure_dot_expression),
-      ),
-
-    conditional_expression_key: ($) =>
-      choice(
-        prec.right(
-          1,
-          seq(
-            "if",
-            field("condition", $._expression_key),
-            "then",
-            field("consequence", $._expression_key),
-            "else",
-            field("alternative", $._expression_key),
-          ),
-        ),
-        prec.right(
-          1,
-          seq(
-            "if",
-            field("condition", $._expression_key),
-            "then",
-            field("consequence", $._expression_key),
-          ),
-        ),
       ),
 
     unary_expression_key: ($) =>
@@ -1406,9 +1349,9 @@ module.exports = grammar({
           $.for_expression,
           $.each_expression,
           $.fold_expression,
+          $.conditional_expression,
           $.match_expression,
           $.full_range,
-          alias($.conditional_expression_header, $.conditional_expression),
           alias($.unary_expression_header, $.unary_expression),
           alias($.periodic_range_header, $.periodic_range),
           alias($.range_to_header, $.range_to),
@@ -1423,30 +1366,6 @@ module.exports = grammar({
           alias($.index_expression_header, $.index_expression),
           alias($.component_expression_header, $.component_expression),
           alias($.configure_dot_expression_header, $.configure_dot_expression),
-        ),
-      ),
-
-    conditional_expression_header: ($) =>
-      choice(
-        prec.right(
-          1,
-          seq(
-            "if",
-            field("condition", $._expression_header),
-            "then",
-            field("consequence", $._expression_header),
-            "else",
-            field("alternative", $._expression_header),
-          ),
-        ),
-        prec.right(
-          1,
-          seq(
-            "if",
-            field("condition", $._expression_header),
-            "then",
-            field("consequence", $._expression_header),
-          ),
         ),
       ),
 
@@ -1696,9 +1615,9 @@ module.exports = grammar({
           $.for_expression,
           $.each_expression,
           $.fold_expression,
+          $.conditional_expression,
           $.match_expression,
           $.full_range,
-          alias($.conditional_expression_hole, $.conditional_expression),
           alias($.unary_expression_hole, $.unary_expression),
           alias($.periodic_range_hole, $.periodic_range),
           alias($.range_to_hole, $.range_to),
@@ -1714,30 +1633,6 @@ module.exports = grammar({
           alias($.component_expression_hole, $.component_expression),
           alias($.configure_dot_expression_hole, $.configure_dot_expression),
           alias($.payload_expression_hole, $.payload_expression),
-        ),
-      ),
-
-    conditional_expression_hole: ($) =>
-      choice(
-        prec.right(
-          1,
-          seq(
-            "if",
-            field("condition", $._expression_hole),
-            "then",
-            field("consequence", $._expression_hole),
-            "else",
-            field("alternative", $._expression_hole),
-          ),
-        ),
-        prec.right(
-          1,
-          seq(
-            "if",
-            field("condition", $._expression_hole),
-            "then",
-            field("consequence", $._expression_hole),
-          ),
         ),
       ),
 
@@ -2271,9 +2166,37 @@ module.exports = grammar({
         ),
       ),
 
-    // `match s { A(x) then x, B(v) then norm(v) }` — the sum fiber's
-    // reader, the header family's fourth member beside
-    // `if` and `for`. The scrutinee stands in the header's own zone,
+    // `if c { a } else { b }` — the conditional, a member of the header
+    // family beside `match` and `for`. The condition stands in the
+    // header's own zone, so the brace after it always opens the
+    // consequence and is never a payload on the condition. **Each branch
+    // is a braced body**, holding `:=` locals and requirements beside
+    // its one result, and its brace stands on the line the condition
+    // or the `else` ends. `else if` chains without further braces,
+    // `if a { x } else if b { y } else { z }`. Without the `else` clause
+    // a later analysis stage supplies `none` for the alternative.
+    //
+    // The braces make the form whole, as a `match` is: it is a primary
+    // expression, so `if c { a } else { b } + 1` adds one to the
+    // conditional, and no `else` is left for an inner `if` to take.
+    // `else` is a continuation word, so it may open a line of its
+    // own after the consequence's closing brace.
+    conditional_expression: ($) =>
+      seq(
+        "if",
+        field("condition", $._expression_header),
+        field("consequence", $.body),
+        optional(
+          seq(
+            "else",
+            field("alternative", choice($.body, $.conditional_expression)),
+          ),
+        ),
+      ),
+
+    // `match s { A(x) { x }, B(v) { norm(v) } }` — the sum fiber's
+    // reader, the header family's member beside `if` and `for`.
+    // The scrutinee stands in the header's own zone,
     // so the brace after it holds the arms rather than a payload on
     // the scrutinee, and the arms separate as body items do, one per
     // line or by commas. A trailing `else` arm stands where no
@@ -2289,11 +2212,11 @@ module.exports = grammar({
           repeat(choice(",", $._newline)),
           optional(
             seq(
-              choice($.match_arm, $.else_arm),
+              choice(seq($.match_arm, optional($.else_arm)), $.else_arm),
               repeat(
                 seq(
                   repeat1(choice(",", $._newline)),
-                  choice($.match_arm, $.else_arm),
+                  choice(seq($.match_arm, optional($.else_arm)), $.else_arm),
                 ),
               ),
               repeat(choice(",", $._newline)),
@@ -2303,10 +2226,11 @@ module.exports = grammar({
         ),
       ),
 
-    // `A(x) then x`, `B(X: x, Y: y) then x + y` and `Binary then 2` —
+    // `A(x) { x }`, `B(X: x, Y: y) { x + y }` and `Binary { 2 }` —
     // one arm of a `match`: the variant's
     // name, one sub-pattern for its payload where it takes one,
-    // `then`, and the expression the arm takes. Since a variant holds
+    // and the braced body the arm takes, an ordinary body with its
+    // locals and one result. Since a variant holds
     // exactly one payload, the parens may hold the items of the
     // payload's named-parens pattern directly, `B(X: x, Y: y)`
     // standing for `B((X: x, Y: y))`; the colons tell that spelling
@@ -2333,14 +2257,16 @@ module.exports = grammar({
             ")",
           ),
         ),
-        "then",
-        field("body", $._expression),
+        field("body", $.body),
       ),
 
-    // `else e` — the arm a `match` takes where no variant's arm stood
-    // . One of these stands in place of the arms the
-    // roster is missing.
-    else_arm: ($) => seq("else", field("body", $._expression)),
+    // `else { e }` — the arm a `match` takes where no variant's arm
+    // stood. One of these stands in place of the arms the
+    // roster is missing. Its `else` is the continuation word, so an
+    // `else` arm opening a line follows the arm above it whether or not
+    // a comma ends that arm, and on one line it may follow an arm's
+    // closing brace directly, as a conditional's `else` does.
+    else_arm: ($) => seq("else", field("body", $.body)),
 
     // `for [i, j] in space { body }` and `for I in space body` — the
     // comprehension, a member of the header family.

@@ -57,7 +57,6 @@ static const char *const KEYWORDS[] = {
   "struct",
   "tap",
   "texture",
-  "then",
   "true",
   "use",
   "when",
@@ -294,15 +293,15 @@ static Next next_token(TSLexer *lexer, bool spaced) {
 static bool continues_line(TSLexer *lexer) {
   if (is_word_start(lexer->lookahead)) {
     switch (read_word(lexer)) {
-      case 5:
-        return lexer->lookahead == 32 || lexer->lookahead == 9 || lexer->lookahead == 13 || lexer->lookahead == 10;
       case 19:
         return lexer->lookahead == 32 || lexer->lookahead == 9 || lexer->lookahead == 13 || lexer->lookahead == 10;
       case 1:
         return lexer->lookahead == 32 || lexer->lookahead == 9 || lexer->lookahead == 13 || lexer->lookahead == 10;
-      case 34:
+      case 33:
         return lexer->lookahead == 32 || lexer->lookahead == 9 || lexer->lookahead == 13 || lexer->lookahead == 10;
       case 3:
+        return lexer->lookahead == 32 || lexer->lookahead == 9 || lexer->lookahead == 13 || lexer->lookahead == 10;
+      case 5:
         return lexer->lookahead == 32 || lexer->lookahead == 9 || lexer->lookahead == 13 || lexer->lookahead == 10;
       default:
         return false;
@@ -347,7 +346,7 @@ static bool begins_expression(Next next) {
     case 22:
     case 27:
     case 28:
-    case 30:
+    case 29:
       return true;
     case 0:
       return true;
@@ -382,7 +381,7 @@ static bool continues_expression(Next next) {
     case 3:
     case 19:
     case 21:
-    case 34:
+    case 33:
       return true;
     case 0:
       return false;

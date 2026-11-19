@@ -17,8 +17,8 @@
 (defconst cartan-keywords
   '("and" "as" "but" "each" "else" "fiber" "fold" "for" "if" "in"
     "locked" "match" "namespace" "not" "of" "or" "param" "periodic"
-    "reduce" "require" "state" "step" "struct" "tap" "texture"
-    "then" "use" "when" "while" "with")
+    "reduce" "require" "state" "step" "struct" "tap" "texture" "use"
+    "when" "while" "with")
   "The language's keywords.")
 
 (defconst cartan-constants

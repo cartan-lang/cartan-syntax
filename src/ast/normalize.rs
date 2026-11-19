@@ -1242,11 +1242,31 @@ impl Reader<'_> {
         shape(node, &["condition", "consequence", "alternative"], &[])?;
         Ok(ExprKind::If {
             condition: Box::new(self.expr(field(node, "condition")?)?),
-            consequence: Box::new(self.expr(field(node, "consequence")?)?),
+            consequence: Box::new(self.branch(field(node, "consequence")?)?),
             alternative: node
                 .child("alternative")
-                .map(|alternative| self.expr(alternative).map(Box::new))
+                .map(|alternative| self.branch(alternative).map(Box::new))
                 .transpose()?,
+        })
+    }
+
+    /// A conditional's branch or a `match` arm's braced body: its result
+    /// alone where the body holds nothing else, and the body otherwise. An
+    /// `else if` alternative is the inner conditional.
+    fn branch(&self, node: &Node) -> Result<Expr> {
+        if node.kind != "body" {
+            return self.expr(node);
+        }
+        let mut body = self.body(node)?;
+        // A body holds exactly one result, so a body of one item is that result.
+        if body.items.len() == 1 {
+            if let Some(BodyItem::Result(result)) = body.items.pop() {
+                return Ok(result);
+            }
+        }
+        Ok(Expr {
+            span: body.span,
+            kind: ExprKind::Body(body),
         })
     }
 
@@ -1528,6 +1548,7 @@ impl Reader<'_> {
         let mut arms = Vec::new();
         let mut otherwise: Option<ElseArm> = None;
         for arm in children(node).filter(|child| child.field.is_none()) {
+            let arm_span = self.arm_span(arm)?;
             if let Some(first) = &otherwise {
                 let kind = if arm.kind == "else_arm" {
                     FormDiagnosticKind::DuplicateElseArm {
@@ -1538,13 +1559,13 @@ impl Reader<'_> {
                         else_span: first.span,
                     }
                 };
-                return Err(form(arm, kind));
+                return Err(form_at(arm_span, kind));
             }
             if arm.kind == "else_arm" {
                 shape(arm, &["body"], &[])?;
                 otherwise = Some(ElseArm {
-                    body: self.arm_body(field(arm, "body")?)?,
-                    span: span(arm),
+                    body: self.branch(field(arm, "body")?)?,
+                    span: arm_span,
                 });
                 continue;
             }
@@ -1574,8 +1595,8 @@ impl Reader<'_> {
             arms.push(MatchArm {
                 variant: self.name(field(arm, "variant")?)?,
                 payload,
-                body: self.arm_body(field(arm, "body")?)?,
-                span: span(arm),
+                body: self.branch(field(arm, "body")?)?,
+                span: arm_span,
             });
         }
         Ok(Match {
@@ -1585,50 +1606,26 @@ impl Reader<'_> {
         })
     }
 
-    /// An arm's result expression, refusing a line-leading `else` on a
-    /// conditional outside brackets: it could equally open the `else` arm.
-    fn arm_body(&self, node: &Node) -> Result<Expr> {
-        self.line_leading_else(node)?;
-        self.expr(node)
-    }
-
-    /// Search the conditionals not enclosed in brackets; a child that follows
-    /// an unclosed opening bracket of its parent is enclosed.
-    fn line_leading_else(&self, node: &Node) -> Result<()> {
-        if node.kind == "conditional_expression" {
-            let keyword = node
-                .children
-                .iter()
-                .find(|child| child.kind == "else" && !child.named);
-            // A line-leading `else` is one token carrying its newlines.
-            if let Some(keyword) = keyword.filter(|keyword| self.text(keyword).contains('\n')) {
-                let start = keyword.start
+    /// An arm's span from its first word: an `else` opening a line is one
+    /// token carrying the newlines before it.
+    fn arm_span(&self, arm: &Node) -> Result<Span> {
+        let keyword = arm
+            .children
+            .first()
+            .filter(|keyword| keyword.kind == "else" && !keyword.named);
+        let start = match keyword {
+            Some(keyword) => {
+                keyword.start
                     + self
                         .text(keyword)
                         .find("else")
-                        .ok_or_else(|| unsupported(keyword))?;
-                let else_span = Span {
-                    start,
-                    end: start + 4,
-                };
-                return Err(form_at(
-                    else_span,
-                    FormDiagnosticKind::LineLeadingArmElse {
-                        else_span,
-                        conditional_span: span(node),
-                    },
-                ));
+                        .ok_or_else(|| unsupported(keyword))?
             }
-        }
-        let mut depth = 0usize;
-        for child in node.children.iter().filter(|child| !child.extra) {
-            match child.kind.as_str() {
-                "(" | "[" | "{" if !child.named => depth += 1,
-                ")" | "]" | "}" if !child.named => depth = depth.saturating_sub(1),
-                _ if depth == 0 => self.line_leading_else(child)?,
-                _ => {}
-            }
-        }
-        Ok(())
+            None => arm.start,
+        };
+        Ok(Span {
+            start,
+            end: arm.end,
+        })
     }
 }

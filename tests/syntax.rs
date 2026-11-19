@@ -69,16 +69,16 @@ fn map_entries_distinguish_static_and_computed_separators_in_the_cst() {
 }
 
 /// A statement continues onto the next line where the grammar says it does: a
-/// conditional's `then` and `else` open lines, `and` and `or` open lines, and
-/// a trailing operator and an open paren carry the line on.
+/// conditional's `else` opens a line, `and` and `or` open lines, and a
+/// trailing operator and an open paren carry the line on.
 #[test]
 fn statements_continue_across_lines_where_the_grammar_says() {
     for (source, tree) in [
         (
-            "x = if a\n    then 1\n    else if b\n    then 2\n    else 3",
-            "(conditional_expression condition: (identifier) consequence: (number) \
+            "x = if a { 1 }\n    else if b { 2 }\n    else { 3 }",
+            "(conditional_expression condition: (identifier) consequence: (body (number)) \
              alternative: (conditional_expression condition: (identifier) \
-             consequence: (number) alternative: (number)))",
+             consequence: (body (number)) alternative: (body (number))))",
         ),
         (
             "x = a == 1\n    and b\n    or c",
@@ -152,16 +152,16 @@ fn preserves_newline_separation_continuation_and_open_ranges() {
     assert_eq!(value(&tree).named_children().count(), 4);
     assert_eq!(nodes(&tree.root, "periodic_expression").len(), 1);
 
-    let tree = parse_expression("if (a + b)\n- c < 3 then 1 else 0");
+    let tree = parse_expression("if (a + b)\n- c < 3 { 1 } else { 0 }");
     assert!(tree.has_errors());
     assert!(matches!(
         tree.diagnostics[0].kind,
         DiagnosticKind::Stated {
-            rule: Rule::Then,
+            rule: Rule::IfBody,
             ..
         }
     ));
-    expression("if (a + b) -\nc < 3 then 1 else 0");
+    expression("if (a + b) -\nc < 3 { 1 } else { 0 }");
 }
 
 #[test]
@@ -297,6 +297,55 @@ fn reports_typed_rule_identity_sites_and_captured_fields() {
     for rule in Rule::ALL {
         assert_eq!(Rule::of(rule.label()), Some(*rule));
     }
+}
+
+/// A branch and an arm open their brace where the condition, the `else` or
+/// the arm's pattern ends, and `then` is an ordinary name.
+#[test]
+fn branches_and_arms_are_refused_without_their_brace() {
+    for (source, rule, found, variant) in [
+        ("x = if c then 1", Rule::IfBody, "then", None),
+        ("x = if c { 1 } else 2", Rule::IfBody, "2", None),
+        ("x = match s { A(y) y }", Rule::ArmBody, "y", Some("A")),
+        ("x = match s { A { 1 }, else 0 }", Rule::ArmBody, "0", None),
+    ] {
+        let tree = parse_document(source);
+        assert_spans(&tree);
+        let [diagnostic] = tree.diagnostics.as_slice() else {
+            panic!("{source}: {:?}", tree.diagnostics);
+        };
+        let DiagnosticKind::Stated {
+            rule: stated,
+            refused: false,
+            fields,
+        } = &diagnostic.kind
+        else {
+            panic!("{source}: {diagnostic:?}");
+        };
+        assert_eq!(*stated, rule, "{source}");
+        assert_eq!(diagnostic.found.as_deref(), Some(found), "{source}");
+        assert_eq!(
+            &source[diagnostic.span.start..diagnostic.span.end],
+            found,
+            "{source}"
+        );
+        let written = fields
+            .iter()
+            .find(|field| field.name == "variant")
+            .map(|field| &source[field.span.start..field.span.end]);
+        assert_eq!(written, variant, "{source}");
+    }
+
+    let tree = valid_document(
+        "then = 1
+x = if then { then }",
+    );
+    let items: Vec<_> = tree.root.named_children().collect();
+    assert_eq!(items[0].kind, "binding");
+    assert_eq!(tree.text(items[0].child("name").unwrap()), Some("then"));
+    let conditional = items[1].child("value").unwrap();
+    assert_eq!(conditional.kind, "conditional_expression");
+    assert_eq!(conditional.child("condition").unwrap().kind, "identifier");
 }
 
 #[test]

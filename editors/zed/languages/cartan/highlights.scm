@@ -26,7 +26,6 @@
   "struct"
   "tap"
   "texture"
-  "then"
   "use"
   "when"
   "while"

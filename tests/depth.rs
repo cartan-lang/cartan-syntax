@@ -39,13 +39,7 @@ fn too_deep(errors: &[Error]) -> Span {
 fn nesting_parses_to_the_limit_and_is_refused_one_level_beyond() {
     on_a_2_mb_stack(|| {
         let levels = MAX_DEPTH - 4;
-        for (open, close, below) in [
-            ("(", ")", "1"),
-            ("[", "]", "1"),
-            ("{", "}", "1"),
-            // the innermost condition is the first token below the limit
-            ("if c then ", " else 2", "c"),
-        ] {
+        for (open, close, below) in [("(", ")", "1"), ("[", "]", "1"), ("{", "}", "1")] {
             let at = nested(open, close, levels);
             if let Err(errors) = ast::parse_document(&at) {
                 panic!("{open:?} at the limit: {errors:?}");
@@ -54,6 +48,18 @@ fn nesting_parses_to_the_limit_and_is_refused_one_level_beyond() {
             let span = too_deep(&ast::parse_document(&beyond).unwrap_err());
             assert_eq!(&beyond[span.start..span.end], below, "{open:?}");
         }
+        // An `else if` chain nests a conditional per link with no bracket;
+        // `links` conditionals hold the last result five levels below the
+        // binding's value besides them.
+        let chain =
+            |links: usize| format!("x = {}if c {{ 1 }}", "if c { 1 } else ".repeat(links - 1));
+        if let Err(errors) = ast::parse_document(&chain(levels - 1)) {
+            panic!("an `else if` chain at the limit: {errors:?}");
+        }
+        let beyond = chain(levels);
+        let span = too_deep(&ast::parse_document(&beyond).unwrap_err());
+        assert_eq!(&beyond[span.start..span.end], "1");
+        assert!(beyond[span.end..].starts_with(" }") && span.end + 2 == beyond.len());
     });
 }
 

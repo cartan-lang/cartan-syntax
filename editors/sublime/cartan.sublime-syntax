@@ -25,7 +25,7 @@ contexts:
       scope: constant.language.cartan
     - match: '\b(?:[0-9][_0-9]*)(?:(?:\.[0-9][_0-9]*))?(?:(?:[eE][+\-]?[0-9]+))?'
       scope: constant.numeric.cartan
-    - match: '\b(?:and|as|but|each|else|fiber|fold|for|if|in|locked|match|namespace|not|of|or|param|periodic|reduce|require|state|step|struct|tap|texture|then|use|when|while|with)\b'
+    - match: '\b(?:and|as|but|each|else|fiber|fold|for|if|in|locked|match|namespace|not|of|or|param|periodic|reduce|require|state|step|struct|tap|texture|use|when|while|with)\b'
       scope: keyword.control.cartan
     - match: '\.\.=|!=|->|\.\.|\/\/|::|:=|<-|<=|<>|==|=>|>=|\?\?|#|\*|\+|-|\.|\/|:|;|<|=|>|\?|@|\^|\|'
       scope: keyword.operator.cartan

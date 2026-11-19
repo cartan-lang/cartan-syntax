@@ -563,7 +563,7 @@ fn node_ref(node: &str, copy: Option<&Copy>) -> Js {
 }
 
 /// Every `$.name` leaf of a climb's own text renamed to the copy's, so
-/// an operator's head — `if c then a else` — reads its expressions in
+/// an operator's head that holds expressions of its own reads them in
 /// the same reduced grammar.
 fn rename(j: Js, name: &str, copy: &Copy) -> Js {
     match j {

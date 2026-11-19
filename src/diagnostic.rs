@@ -188,8 +188,9 @@ pub enum Rule {
     AnnotationAlternative,
     /// An update block with no braced writes.
     UpdateBody,
-    /// A conditional with no `then`.
-    Then,
+    /// A conditional's branch with no braced body after its condition or
+    /// its `else`.
+    IfBody,
     /// A dot spelling a namespace step.
     NamespaceDot,
     /// A dot reading a value's component.
@@ -210,8 +211,9 @@ pub enum Rule {
     FoldBody,
     /// A `match` with no brace of arms.
     MatchArms,
-    /// A `match` arm with no `then`.
-    ArmThen,
+    /// A `match` arm with no braced body after its pattern or its `else`;
+    /// a variant's arm captures its `variant`, and the `else` arm none.
+    ArmBody,
     /// A parenthesized binder in a header.
     HeaderParen,
     /// A parenthesized position of a bracket pattern.
@@ -279,7 +281,7 @@ impl Rule {
         Rule::FunctionBody,
         Rule::AnnotationAlternative,
         Rule::UpdateBody,
-        Rule::Then,
+        Rule::IfBody,
         Rule::NamespaceDot,
         Rule::ComponentDot,
         Rule::CallHead,
@@ -290,7 +292,7 @@ impl Rule {
         Rule::FoldIn,
         Rule::FoldBody,
         Rule::MatchArms,
-        Rule::ArmThen,
+        Rule::ArmBody,
         Rule::HeaderParen,
         Rule::BracketParen,
         Rule::ParenComma,
@@ -335,7 +337,7 @@ impl Rule {
             | Rule::WithHoles
             | Rule::NamespaceName
             | Rule::StructName
-            | Rule::Then
+            | Rule::IfBody
             | Rule::ConfigAtom
             | Rule::TemplateClose => &["found"],
             Rule::HoleArgument
@@ -355,7 +357,7 @@ impl Rule {
             Rule::PositionalArgument => &["function", "key"],
             Rule::FoldSeed => &["keyword"],
             Rule::FoldBody => &["keyword", "found"],
-            Rule::ArmThen => &["variant"],
+            Rule::ArmBody => &["variant"],
             Rule::ComponentWrite => &["head", "tail"],
             Rule::ComprehensionBody
             | Rule::MixedSeparators

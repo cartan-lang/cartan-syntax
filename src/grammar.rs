@@ -32,9 +32,10 @@
 //!
 //! # What the interpreter alone states
 //!
-//! A loop header's expression is parsed without the payload and
-//! configuration zones (`without`), so the brace after `fold u := u0`
-//! or `for i in space` begins its body; tree-sitter
+//! A header's expression — a loop's, a conditional's condition and a
+//! `match` scrutinee — is parsed without the payload and configuration
+//! zones (`without`), so the brace after `fold u := u0`, `for i in space`
+//! or `if c` begins its body; tree-sitter
 //! states the same preference with `prec.dynamic`. The parser's own
 //! diagnostics — the one a missing `=` after a port's name is reported
 //! as — stand in `expecting` and `refusing`, each labelled with the
@@ -127,7 +128,6 @@ pub fn print_emacs(builtin_names: &[&str]) -> String {
 
 // ---- the precedence table ----------------------------------------------
 
-const CONDITIONAL: i32 = 0;
 const RANGE: i32 = 1;
 const OR: i32 = 2;
 const AND: i32 = 3;
@@ -1452,43 +1452,11 @@ fn build() -> Grammar {
                     sym("for_expression"),
                     sym("each_expression"),
                     sym("fold_expression"),
+                    sym("conditional_expression"),
                     sym("match_expression"),
                     sym("full_range"),
                 ]),
                 vec![
-                    prefix(
-                        "conditional_expression",
-                        CONDITIONAL,
-                        seq(vec![
-                            "if".into(),
-                            nl(),
-                            field("condition", expr()),
-                            nl(),
-                            expecting("then", Stated::Then.label()),
-                            nl(),
-                            field("consequence", expr()),
-                            cont_word("else"),
-                            nl(),
-                        ]),
-                        "alternative",
-                    )
-                    .assoc(Assoc::Right)
-                    .doc("`if c then a else b` — `then` is required and the `else`\nclause is optional, the two alternatives standing here in that\norder. `else` is a continuation word, so it may\nopen a line of its own, and a next line beginning with any\nother word closes the conditional at its consequence."),
-                    prefix(
-                        "conditional_expression",
-                        CONDITIONAL,
-                        seq(vec![
-                            "if".into(),
-                            nl(),
-                            field("condition", expr()),
-                            nl(),
-                            expecting("then", Stated::Then.label()),
-                            nl(),
-                        ]),
-                        "consequence",
-                    )
-                    .assoc(Assoc::Right)
-                    .doc("`if c then a` — a later analysis stage supplies `none` for the\nalternative. Reading the clause above first is\nwhat binds the `else` of `if a then if b then x else y` to\nthe inner `if`."),
                     prefix("unary_expression", NOT, seq(vec![field("operator", "not"), nl()]), "operand")
                         .doc("`not`, above the comparisons and below `and`"),
                     prefix("unary_expression", NEG, seq(vec![field("operator", "-"), nl()]), "operand"),
@@ -1895,10 +1863,44 @@ fn build() -> Grammar {
                 ),
             ),
             def(
+                "conditional_expression",
+                "`if c { a } else { b }` — the conditional, a member of the header\n\
+                 family beside `match` and `for`. The condition stands in the\n\
+                 header's own zone, so the brace after it always opens the\n\
+                 consequence and is never a payload on the condition. **Each branch\n\
+                 is a braced body**, holding `:=` locals and requirements beside\n\
+                 its one result, and its brace stands on the line the condition\n\
+                 or the `else` ends. `else if` chains without further braces,\n\
+                 `if a { x } else if b { y } else { z }`. Without the `else` clause\n\
+                 a later analysis stage supplies `none` for the alternative.\n\
+                 \n\
+                 The braces make the form whole, as a `match` is: it is a primary\n\
+                 expression, so `if c { a } else { b } + 1` adds one to the\n\
+                 conditional, and no `else` is left for an inner `if` to take.\n\
+                 `else` is a continuation word, so it may open a line of its\n\
+                 own after the consequence's closing brace.",
+                seq(vec![
+                    "if".into(),
+                    nl(),
+                    field("condition", header_expr()),
+                    expecting(field("consequence", sym("body")), Stated::IfBody.label()),
+                    optional(seq(vec![
+                        cont_word("else"),
+                        expecting(
+                            field(
+                                "alternative",
+                                choice(vec![sym("body"), sym("conditional_expression")]),
+                            ),
+                            Stated::IfBody.label(),
+                        ),
+                    ])),
+                ]),
+            ),
+            def(
                 "match_expression",
-                "`match s { A(x) then x, B(v) then norm(v) }` — the sum fiber's\n\
-                 reader, the header family's fourth member beside\n\
-                 `if` and `for`. The scrutinee stands in the header's own zone,\n\
+                "`match s { A(x) { x }, B(v) { norm(v) } }` — the sum fiber's\n\
+                 reader, the header family's member beside `if` and `for`.\n\
+                 The scrutinee stands in the header's own zone,\n\
                  so the brace after it holds the arms rather than a payload on\n\
                  the scrutinee, and the arms separate as body items do, one per\n\
                  line or by commas. A trailing `else` arm stands where no\n\
@@ -1914,17 +1916,24 @@ fn build() -> Grammar {
                             "{",
                             Stated::MatchArms.label(),
                         ),
-                        items(choice(vec![sym("match_arm"), sym("else_arm")])),
+                        // an `else` arm opening a line is one token with
+                        // its newline, as the conditional's `else` is, so it
+                        // may follow an arm's closing brace directly
+                        items(choice(vec![
+                            seq(vec![sym("match_arm"), optional(sym("else_arm"))]),
+                            sym("else_arm"),
+                        ])),
                         "}".into(),
                     ]),
                 ),
             ),
             def(
                 "match_arm",
-                "`A(x) then x`, `B(X: x, Y: y) then x + y` and `Binary then 2` —\n\
+                "`A(x) { x }`, `B(X: x, Y: y) { x + y }` and `Binary { 2 }` —\n\
                  one arm of a `match`: the variant's\n\
                  name, one sub-pattern for its payload where it takes one,\n\
-                 `then`, and the expression the arm takes. Since a variant holds\n\
+                 and the braced body the arm takes, an ordinary body with its\n\
+                 locals and one result. Since a variant holds\n\
                  exactly one payload, the parens may hold the items of the\n\
                  payload's named-parens pattern directly, `B(X: x, Y: y)`\n\
                  standing for `B((X: x, Y: y))`; the colons tell that spelling\n\
@@ -1941,20 +1950,21 @@ fn build() -> Grammar {
                         ]),
                         ")".into(),
                     ])),
-                    expecting(
-                        "then",
-                        Stated::ArmThen.label(),
-                    ),
-                    nl(),
-                    field("body", expr()),
+                    expecting(field("body", sym("body")), Stated::ArmBody.label()),
                 ]),
             ),
             def(
                 "else_arm",
-                "`else e` — the arm a `match` takes where no variant's arm stood\n\
-                . One of these stands in place of the arms the\n\
-                 roster is missing.",
-                seq(vec!["else".into(), nl(), field("body", expr())]),
+                "`else { e }` — the arm a `match` takes where no variant's arm\n\
+                 stood. One of these stands in place of the arms the\n\
+                 roster is missing. Its `else` is the continuation word, so an\n\
+                 `else` arm opening a line follows the arm above it whether or not\n\
+                 a comma ends that arm, and on one line it may follow an arm's\n\
+                 closing brace directly, as a conditional's `else` does.",
+                seq(vec![
+                    cont_word("else"),
+                    expecting(field("body", sym("body")), Stated::ArmBody.label()),
+                ]),
             ),
             comprehension(
                 "for",

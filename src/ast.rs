@@ -410,7 +410,10 @@ pub enum ExprKind {
         left: Box<Expr>,
         right: Box<Expr>,
     },
-    /// `if c then a else b`; without `else` the alternative is absent.
+    /// `if c { a } else { b }`; without `else` the alternative is absent. A
+    /// branch whose body holds only its result is that result, and any other
+    /// branch is an [`ExprKind::Body`]; an `else if` alternative is the inner
+    /// conditional.
     If {
         condition: Box<Expr>,
         consequence: Box<Expr>,
@@ -717,7 +720,7 @@ pub struct Comprehension {
     pub body: Expr,
 }
 
-/// `match s { A(x) then e, Unit then e, else e }`. Arms keep source order and
+/// `match s { A(x) { e }, Unit { e }, else { e } }`. Arms keep source order and
 /// duplicates; graph owns roster coverage and arm agreement.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
@@ -729,7 +732,9 @@ pub struct Match {
 }
 
 /// One variant's arm. A bare unit arm has no payload pattern; `B(X: x, Y: y)`
-/// has the same `PatternKind::Components` payload as `B((X: x, Y: y))`.
+/// has the same `PatternKind::Components` payload as `B((X: x, Y: y))`. The
+/// braced body normalizes as a conditional's branch does: its result alone,
+/// or an [`ExprKind::Body`] where it holds locals or requirements.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct MatchArm {
@@ -739,7 +744,8 @@ pub struct MatchArm {
     pub span: Span,
 }
 
-/// `else e`; the span starts at the keyword.
+/// `else { e }`; the span starts at the keyword, and the body normalizes as
+/// a variant arm's does.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct ElseArm {
@@ -843,13 +849,6 @@ pub enum FormDiagnosticKind {
     /// `else_span` the `else` arm.
     ArmAfterElse {
         else_span: Span,
-    },
-    /// A conditional in a `match` arm body, outside brackets, taking an `else`
-    /// that begins a line. The diagnostic span is `else_span`, the keyword
-    /// alone; `conditional_span` covers the conditional.
-    LineLeadingArmElse {
-        else_span: Span,
-        conditional_span: Span,
     },
     /// A documentation string standing before something other than a binding,
     /// function, fiber, sum or struct item, other than as the document's first

@@ -37,10 +37,14 @@ fn tree() -> &'static Path {
     static TREE: OnceLock<PathBuf> = OnceLock::new();
     TREE.get_or_init(|| {
         let json = grammar::print_json();
+        // the configuration whose version the generator writes in
+        let config = format!("{GRAMMAR_PATH}/tree-sitter.json");
+        let printed = editors::files(&published(UNPINNED));
+        let (_, configuration) = printed.iter().find(|(p, _)| *p == config).unwrap();
         let mut hasher = std::hash::DefaultHasher::new();
         json.hash(&mut hasher);
         grammar::print_scanner().hash(&mut hasher);
-        env!("CARGO_PKG_VERSION").hash(&mut hasher);
+        configuration.hash(&mut hasher);
         let root = Path::new(env!("CARGO_TARGET_TMPDIR"))
             .join("tree-sitter-cartan")
             .join(format!("{:016x}", hasher.finish()));
@@ -56,11 +60,7 @@ fn tree() -> &'static Path {
             let grammar_path = src.join("grammar.json");
             std::fs::write(&grammar_path, json).unwrap();
             std::fs::write(src.join("scanner.c"), grammar::print_scanner()).unwrap();
-            // the configuration whose version the generator writes in
-            let config = format!("{GRAMMAR_PATH}/tree-sitter.json");
-            let printed = editors::files(&published(UNPINNED));
-            let (_, json) = printed.iter().find(|(p, _)| *p == config).unwrap();
-            std::fs::write(fresh.join("tree-sitter.json"), json).unwrap();
+            std::fs::write(fresh.join("tree-sitter.json"), configuration).unwrap();
             let mut diagnostics = Vec::new();
             tree_sitter_generate::generate_parser_in_directory(
                 &fresh,
@@ -156,7 +156,11 @@ const FIXTURES: &[&str] = &[
     "struct P = {x: Real, y: Real | None}",
     "h(k: (Real, Real) -> Real) = k(1, 2)",
     "\"\"\"A document.\"\"\"",
-    "x = if a then 1 else 2",
+    "x = if a { 1 } else { 2 }",
+    "x = if a { 1 } else if b { 2 } else { 3 }",
+    "x = if a { y := 2\n y } else { 0 }",
+    "x = if a { if b { 1 } } else { 2 } + 1",
+    "then = 1",
     "x = not a and b or c",
     "x = m ?? 0",
     "x = [1, 2, 3]",
@@ -179,7 +183,8 @@ const FIXTURES: &[&str] = &[
     "y = for i in 0..n i * 2",
     "y = each i in 0..n { i }",
     "y = fold s := 0 for i in 0..n { s + i }",
-    "y = match s { Circle(r) then r, else 0 }",
+    "y = match s { Circle(r) { r }, Square { 1 }, else { 0 } }",
+    "y = match s {\n  Circle(r) { r }\n  else { 0 }\n}",
     "x = { y := 2\n y }",
     "x = { [a, b] := p\n a }",
     "step { u <- u + 1 }",
@@ -192,7 +197,7 @@ const FIXTURES: &[&str] = &[
     // line has not finished, and no separator before a continuation
     "\n\nx = 1\n\n\ny = 2\n",
     "x = 1 # one\n# two\ny = 2",
-    "x = if a\n    then 1\n    else 2",
+    "x = if a { 1 }\n    else { 2 }",
     "x = a == 1\n    and b\n    or c",
     "x = a -\n    b",
     "x = 2 * (\n    a +\n    b\n)",

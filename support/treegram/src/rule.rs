@@ -130,7 +130,7 @@ pub enum Assoc {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Form {
     /// `head operand` — `head` is any rule (it may hold whole
-    /// expressions of its own, as `if c then a else` does), and the
+    /// expressions of its own), and the
     /// operand after it is parsed at this operator's precedence, or as
     /// the specified root operator in the same expression context.
     Prefix {
