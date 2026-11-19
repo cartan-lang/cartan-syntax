@@ -136,8 +136,7 @@ pub struct Binding {
     pub annotation: Option<Annotation>,
     pub value: Expr,
     /// The lock clause written after a `state` declaration's initial value;
-    /// always absent on any other binding. A `param` written with one is
-    /// [`FormDiagnosticKind::ParamLock`].
+    /// always absent on any other binding.
     pub lock: Option<Lock>,
 }
 
@@ -273,8 +272,7 @@ pub struct Require {
     pub span: Span,
 }
 
-/// `u <- e`: a write names a whole State. A keyed `u[k, …] <- e` is
-/// [`FormDiagnosticKind::KeyedWrite`].
+/// `u <- e`: a write names a whole State.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Write {
@@ -852,12 +850,6 @@ pub enum FormDiagnosticKind {
     MisplacedDocumentation {
         next_span: Option<Span>,
     },
-    /// A lock clause written on a `param`, which is fixed over a run and so
-    /// takes no lock; a lock belongs to a `state`. The span is the clause.
-    ParamLock,
-    /// A write naming part of a State, `u[k, …] <- e`; a write names a whole
-    /// State. The span covers the keys inside the brackets.
-    KeyedWrite,
 }
 
 /// Parse and normalize the supported source subset. No partial AST is returned.

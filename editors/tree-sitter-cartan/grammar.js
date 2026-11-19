@@ -56,7 +56,6 @@ module.exports = grammar({
     [$._expression, $._pattern, $.map_entry],
     [$._expression, $._pattern, $.map_sub_pattern, $.map_entry],
     [$.variant_argument, $._pattern],
-    [$._expression, $.write],
     [$.range_to, $.open_range],
     [$._expression, $.map_entry],
     [$.fiber_type, $.signature_type],
@@ -227,8 +226,7 @@ module.exports = grammar({
     // a function's shape, the fiber after the parens being the one the
     // result takes. The parameter list is the declaration's own
     // , so a hole's parameters are written the way a
-    // function's are; that a hole's parameter declares no default, the
-    // lowering states.
+    // function's are.
     //
     // A hole a value fills may state a default, `gamma: Real = 5.0 /
     // 3.0`, and a `use` line leaving that hole unbound takes it. That a
@@ -262,16 +260,24 @@ module.exports = grammar({
     // **A parenthetical after the initial states when the state is
     // locked**: `state res: Int = 100 (locked when
     // physics != none)`. It belongs to a `state`: a `param` is fixed
-    // over a run, so a lock has nothing to guard there, and source
-    // normalization refuses the clause written on one by name.
+    // over a run, so a lock has nothing to guard there.
     port_declaration: ($) =>
-      seq(
-        field("kind", choice("param", "state")),
-        field("name", $.identifier),
-        optional(seq(":", field("type", $.type_annotation))),
-        "=",
-        field("value", $._expression),
-        optional(field("lock", $.lock_clause)),
+      choice(
+        seq(
+          field("kind", "param"),
+          field("name", $.identifier),
+          optional(seq(":", field("type", $.type_annotation))),
+          "=",
+          field("value", $._expression),
+        ),
+        seq(
+          field("kind", "state"),
+          field("name", $.identifier),
+          optional(seq(":", field("type", $.type_annotation))),
+          "=",
+          field("value", $._expression),
+          optional(field("lock", $.lock_clause)),
+        ),
       ),
 
     // `(locked when physics != none)` — the parenthetical a `state`
@@ -543,7 +549,7 @@ module.exports = grammar({
     // **The lookahead is what leaves every declaration the form it
     // is**: an identifier followed by `=`, `:`, `:=` or `<-`, and an
     // identifier followed by a parenthesized parameter list and then
-    // `=` or `:`, are the binding, the local, the write and the
+    // `=`, `:=` or `<-`, are the binding, the local, the write and the
     // function definition, and a parenthesized or braced pattern
     // followed by `=` is the top-level pattern; this item refuses
     // them all before reading a word. What is left is exactly the
@@ -586,9 +592,7 @@ module.exports = grammar({
         field("value", $._expression),
       ),
 
-    // `name(params) : { k: default, … } = expr` — a transparent function
-    // (A9). The declaration mirrors the call: the Map gives the
-    // configuration names and their defaults.
+    // `name(params) = expr` — a transparent function (A9).
     //
     // The head is spelled exactly as a call is, and an item stands on
     // a bare call too, so the two readings run together
@@ -599,7 +603,6 @@ module.exports = grammar({
       seq(
         field("name", $.identifier),
         field("parameters", $.parameter_list),
-        optional(seq(":", field("config", $.map))),
         "=",
         field("body", $._expression),
       ),
@@ -618,22 +621,18 @@ module.exports = grammar({
         ")",
       ),
 
-    // `xr: Interval`, `at: Real|None`, `color: Color = hex("#56b6c2")`,
-    // `Cons(d, s, _)` — a parameter binds a pattern and states an
-    // optional type and an optional default, independently of each
-    // other (wishlist item 71). The annotation and the default stand on
-    // the whole slot. That only a trailing run declares defaults, that a
-    // default stands on a bare name, and that `None` is the one
-    // alternative an annotation takes, a later analysis stage states. A
-    // positional tuple stands only with the fiber it reads stated after
-    // it, `(rho, _, pre): Primitive`.
+    // `xr: Interval`, `at: Real|None`, `Cons(d, s, _)` — a parameter
+    // binds a pattern and states an optional type, which stands on the
+    // whole slot. That `None` is the one alternative an annotation
+    // takes, a later analysis stage states. A positional tuple stands
+    // only with the fiber it reads stated after it,
+    // `(rho, _, pre): Primitive`.
     parameter: ($) =>
       choice(
         seq(
           field("name", $.site_pattern),
           ":",
           field("type", $.type_annotation),
-          optional(seq("=", field("default", $._expression))),
         ),
         seq(
           field("name", $._pattern),
@@ -643,7 +642,6 @@ module.exports = grammar({
               field("type", $.type_annotation),
             ),
           ),
-          optional(seq("=", field("default", $._expression))),
         ),
       ),
 
@@ -1056,7 +1054,7 @@ module.exports = grammar({
         ),
       ),
 
-    // `_expression` without `payload_expression` and `config_expression` and `call_refusal`:
+    // `_expression` without `payload_expression` and `config_expression`:
     // the rule a reference through `without` in the grammar's source
     // reads — a loop header's expression, whose brace and colon belong
     // to the header. Every node is aliased to its name in `_expression`, so
@@ -1695,10 +1693,9 @@ module.exports = grammar({
     // ':'. A slot may open with a run of `:` marks — the call-site
     // derivative's slot, its colon count the order;
     // the dynamic precedence keeps `f(a : style)` an ascription on `a`
-    // rather than `a` beside a marked second slot. A name inside the
-    // parens is a configuration key in the wrong zone, and says so
-    // . The `(` is immediate, so a call's parens
-    // follow its head with no space between them.
+    // rather than `a` beside a marked second slot. The `(` is
+    // immediate, so a call's parens follow its head with no space
+    // between them.
     argument_list: ($) =>
       seq(
         token.immediate("("),
@@ -1721,23 +1718,6 @@ module.exports = grammar({
             repeat(choice(",", $._newline)),
           ),
         ),
-        ")",
-      ),
-
-    // the rest of an argument list from a value through its `)`, each
-    // further argument a value, optionally written after a misplaced
-    // `key =`
-    _argument_rest: ($) =>
-      seq(
-        $._expression,
-        repeat(
-          seq(
-            repeat1(choice(",", $._newline)),
-            optional(seq($.identifier, "=")),
-            $._expression,
-          ),
-        ),
-        repeat(choice(",", $._newline)),
         ")",
       ),
 
@@ -2016,8 +1996,7 @@ module.exports = grammar({
     // name takes the element whole, a bracket destructures — the site of
     // a box one name per axis, or a lockstep's collections one pattern
     // apiece, which a later analysis stage tells apart by the collection — and a
-    // constructor pattern reads components. `(i, j)` is no pattern here,
-    // and says so naming the bracket. Two or more patterns written
+    // constructor pattern reads components. Two or more patterns written
     // with commas and no bracket are the bracket's pattern
     // (`bare_list_pattern`): `for i, j in [.., ..]` is `for [i, j] in`.
     binder_list: ($) => choice($.bare_list_pattern, $._pattern),
@@ -2048,7 +2027,7 @@ module.exports = grammar({
     // sub-pattern per position: the List literal read
     // backwards. The length is the right side's kind's, so a list of no
     // known length refuses at check time. A position is a pattern again,
-    // and a parenthesized one is none: a bracket nests in a bracket.
+    // so a bracket nests in a bracket.
     list_pattern: ($) =>
       seq(
         "[",
@@ -2206,9 +2185,7 @@ module.exports = grammar({
     // the component wins over reading the key as an expression with a
     // configuration after it. A parenthesized run of
     // positions in key position is a component's position written out,
-    // `m but ((0, 1): 1.0)` one entry of a `Mat`; a key is never a site,
-    // the sites of a field being updated outside the parens,
-    // `u but [0..1, 1..2]: 1.0`.
+    // `m but ((0, 1): 1.0)` one entry of a `Mat`; a key is never a site.
     product_component: ($) =>
       prec(
         14,
@@ -2219,8 +2196,7 @@ module.exports = grammar({
         ),
       ),
 
-    // `(3, 4)` and `(3,)` refuse: parens group one expression, and a
-    // site is the static list of its Ints, `[3, 4]`
+    // parens group one expression
     parenthesized_expression: ($) =>
       seq(
         "(",
@@ -2318,9 +2294,6 @@ module.exports = grammar({
 
     // A braced body can hold `:=` locals, expressions and `<-`
     // writes. The enclosing construct determines which items it accepts.
-    // A durable local refuses here, on A7's ground: a
-    // body's line stands for many instances, and a durable write
-    // rewrites one declaring line.
     body: ($) =>
       seq(
         "{",
@@ -2399,26 +2372,14 @@ module.exports = grammar({
       ),
 
     // `p <- e` — this port takes that expression's value, one batch.
-    // **A write names a whole State**: `u[i, j] <- e` is no write, and
-    // the subscript is read, its `[` against the name as an index's is,
-    // so that source normalization refuses it by name rather than the
-    // line failing to parse.
+    // A write names a whole State.
     write: ($) =>
-      prec.dynamic(
-        1,
-        seq(
-          field("target", $.identifier),
-          optional(field("key", $.subscript)),
-          "<-",
-          field("value", $._expression),
-        ),
-      ),
+      seq(field("target", $.identifier), "<-", field("value", $._expression)),
 
     // `fig::panel` — one qualified identifier reaching into a
     // namespace: a used document's, or one the language
     // knows. `::` is the namespace separator everywhere, and it is the
-    // only one: a dot between two names is refused with this spelling,
-    // and a component is read by its key. The
+    // only one; a component is read by its key with `of`. The
     // lowering joins the segments into one name and elaboration reads
     // it by what the head names.
     qualified_identifier: ($) =>

@@ -147,7 +147,6 @@ const FIXTURES: &[&str] = &[
     "x = 1",
     "# note\nx: Real = 2.5e3",
     "f(x, y) = x + y * 2^3",
-    "g(x: Real): {scale: 2} = x",
     "param n = 64",
     "state u: Real = 0 (locked when n > 3)",
     "use \"lib.cart\" :: {a, b} as l",
@@ -188,9 +187,9 @@ const FIXTURES: &[&str] = &[
     "x = { y := 2\n y }",
     "x = { [a, b] := p\n a }",
     "step { u <- u + 1 }",
-    "step { u[i] <- 1 }",
     "x = view with c",
     "x = f(a) : style { body }",
+    "show(x) : {a: 1}",
     "require(n > 0, \"positive\")",
     // newlines: a separator where an item may end, whitespace where a
     // line has not finished, and no separator before a continuation

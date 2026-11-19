@@ -232,14 +232,12 @@ const NO_OPERAND: &str = "_no_operand";
 const OPERAND: &str = "_bare_operand";
 
 /// A loop header's expression: the brace and the colon after it belong
-/// to the header, and a paren after it is the
-/// comprehension's bare body going missing, which the body's own
-/// sentence reports rather than the call refusal.
+/// to the header.
 fn header_expr() -> Rule {
     without(
         "header",
         "_expression",
-        &["payload_expression", "config_expression", "call_refusal"],
+        &["payload_expression", "config_expression"],
     )
 }
 
@@ -259,18 +257,22 @@ fn colon() -> Rule {
 }
 
 /// The punctuation that makes a declaration of the name, or of the name
-/// and the parameter list, before it: `=` binds, `:` states a fiber,
-/// `:=` declares a local and `<-` writes a port. It is the whole of
-/// `bare_expression`'s exclusion, so each token is held to
+/// and the parameter list, before it: `=` binds, `:=` declares a local,
+/// `<-` writes a port and, after a name alone, `:` states a fiber; after
+/// a parameter list a colon is a call's configuration zone. It is the
+/// whole of `bare_expression`'s exclusion, so each token is held to
 /// itself: `==` is the comparison and `::` the namespace separator, and
 /// neither declares anything.
-fn declares() -> Rule {
-    choice(vec![
+fn declares(fiber: bool) -> Rule {
+    let mut tokens = vec![
         ":=".into(),
         "<-".into(),
         seq(vec!["=".into(), not_ahead("=")]),
-        seq(vec![":".into(), not_ahead(":")]),
-    ])
+    ];
+    if fiber {
+        tokens.push(seq(vec![":".into(), not_ahead(":")]));
+    }
+    choice(tokens)
 }
 
 /// The text from here to a `)` on this line — the probe that says a
@@ -319,7 +321,9 @@ fn comprehension_body() -> Rule {
             prec_dynamic(
                 1,
                 seq(vec![
-                    not_ahead(choice(vec!["(".into(), "[".into()])),
+                    // a brace is the braced body's, so a body that fails to
+                    // parse is never read again as a bare Map literal
+                    not_ahead(choice(vec!["(".into(), "[".into(), "{".into()])),
                     lookahead(OPERAND),
                     field("body", expr()),
                 ]),
@@ -620,10 +624,6 @@ fn build() -> Grammar {
             // definition's head and a call's are read at once, which is
             // what an item standing on a bare call asks for
             vec!["variant_argument".into(), "_pattern".into()],
-            // a brace item opening `u[` is a keyed write's target or an
-            // indexed expression, and the `<-` after the subscript is
-            // what tells the two apart
-            vec!["_expression".into(), "write".into()],
             // `..e` standing alone in a List or a subscript is the range
             // to and an open axis alike; the open axis's dynamic
             // precedence keeps it
@@ -832,7 +832,6 @@ fn build() -> Grammar {
                      A3). One that needs a port takes it as a hole."
                 ),
                 seq(vec![
-                    refusing("module", Stated::ModuleSpelling.label()),
                     NAMESPACE.into(),
                     expecting(
                         field("name", sym("identifier")),
@@ -860,8 +859,7 @@ fn build() -> Grammar {
                  a function's shape, the fiber after the parens being the one the\n\
                  result takes. The parameter list is the declaration's own\n\
                 , so a hole's parameters are written the way a\n\
-                 function's are; that a hole's parameter declares no default, the\n\
-                 lowering states.\n\
+                 function's are.\n\
                  \n\
                  A hole a value fills may state a default, `gamma: Real = 5.0 /\n\
                  3.0`, and a `use` line leaving that hole unbound takes it. That a\n\
@@ -912,17 +910,22 @@ fn build() -> Grammar {
                  **A parenthetical after the initial states when the state is\n\
                  locked**: `state res: Int = 100 (locked when\n\
                  physics != none)`. It belongs to a `state`: a `param` is fixed\n\
-                 over a run, so a lock has nothing to guard there, and source\n\
-                 normalization refuses the clause written on one by name.",
-                seq(vec![
-                    field("kind", choice(vec![PARAM.into(), "state".into()])),
-                    field("name", sym("identifier")),
-                    optional(seq(vec![":".into(), field("type", sym("type_annotation"))])),
-                    expecting("=", Stated::PortValue.label()),
-                    nl(),
-                    field("value", expr()),
-                    optional(field("lock", sym("lock_clause"))),
-                ]),
+                 over a run, so a lock has nothing to guard there.",
+                {
+                    let port = |kind: &str| {
+                        vec![
+                            field("kind", kind),
+                            field("name", sym("identifier")),
+                            optional(seq(vec![":".into(), field("type", sym("type_annotation"))])),
+                            expecting("=", Stated::PortValue.label()),
+                            nl(),
+                            field("value", expr()),
+                        ]
+                    };
+                    let mut state = port("state");
+                    state.push(optional(field("lock", sym("lock_clause"))));
+                    choice(vec![seq(port(PARAM)), seq(state)])
+                },
             ),
             def(
                 "lock_clause",
@@ -977,7 +980,6 @@ fn build() -> Grammar {
                     field("name", sym("identifier")),
                     optional(seq(vec!["<".into(), field("param", sym("identifier")), ">".into()])),
                     expecting("=", Stated::FiberDeclares.label()),
-                    refusing("{", Stated::StructFiber.label()),
                     expecting(choice(descriptions(None, false)), Stated::FiberDeclares.label()),
                 ]),
             ),
@@ -1179,7 +1181,7 @@ fn build() -> Grammar {
                  **The lookahead is what leaves every declaration the form it\n\
                  is**: an identifier followed by `=`, `:`, `:=` or `<-`, and an\n\
                  identifier followed by a parenthesized parameter list and then\n\
-                 `=` or `:`, are the binding, the local, the write and the\n\
+                 `=`, `:=` or `<-`, are the binding, the local, the write and the\n\
                  function definition, and a parenthesized or braced pattern\n\
                  followed by `=` is the top-level pattern; this item refuses\n\
                  them all before reading a word. What is left is exactly the\n\
@@ -1196,17 +1198,17 @@ fn build() -> Grammar {
                  keeps a triple string standing alone the prose it is.",
                 seq(vec![
                     not_ahead(choice(vec![
-                        seq(vec![sym("identifier"), declares()]),
+                        seq(vec![sym("identifier"), declares(true)]),
                         // the open head stands before the reading that
                         // parses the parens, so a `(` the writer has
                         // not closed leaves the declaration forms to
                         // read the text — and to state, at the end of
                         // it, that the text ran out
                         seq(vec![sym("identifier"), immediate("("), not_ahead(closes())]),
-                        seq(vec![sym("identifier"), sym("parameter_list"), declares()]),
+                        seq(vec![sym("identifier"), sym("parameter_list"), declares(false)]),
                         seq(vec![
                             choice(vec![sym("named_pattern"), sym("map_pattern")]),
-                            declares(),
+                            declares(true),
                         ]),
                     ])),
                     field("value", expr()),
@@ -1246,9 +1248,7 @@ fn build() -> Grammar {
             ),
             def(
                 "function_definition",
-                "`name(params) : { k: default, … } = expr` — a transparent function\n\
-                 (A9). The declaration mirrors the call: the Map gives the\n\
-                 configuration names and their defaults.\n\
+                "`name(params) = expr` — a transparent function (A9).\n\
                  \n\
                  The head is spelled exactly as a call is, and an item stands on\n\
                  a bare call too, so the two readings run together\n\
@@ -1258,7 +1258,6 @@ fn build() -> Grammar {
                 seq(vec![
                     field("name", sym("identifier")),
                     field("parameters", sym("parameter_list")),
-                    optional(seq(vec![":".into(), nl(), field("config", sym("map"))])),
                     expecting("=", Stated::FunctionBody.label()),
                     nl(),
                     field("body", expr()),
@@ -1282,21 +1281,17 @@ fn build() -> Grammar {
             ),
             def(
                 "parameter",
-                "`xr: Interval`, `at: Real|None`, `color: Color = hex(\"#56b6c2\")`,\n\
-                 `Cons(d, s, _)` — a parameter binds a pattern and states an\n\
-                 optional type and an optional default, independently of each\n\
-                 other (wishlist item 71). The annotation and the default stand on\n\
-                 the whole slot. That only a trailing run declares defaults, that a\n\
-                 default stands on a bare name, and that `None` is the one\n\
-                 alternative an annotation takes, a later analysis stage states. A\n\
-                 positional tuple stands only with the fiber it reads stated after\n\
-                 it, `(rho, _, pre): Primitive`.",
+                "`xr: Interval`, `at: Real|None`, `Cons(d, s, _)` — a parameter\n\
+                 binds a pattern and states an optional type, which stands on the\n\
+                 whole slot. That `None` is the one alternative an annotation\n\
+                 takes, a later analysis stage states. A positional tuple stands\n\
+                 only with the fiber it reads stated after it,\n\
+                 `(rho, _, pre): Primitive`.",
                 choice(vec![
                     seq(vec![
                         field("name", sym("site_pattern")),
                         ":".into(),
                         field("type", sym("type_annotation")),
-                        optional(seq(vec!["=".into(), nl(), field("default", expr())])),
                     ]),
                     // the colon stands in both spellings the lexer
                     // knows, as the parameter list's paren does: a sum
@@ -1312,7 +1307,6 @@ fn build() -> Grammar {
                             choice(vec![immediate(":"), ":".into()]),
                             field("type", sym("type_annotation")),
                         ])),
-                        optional(seq(vec!["=".into(), nl(), field("default", expr())])),
                     ]),
                 ]),
             ),
@@ -1498,32 +1492,6 @@ fn build() -> Grammar {
                         .doc("`head(…) { items }` — call sugar for a trailing List argument; a\nbrace whose first item is a `port <-` write is the writes a control\nhead takes, which a later analysis stage decides"),
                     postfix("payload_expression", POSTFIX, "target", field("body", sym("list")))
                         .doc("`head [a, b]` — a payload of one row, exactly `head { [a, b] }`\n. The bracket opens on the head's line, as the\nbrace does, so `head` and a `[` on the next line stay two items.\nThe index takes its `[` immediately after its target, so `xs[i]`\nreads the element and `xs [i]` is this zone."),
-                    postfix(
-                        "dot_refusal",
-                        POSTFIX,
-                        "target",
-                        refusing(
-                            seq(vec![cont("."), sym("identifier")]),
-                            Stated::ComponentDot.label(),
-                        ),
-                    )
-                    .targets(&[
-                        "call_expression",
-                        "index_expression",
-                        "component_expression",
-                        "absent_expression",
-                        "parenthesized_expression",
-                        "dot_refusal",
-                    ]),
-                    // Only a complete argument list is refused: an unclosed
-                    // `f(1` is a call waiting for its `)`, which the call's
-                    // own failure states, not a misplaced call.
-                    postfix(
-                        "call_refusal",
-                        POSTFIX,
-                        "target",
-                        refusing(sym("argument_list"), Stated::CallHead.label()),
-                    ),
                 ],
             ),
             def(
@@ -1652,52 +1620,15 @@ fn build() -> Grammar {
                  ':'. A slot may open with a run of `:` marks — the call-site\n\
                  derivative's slot, its colon count the order;\n\
                  the dynamic precedence keeps `f(a : style)` an ascription on `a`\n\
-                 rather than `a` beside a marked second slot. A name inside the\n\
-                 parens is a configuration key in the wrong zone, and says so\n\
-                . The `(` is immediate, so a call's parens\n\
-                 follow its head with no space between them.",
+                 rather than `a` beside a marked second slot. The `(` is\n\
+                 immediate, so a call's parens follow its head with no space\n\
+                 between them.",
                 seq(vec![
                     immediate("("),
-                    items(seq(vec![
-                        // Refused only where the call closes after it: in an
-                        // unclosed call, `y = 3` on the next line is the next
-                        // binding, and the open `(` is the defect.
-                        refusing(
-                            seq(vec![
-                                field("key", sym("identifier")),
-                                "=".into(),
-                                not_ahead("="),
-                                ahead(sym("_argument_rest")),
-                            ]),
-                            Stated::PositionalArgument.label(),
-                        ),
-                        choice(vec![
-                            prec_dynamic(-1, seq(vec![field("mark", sym("mark")), expr()])),
-                            expr(),
-                        ]),
-                    ])),
-                    ")".into(),
-                ]),
-            ),
-            def(
-                "_argument_rest",
-                "the rest of an argument list from a value through its `)`, each\n\
-                 further argument a value, optionally written after a misplaced\n\
-                 `key =`",
-                seq(vec![
-                    nl(),
-                    expr(),
-                    repeat(seq(vec![
-                        repeat1(sep()),
-                        optional(seq(vec![
-                            sym("identifier"),
-                            "=".into(),
-                            not_ahead("="),
-                        ])),
-                        nl(),
+                    items(choice(vec![
+                        prec_dynamic(-1, seq(vec![field("mark", sym("mark")), expr()])),
                         expr(),
                     ])),
-                    repeat(sep()),
                     ")".into(),
                 ]),
             ),
@@ -1941,14 +1872,10 @@ fn build() -> Grammar {
                  name takes the element whole, a bracket destructures — the site of\n\
                  a box one name per axis, or a lockstep's collections one pattern\n\
                  apiece, which a later analysis stage tells apart by the collection — and a\n\
-                 constructor pattern reads components. `(i, j)` is no pattern here,\n\
-                 and says so naming the bracket. Two or more patterns written\n\
+                 constructor pattern reads components. Two or more patterns written\n\
                  with commas and no bracket are the bracket's pattern\n\
                  (`bare_list_pattern`): `for i, j in [.., ..]` is `for [i, j] in`.",
-                seq(vec![
-                    refusing(sym("site_pattern"), Stated::HeaderParen.label()),
-                    choice(vec![sym("bare_list_pattern"), sym("_pattern")]),
-                ]),
+                choice(vec![sym("bare_list_pattern"), sym("_pattern")]),
             ),
             def(
                 "_pattern",
@@ -1979,13 +1906,13 @@ fn build() -> Grammar {
                  sub-pattern per position: the List literal read\n\
                  backwards. The length is the right side's kind's, so a list of no\n\
                  known length refuses at check time. A position is a pattern again,\n\
-                 and a parenthesized one is none: a bracket nests in a bracket.",
+                 so a bracket nests in a bracket.",
                 // the List literal's own separators, so the two readings
                 // of a bracket share their newlines until the `:=` or the
                 // `=` after it tells them apart
                 seq(vec![
                     "[".into(),
-                    items1(seq(vec![refusing(sym("site_pattern"), Stated::BracketParen.label()), sym("_pattern")])),
+                    items1(sym("_pattern")),
                     "]".into(),
                 ]),
             ),
@@ -2002,9 +1929,6 @@ fn build() -> Grammar {
                  brace's other reading, an item and then a local, beside it, and\n\
                  the dynamic precedence keeps this one, as the interpreter's\n\
                  order does.",
-                // the first position takes no paren refusal of its own: a
-                // brace opening `(i, j)` or `(k):` is another reading, and
-                // its own sentence stands there
                 prec_dynamic(
                     1,
                     seq(vec![
@@ -2012,7 +1936,6 @@ fn build() -> Grammar {
                         repeat1(seq(vec![
                             ",".into(),
                             nl(),
-                            refusing(sym("site_pattern"), Stated::BracketParen.label()),
                             sym("_pattern"),
                         ])),
                     ]),
@@ -2155,9 +2078,7 @@ fn build() -> Grammar {
                 "the component wins over reading the key as an expression with a\n\
                  configuration after it. A parenthesized run of\n\
                  positions in key position is a component's position written out,\n\
-                 `m but ((0, 1): 1.0)` one entry of a `Mat`; a key is never a site,\n\
-                 the sites of a field being updated outside the parens,\n\
-                 `u but [0..1, 1..2]: 1.0`.",
+                 `m but ((0, 1): 1.0)` one entry of a `Mat`; a key is never a site.",
                 prec(
                     POSTFIX + 1,
                     seq(vec![
@@ -2170,8 +2091,7 @@ fn build() -> Grammar {
             ),
             def(
                 "parenthesized_expression",
-                "`(3, 4)` and `(3,)` refuse: parens group one expression, and a\n\
-                 site is the static list of its Ints, `[3, 4]`",
+                "parens group one expression",
                 // the separator runs are the product's, so the two forms
                 // that open with `(` share one prefix and tree-sitter
                 // defers the choice to the token that decides it
@@ -2179,7 +2099,6 @@ fn build() -> Grammar {
                     "(".into(),
                     repeat(sep()),
                     expr(),
-                    refusing(",", Stated::ParenComma.label()),
                     repeat(sep()),
                     ")".into(),
                 ]),
@@ -2190,10 +2109,7 @@ fn build() -> Grammar {
                  be an open range, as in `[.., 0..n]`",
                 seq(vec![
                     "[".into(),
-                    items(seq(vec![
-                        choice(vec![sym("open_range"), expr()]),
-                        refusing(seq(vec![nl(), ";".into()]), Stated::ListRepeat.label()),
-                    ])),
+                    items(choice(vec![sym("open_range"), expr()])),
                     "]".into(),
                 ]),
             ),
@@ -2240,8 +2156,8 @@ fn build() -> Grammar {
                         // fields as configuration/type annotations.
                         not_ahead(seq(vec![sym("map_pattern"), ":=".into()])),
                         // The interpreter tries a Map before a body. Recognize
-                        // an annotated local before its type can be mistaken
-                        // for a value whose list repetition is a hard refusal.
+                        // an annotated local before its type can be read as a
+                        // value whose failure is a stated, hard diagnostic.
                         // First rule out a complete value, such as the body in
                         // `{a: {v}}`. A type like `[Int; 2]` can fail with a
                         // value-only diagnostic, so this value probe cannot
@@ -2285,40 +2201,15 @@ fn build() -> Grammar {
             def(
                 "body",
                 "A braced body can hold `:=` locals, expressions and `<-`\n\
-                 writes. The enclosing construct determines which items it accepts.\n\
-                 A durable local refuses here, on A7's ground: a\n\
-                 body's line stands for many instances, and a durable write\n\
-                 rewrites one declaring line.",
+                 writes. The enclosing construct determines which items it accepts.",
                 seq(vec![
                     "{".into(),
-                    items(seq(vec![
-                        refusing(
-                            PARAM,
-                            Stated::LocalParam.label(),
-                        ),
-                        refusing(
-                            seq(vec![
-                                field("name", sym("identifier")),
-                                "=".into(),
-                                not_ahead("="),
-                            ]),
-                            Stated::BodyEquals.label(),
-                        ),
-                        refusing(
-                            seq(vec![
-                                field("head", sym("identifier")),
-                                field("tail", token(repeat1(seq(vec![cont("."), sym("identifier")])))),
-                                "<-".into(),
-                            ]),
-                            Stated::ComponentWrite.label(),
-                        ),
-                        choice(vec![
-                            sym("require_statement"),
-                            sym("local"),
-                            sym("state_local"),
-                            sym("write"),
-                            expr(),
-                        ]),
+                    items(choice(vec![
+                        sym("require_statement"),
+                        sym("local"),
+                        sym("state_local"),
+                        sym("write"),
+                        expr(),
                     ])),
                     "}".into(),
                 ]),
@@ -2374,22 +2265,13 @@ fn build() -> Grammar {
             def(
                 "write",
                 "`p <- e` — this port takes that expression's value, one batch.\n\
-                 **A write names a whole State**: `u[i, j] <- e` is no write, and\n\
-                 the subscript is read, its `[` against the name as an index's is,\n\
-                 so that source normalization refuses it by name rather than the\n\
-                 line failing to parse.",
-                // a keyed write's target reads as an index too, and the
-                // write is the reading, as a brace item tries it first
-                prec_dynamic(
-                    1,
-                    seq(vec![
-                        field("target", sym("identifier")),
-                        optional(field("key", sym("subscript"))),
-                        "<-".into(),
-                        nl(),
-                        field("value", expr()),
-                    ]),
-                ),
+                 A write names a whole State.",
+                seq(vec![
+                    field("target", sym("identifier")),
+                    "<-".into(),
+                    nl(),
+                    field("value", expr()),
+                ]),
             ),
             // ---- tokens --------------------------------------------------
             def(
@@ -2397,8 +2279,7 @@ fn build() -> Grammar {
                 "`fig::panel` — one qualified identifier reaching into a\n\
                  namespace: a used document's, or one the language\n\
                  knows. `::` is the namespace separator everywhere, and it is the\n\
-                 only one: a dot between two names is refused with this spelling,\n\
-                 and a component is read by its key. The\n\
+                 only one; a component is read by its key with `of`. The\n\
                  lowering joins the segments into one name and elaboration reads\n\
                  it by what the head names.",
                 seq(vec![

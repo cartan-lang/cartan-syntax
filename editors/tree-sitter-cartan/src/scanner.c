@@ -42,7 +42,6 @@ static const char *const KEYWORDS[] = {
   "in",
   "locked",
   "match",
-  "module",
   "namespace",
   "none",
   "not",
@@ -293,11 +292,11 @@ static Next next_token(TSLexer *lexer, bool spaced) {
 static bool continues_line(TSLexer *lexer) {
   if (is_word_start(lexer->lookahead)) {
     switch (read_word(lexer)) {
-      case 19:
+      case 18:
         return lexer->lookahead == 32 || lexer->lookahead == 9 || lexer->lookahead == 13 || lexer->lookahead == 10;
       case 1:
         return lexer->lookahead == 32 || lexer->lookahead == 9 || lexer->lookahead == 13 || lexer->lookahead == 10;
-      case 33:
+      case 32:
         return lexer->lookahead == 32 || lexer->lookahead == 9 || lexer->lookahead == 13 || lexer->lookahead == 10;
       case 3:
         return lexer->lookahead == 32 || lexer->lookahead == 9 || lexer->lookahead == 13 || lexer->lookahead == 10;
@@ -340,13 +339,13 @@ static bool begins_expression(Next next) {
     case 10:
     case 12:
     case 13:
+    case 15:
     case 16:
-    case 17:
+    case 20:
     case 21:
-    case 22:
+    case 26:
     case 27:
     case 28:
-    case 29:
       return true;
     case 0:
       return true;
@@ -379,9 +378,9 @@ static bool continues_expression(Next next) {
     switch (next.keyword) {
     case 1:
     case 3:
-    case 19:
-    case 21:
-    case 33:
+    case 18:
+    case 20:
+    case 32:
       return true;
     case 0:
       return false;

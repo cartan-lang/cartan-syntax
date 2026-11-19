@@ -299,11 +299,12 @@ struct Engine<'g, 's> {
     word: Option<&'g Pat>,
     /// The exclusion sets in force somewhere, interned; entry 0 is empty.
     excludes: Vec<Vec<String>>,
-    /// (rule, position, exclusion, variant) → outcome. A parse ends
-    /// with about one and a half entries per byte of the text it read,
-    /// so the table is asked for that room at the outset rather than
-    /// doubled and rehashed a dozen times on the way there.
-    memo: FxMap<MemoKey, Soft>,
+    /// (rule, position, exclusion, variant) → outcome, and whether the
+    /// parse was recording the tokens it missed when it reached it. A
+    /// parse ends with about one and a half entries per byte of the text
+    /// it read, so the table is asked for that room at the outset rather
+    /// than doubled and rehashed a dozen times on the way there.
+    memo: FxMap<MemoKey, (Soft, bool)>,
     /// Position → the position after the extras there, for the
     /// positions whose extras hold no named node ([`Engine::take_extras`]).
     extras_at: FxMap<usize, usize>,
@@ -1223,15 +1224,21 @@ impl<'g, 's> Engine<'g, 's> {
         outcome
     }
 
-    /// The remembered match at `key`, with `field` set.
+    /// The remembered match at `key`, with `field` set. A miss a probe
+    /// remembered recorded none of the tokens it looked for, so a parse
+    /// that records reads the rule again rather than lose how far the
+    /// miss reached.
     fn recall(&self, key: &MemoKey, field: Option<&str>) -> Option<Soft> {
-        let hit = self.memo.get(key)?;
+        let (hit, recorded) = self.memo.get(key)?;
+        if hit.is_none() && !recorded && self.recording {
+            return None;
+        }
         Some(hit.clone().map(|(ns, e)| (with_field(ns, field), e)))
     }
 
     /// Remember `hit` at `key`, and return it with `field` set.
     fn store(&mut self, key: MemoKey, hit: Soft, field: Option<&str>) -> Soft {
-        self.memo.insert(key, hit.clone());
+        self.memo.insert(key, (hit.clone(), self.recording));
         hit.map(|(ns, e)| (with_field(ns, field), e))
     }
 

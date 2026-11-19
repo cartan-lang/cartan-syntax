@@ -96,9 +96,7 @@ spelling. `..a..`, `..=a..b` and `..a..b..c` are range chains, and `..a..b perio
 is refused as periodic twice.
 
 A write `u <- e` names a whole State: `Write` has its target, value and span.
-A keyed write `u[k, …] <- e`, with the `[` against the State's name as for
-indexing, is `FormDiagnosticKind::KeyedWrite` spanning the keys inside the
-brackets. Comprehensions retain their pattern, collection and
+Comprehensions retain their pattern, collection and
 body. Reductions retain accumulator, seed, driver pattern, collection and body.
 Support beyond the listed forms and interfaces below is not implied.
 
@@ -108,14 +106,11 @@ The lock clause written after a `state` declaration's initial value,
 `Binding.lock: Some(Lock { condition, span })`: the condition is an ordinary
 expression with its own span, normalized and refused like any other, and the
 clause span covers the parentheses. The grammar admits at most one clause, on a
-`param` or `state` declaration only, always with `when` and a condition;
-`(locked)` and `(locked when)` are the grammar diagnostic `Rule::LockCondition`.
-The clause may break anywhere inside its parentheses, but its `(` stands on the
-initial value's line: a line opening with `(` begins a new item, since a
-parenthesis can begin an expression. A lock belongs to a State: a Param is fixed
-over a run, so a lock has nothing to guard, and a `param` written with the
-clause is `FormDiagnosticKind::ParamLock` spanning the clause. An ordinary
-binding has no lock. Syntax states no locking semantics: what a lock forbids
+`state` declaration only, always with `when` and a condition; `(locked)` and
+`(locked when)` are the grammar diagnostic `Rule::LockCondition`. The clause may
+break anywhere inside its parentheses, but its `(` stands on the initial value's
+line: a line opening with `(` begins a new item, since a parenthesis can begin
+an expression. A Param and an ordinary binding have no lock. Syntax states no locking semantics: what a lock forbids
 belongs to analysis.
 
 ## Imports and qualified names
@@ -272,8 +267,7 @@ annotation span includes the brackets; item and width spans identify the written
 tokens. Normalization never expands the repeated form or converts its width to a
 machine integer. Leading body locals accept repeated tuple annotations, including
 nested and optional forms. The interpreter recognizes the annotated-local prefix
-through `:=` before trying the competing map-value reading; actual repeated
-literals such as `[1; 2]` still receive `ListRepeat`. Tree-sitter uses its existing
+through `:=` before trying the competing map-value reading. Tree-sitter uses its existing
 GLR alternatives; actual generated-parser execution remains unverified.
 The compiler resolves width names and checks numeric validity and
 eligibility. The existing grammar requires at least one explicit slot and does
@@ -470,11 +464,7 @@ only the written `:` or `=>`, excluding leading whitespace and newlines. Both
 separators admit line continuation before and after them. The CST's `map_entry`
 node labels `key`, `separator` and `value` for both forms.
 
-The old `(expression): value` spelling remains accepted only by the CST and
-normalizes to `UnsupportedConstruct { kind: "computed_key" }`. Embedded Map
-walks likewise retain their CST reading and normalize to unsupported `map_walk`;
-key-value `each` bodies and merge changes are outside this delivery. String
-typing, Map evaluation, duplicate handling and iteration semantics belong to
+String typing, Map evaluation, duplicate handling and iteration semantics belong to
 consumers and are not implemented here.
 
 Static Struct consumers match `MapKey::Static` explicitly and handle `Computed`
@@ -557,8 +547,8 @@ relevant payloads: unsupported construct and its CST kind, comparison/range
 chain, body result count, a use alias combined with selectors, malformed
 format precision or notation, misplaced signatures, component keys of the
 wrong length, stated types on patterns other than
-names, discards and positional tuples, a type alternative other than `None`,
-misplaced documentation, a lock on a `param` and a keyed write. `Error::span()` returns the full byte range; errors
+names, discards and positional tuples, a type alternative other than `None`
+and misplaced documentation. `Error::span()` returns the full byte range; errors
 derive `Clone`, `Debug`, `PartialEq` and `Eq`. Grammar diagnostics are preserved
 without rewriting. Normalization reports the first form error in each document
 item, beside the grammar diagnostics of the items that failed to parse; it
@@ -580,9 +570,8 @@ misclassify them as invalid source syntax. Update bodies currently support
 ordered writes only; other update-body forms are outside this AST subset.
 
 Only the value annotations described above, the imports above,
-and the listed expression forms are normalized. Default arguments,
-function-header configuration clauses,
-general `fold`, guard/configuration clauses on reductions and inline-description pattern heads
+and the listed expression forms are normalized. General `fold`,
+guard/configuration clauses on reductions and inline-description pattern heads
 return unsupported errors. Broader syntax restrictions such as periodic operands
 or annotation-placement rules are not comprehensively validated. Names, type
 existence, arity, domain/rank restrictions and numeric representability remain

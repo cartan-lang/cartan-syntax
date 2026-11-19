@@ -544,8 +544,6 @@ fn unsupported_constructs_and_optional_clauses_are_not_discarded() {
     for source in [
         "use std::* with (x: 1)",
         "fiber Cell<k> = (v: Real)",
-        "f(x: Real = 1) = x",
-        "f(x) : { pad: 1 } = x",
         "step { x := 1\n p <- x }",
         "x = reduce a := 0 for i in 0..2 while true { a + i }",
         "x = reduce a := 0 for i in 0..2 : { max_iter: 2 } { a + i }",
@@ -3018,22 +3016,6 @@ fn a_leading_range_operator_spells_the_periodic_axis() {
     );
 }
 
-/// A write names a whole State, so a keyed write is refused at its keys rather
-/// than carried with them.
-#[test]
-fn a_keyed_write_is_refused_at_its_keys() {
-    let source = "step {\n  z <- 4\n  w[i, ..3] <- 2\n}";
-    let errors = ast::parse_document(source).unwrap_err();
-    let [Error::Form(FormDiagnostic {
-        kind: FormDiagnosticKind::KeyedWrite,
-        span,
-    })] = errors.as_slice()
-    else {
-        panic!("{errors:?}")
-    };
-    assert_eq!(&source[span.start..span.end], "i, ..3");
-}
-
 #[test]
 fn each_preserves_ordered_walk_binders_body_and_utf8_spans() {
     let source = "label = \"λ\"\nmain = each [x, _] in xs { y := +x\n y * 2 }";
@@ -3216,19 +3198,9 @@ fn repeated_tuple_annotations_on_leading_locals_preserve_nested_types_and_spans(
     ));
     for source in ["[1; 2]", "{ values: [1; 2] }", "{ values: [Int; 2] }"] {
         let errors = ast::parse_expression(source).unwrap_err();
-        let [Error::Grammar(diagnostic)] = errors.as_slice() else {
-            panic!()
-        };
         assert!(
-            matches!(
-                diagnostic.kind,
-                cartan_syntax::DiagnosticKind::Stated {
-                    rule: cartan_syntax::Rule::ListRepeat,
-                    refused: true,
-                    ..
-                }
-            ),
-            "{source}: {diagnostic:?}"
+            matches!(errors.as_slice(), [Error::Grammar(_)]),
+            "{source}: {errors:?}"
         );
     }
 }
@@ -3627,22 +3599,6 @@ fn a_state_carries_its_lock_clause_and_condition() {
             "{source:?}: {errors:?}"
         );
     }
-}
-
-/// A Param is fixed over a run, so a lock written on one is refused by name at
-/// the clause rather than carried or reported as a generic parse failure.
-#[test]
-fn a_param_refuses_a_lock_clause() {
-    let source = "x = 1\nparam nj: Int = 200 (locked when x > 0)\n";
-    let errors = ast::parse_document(source).unwrap_err();
-    let [Error::Form(FormDiagnostic {
-        kind: FormDiagnosticKind::ParamLock,
-        span,
-    })] = errors.as_slice()
-    else {
-        panic!("{errors:?}")
-    };
-    assert_eq!(&source[span.start..span.end], "(locked when x > 0)");
 }
 
 /// The lock clause breaks anywhere inside its parentheses, as a bracketed run

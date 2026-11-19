@@ -148,8 +148,6 @@ pub enum Rule {
     WithHoles,
     /// A `with` clause's hole with no `:` after its name.
     HoleArgument,
-    /// A refused `module` item; code units are declared with `namespace`.
-    ModuleSpelling,
     /// A namespace with no name.
     NamespaceName,
     /// A namespace with no parenthesized holes after its name.
@@ -166,8 +164,6 @@ pub enum Rule {
     LockCondition,
     /// A fiber declaration declaring no components or variants.
     FiberDeclares,
-    /// Braces where a fiber's components stand.
-    StructFiber,
     /// A struct declaration with no name.
     StructName,
     /// A struct declaration with no `=`.
@@ -191,14 +187,8 @@ pub enum Rule {
     /// A conditional's branch with no braced body after its condition or
     /// its `else`.
     IfBody,
-    /// A dot reading a value's component.
-    ComponentDot,
-    /// Parens applied to what is no named function.
-    CallHead,
     /// A primed head with no argument list.
     PrimedCall,
-    /// A configuration key written inside a call's parens.
-    PositionalArgument,
     /// A configuration zone holding no Map, name or selection.
     ConfigAtom,
     /// A recurrence's accumulator with no `:=` and seed.
@@ -212,22 +202,8 @@ pub enum Rule {
     /// A `match` arm with no braced body after its pattern or its `else`;
     /// a variant's arm captures its `variant`, and the `else` arm none.
     ArmBody,
-    /// A parenthesized binder in a header.
-    HeaderParen,
-    /// A parenthesized position of a bracket pattern.
-    BracketParen,
-    /// A comma inside grouping parens.
-    ParenComma,
-    /// A `;` after a List literal's entry.
-    ListRepeat,
     /// A `tap` with no braced writes.
     TapBody,
-    /// A `param` declared inside a body.
-    LocalParam,
-    /// A local declared with `=` inside a body.
-    BodyEquals,
-    /// A write naming a component of a port.
-    ComponentWrite,
     /// A `state` local with no `:=`.
     StateLocal,
     /// A tagged literal's hole holding no expression.
@@ -253,7 +229,6 @@ impl Rule {
         Rule::UseAlias,
         Rule::WithHoles,
         Rule::HoleArgument,
-        Rule::ModuleSpelling,
         Rule::NamespaceName,
         Rule::NamespaceHoles,
         Rule::NamespaceBrace,
@@ -262,7 +237,6 @@ impl Rule {
         Rule::PortValue,
         Rule::LockCondition,
         Rule::FiberDeclares,
-        Rule::StructFiber,
         Rule::StructName,
         Rule::StructEquals,
         Rule::StructEntries,
@@ -274,24 +248,14 @@ impl Rule {
         Rule::AnnotationAlternative,
         Rule::UpdateBody,
         Rule::IfBody,
-        Rule::ComponentDot,
-        Rule::CallHead,
         Rule::PrimedCall,
-        Rule::PositionalArgument,
         Rule::ConfigAtom,
         Rule::FoldSeed,
         Rule::FoldIn,
         Rule::FoldBody,
         Rule::MatchArms,
         Rule::ArmBody,
-        Rule::HeaderParen,
-        Rule::BracketParen,
-        Rule::ParenComma,
-        Rule::ListRepeat,
         Rule::TapBody,
-        Rule::LocalParam,
-        Rule::BodyEquals,
-        Rule::ComponentWrite,
         Rule::StateLocal,
         Rule::TemplateHole,
         Rule::TemplateClose,
@@ -337,36 +301,24 @@ impl Rule {
             | Rule::StructEntries
             | Rule::StructEntryType
             | Rule::ComponentType
-            | Rule::BodyEquals
             | Rule::StateLocal => &["name"],
             Rule::PortValue => &["name", "kind"],
             Rule::BindingValue | Rule::FunctionBody => &["name", "found"],
             Rule::PrimedCall => &["function"],
-            Rule::PositionalArgument => &["function", "key"],
             Rule::FoldSeed => &["keyword"],
             Rule::FoldBody => &["keyword", "found"],
             Rule::ArmBody => &["variant"],
-            Rule::ComponentWrite => &["head", "tail"],
             Rule::ComprehensionBody
             | Rule::MixedSeparators
             | Rule::ComprehensionIn(_)
-            | Rule::ModuleSpelling
             | Rule::NamespaceItem
             | Rule::LockCondition
-            | Rule::StructFiber
             | Rule::PatternValue
             | Rule::AnnotationAlternative
             | Rule::UpdateBody
-            | Rule::ComponentDot
-            | Rule::CallHead
             | Rule::FoldIn
             | Rule::MatchArms
-            | Rule::HeaderParen
-            | Rule::BracketParen
-            | Rule::ParenComma
-            | Rule::ListRepeat
             | Rule::TapBody
-            | Rule::LocalParam
             | Rule::TemplateHole
             | Rule::RequireCondition
             | Rule::RequireMessage => &[],

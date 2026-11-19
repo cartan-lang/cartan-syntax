@@ -254,7 +254,7 @@ fn local_list_patterns_require_a_body_for_colon_equals() {
 
 #[test]
 fn reports_typed_rule_identity_sites_and_captured_fields() {
-    let tree = parse_document("step { x = 1 }");
+    let tree = parse_document("step { state x = 1 }");
     assert!(tree.has_errors());
     let diagnostic = &tree.diagnostics[0];
     let DiagnosticKind::Stated {
@@ -265,13 +265,28 @@ fn reports_typed_rule_identity_sites_and_captured_fields() {
     else {
         panic!("expected a grammar-stated diagnostic: {diagnostic:?}");
     };
-    assert_eq!(*rule, Rule::BodyEquals);
-    assert!(*refused);
+    assert_eq!(*rule, Rule::StateLocal);
+    assert!(!*refused);
     assert!(!diagnostic.incomplete);
-    assert_eq!(diagnostic.span.start, 7);
-    assert_eq!(diagnostic.found.as_deref(), Some("x"));
+    assert_eq!(diagnostic.span.start, 15);
+    assert_eq!(diagnostic.found.as_deref(), Some("="));
     let name = fields.iter().find(|field| field.name == "name").unwrap();
     assert_eq!(tree.source.get(name.span.start..name.span.end), Some("x"));
+    assert_spans(&tree);
+
+    let tree = parse_document("fiber F = (A: Real | B: Real, C: Real)");
+    let [diagnostic] = tree.diagnostics.as_slice() else {
+        panic!("{:?}", tree.diagnostics);
+    };
+    assert!(matches!(
+        diagnostic.kind,
+        DiagnosticKind::Stated {
+            rule: Rule::MixedSeparators,
+            refused: true,
+            ..
+        }
+    ));
+    assert_eq!(diagnostic.found.as_deref(), Some(","));
     assert_spans(&tree);
 
     let tree = parse_document("step true { x <- 1 }");
@@ -445,18 +460,6 @@ fn an_unfinished_call_waits_for_its_paren_rather_than_refusing() {
         assert_eq!(open.span.start, text.find('(').unwrap());
     }
     assert!(parse_document("x = f(1").diagnostics[0].incomplete);
-    // Complete misuse is still refused by name.
-    for (text, rule) in [
-        ("x = f(y = 3)", Rule::PositionalArgument),
-        ("x = (a)(1)", Rule::CallHead),
-    ] {
-        let tree = parse_document(text);
-        assert!(
-            matches!(tree.diagnostics[0].kind, DiagnosticKind::Stated { rule: r, .. } if r == rule),
-            "{text:?}: {:?}",
-            tree.diagnostics
-        );
-    }
 }
 
 /// A failed item ends at a line's end after its diagnostic, and every later

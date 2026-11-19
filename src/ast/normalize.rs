@@ -152,21 +152,6 @@ fn form_at(span: Span, kind: FormDiagnosticKind) -> Error {
     Error::Form(FormDiagnostic { kind, span })
 }
 
-/// `u[k, …] <- e`: a write names a whole State. The span covers the keys
-/// inside the brackets.
-fn keyed_write(subscript: &Node) -> Error {
-    let mut keys = children(subscript);
-    let first = keys.next().unwrap_or(subscript);
-    let last = keys.last().unwrap_or(first);
-    form_at(
-        Span {
-            start: first.start,
-            end: last.end,
-        },
-        FormDiagnosticKind::KeyedWrite,
-    )
-}
-
 fn binary_operator(written: &str) -> Option<BinaryOperator> {
     Some(match written {
         "+" => BinaryOperator::Add,
@@ -554,13 +539,7 @@ impl Reader<'_> {
                 };
                 let annotation = self.optional_annotation(node, SignaturePosition::Binding)?;
                 let value = self.expr(field(node, "value")?)?;
-                let lock = match (kind, node.child("lock")) {
-                    // A Param is fixed over a run, so a lock has nothing to guard.
-                    (BindingKind::Parameter, Some(lock)) => {
-                        return Err(form(lock, FormDiagnosticKind::ParamLock))
-                    }
-                    (_, lock) => lock.map(|lock| self.lock(lock)).transpose()?,
-                };
+                let lock = node.child("lock").map(|lock| self.lock(lock)).transpose()?;
                 ItemKind::Binding(Binding {
                     kind,
                     pattern,
@@ -625,10 +604,7 @@ impl Reader<'_> {
                         if write.kind != "write" {
                             return Err(unsupported(write));
                         }
-                        shape(write, &["target", "key", "value"], &[])?;
-                        if let Some(key) = write.child("key") {
-                            return Err(keyed_write(key));
-                        }
+                        shape(write, &["target", "value"], &[])?;
                         Ok(Write {
                             target: self.name(field(write, "target")?)?,
                             value: self.expr(field(write, "value")?)?,

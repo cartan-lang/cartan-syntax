@@ -169,10 +169,8 @@ recovered document tree, including qualified and nested annotations. This
 distinguishes annotations from Map entries without name resolution. An item
 that cannot yet parse retains its lexical colors.
 
-An unfinished call is incomplete rather than refused: the call-head refusal
-applies only to a complete argument list, and the positional-argument refusal
-only where the call closes after it, so `f(1` and `f(1, 2` followed by another
-line report the open `(`.
+An unfinished call is incomplete: `f(1` and `f(1, 2` followed by another line
+report the open `(`.
 
 ## Acceptance limits
 
@@ -229,8 +227,8 @@ consuming components.
 
 ## Current limitations
 
-- Namespace bodies, default arguments, function-header configuration and Tap
-  bodies parse to a CST but are unsupported in the AST.
+- Namespace bodies and Tap bodies parse to a CST but are unsupported in the
+  AST.
 - The scanner takes a line opening with a continuation operator as a
   continuation wherever the next item starts, while the interpreter does so
   only where the operator can follow; a document item opening with `+`, `:`
