@@ -1,0 +1,12 @@
+name = "Cartan"
+grammar = "cartan"
+path_suffixes = ["cart"]
+code_fence_block_name = "cart"
+line_comments = ["# "]
+tab_size = 4
+brackets = [
+  { start = "(", end = ")", close = true, newline = true },
+  { start = "[", end = "]", close = true, newline = true },
+  { start = "{", end = "}", close = true, newline = true },
+  { start = "\"", end = "\"", close = true, newline = false, not_in = ["string", "comment"] },
+]

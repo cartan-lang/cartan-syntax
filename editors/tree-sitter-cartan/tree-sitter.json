@@ -1,0 +1,22 @@
+{
+  "$schema": "https://tree-sitter.github.io/tree-sitter/assets/schemas/config.schema.json",
+  "grammars": [
+    {
+      "name": "cartan",
+      "camelcase": "Cartan",
+      "scope": "source.cartan",
+      "path": ".",
+      "file-types": [
+        "cart"
+      ]
+    }
+  ],
+  "metadata": {
+    "version": "0.1.0",
+    "license": "MIT",
+    "description": "Cartan grammar for Tree-sitter, printed by cartan-syntax",
+    "links": {
+      "repository": "https://github.com/cartan-lang/cartan-syntax"
+    }
+  }
+}

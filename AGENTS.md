@@ -67,8 +67,9 @@ implementations without an explicit scope and retirement condition.
   grammar with.
 - There is no command-line tool, no diagnostic wording and no Python package.
   The library returns typed diagnostics; the application words them and reaches
-  syntax through its own executable. `examples/grammar.rs` prints the
-  Tree-sitter grammar JavaScript.
+  syntax through its own executable. `src/editors.rs` prints the editor
+  packages committed under `editors/`, and the editor tests generate the
+  Tree-sitter parser beside them.
 
 ## Dependencies
 
@@ -93,7 +94,7 @@ RUSTDOCFLAGS=-Dwarnings cargo doc --workspace --no-deps --offline
 # From the workspace root:
 uv run --no-sync cartdev docs check --root cartan-syntax --strict
 git diff --check
-cargo run -p cartan-syntax --offline --example grammar > out/grammar.js && node --check out/grammar.js
+node --check editors/tree-sitter-cartan/grammar.js
 ```
 
 - Documentation is checked from the workspace, and a standalone clone has no
@@ -102,11 +103,17 @@ cargo run -p cartan-syntax --offline --example grammar > out/grammar.js && node 
 - `cargo test` generates the Tree-sitter parser from `grammar::print_json()`
   with the `tree-sitter-generate` crate, compiles it and the generated
   `grammar::print_scanner()` with the system C compiler through `cc`, and
-  requires its trees to equal the interpreter's on one-line fixtures
-  (`tests/editors.rs`). These are dev-dependencies only. The result is cached
-  under `target/tmp/` by the grammar's hash. The compile step is set up for
-  macOS and Linux. The parser runs in no editor here; editor behavior is
-  untested.
+  requires its trees to equal the interpreter's on one-line fixtures and every
+  emitted query to load against it (`tests/editors.rs`). These are
+  dev-dependencies only. The result is cached under `target/tmp/` by the
+  grammar's hash. The compile step is set up for macOS and Linux.
+- The same tests fail when a file under `editors/` differs from the printed
+  one; `CARTAN_SYNTAX_BLESS=1 cargo test --test editors` prints them again and
+  writes the ignored Zed development copy under `out/zed/`. Never edit
+  `editors/` by hand. [editors/README.md](editors/README.md) states the Zed
+  revision pin and local installation.
+- No editor runs here: highlighting and editing behavior in Zed, VS Code, Vim,
+  Sublime Text and Emacs is untested unless an owner reports observing it.
 - Test syntax-tree structure and spans and malformed input; parser acceptance
   is not semantic validation. A test's Cartan text is as close to a one-liner
   as it can be and tests one capability; programs live only in the

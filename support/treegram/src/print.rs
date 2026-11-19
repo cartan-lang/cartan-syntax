@@ -62,8 +62,11 @@ pub fn print(g: &Grammar) -> String {
             out.push('\n');
         }
         for line in doc.lines() {
-            out.push_str("    // ");
-            out.push_str(line);
+            out.push_str("    //");
+            if !line.is_empty() {
+                out.push(' ');
+                out.push_str(line);
+            }
             out.push('\n');
         }
         let arg = if mentions_symbol(rule) { "($)" } else { "(_)" };

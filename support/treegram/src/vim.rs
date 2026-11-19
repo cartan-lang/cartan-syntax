@@ -103,7 +103,7 @@ pub fn ftdetect(lang: &str, ext: &str) -> String {
         "\" Give a .{ext} document the {lang} filetype, so that\n\
          \" syntax/{lang}.vim colors it.\n\
          \"\n\
-         \" Printed by `cartan grammar --vim-ftdetect`.\n\n\
+         \" Printed by treegram from the host's shared grammar value.\n\n\
          autocmd BufRead,BufNewFile *.{ext} set filetype={lang}\n"
     )
 }

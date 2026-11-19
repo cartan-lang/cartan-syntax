@@ -1,0 +1,35 @@
+%YAML 1.2
+---
+# Sublime Text syntax for the cartan language.
+#
+# Printed by treegram from the host's shared grammar value.
+# An edit here is
+# overwritten; edit the grammar and print the file again.
+#
+# This file states lexical coloring. A language server is
+# a separate host integration.
+name: cartan
+file_extensions:
+  - cart
+scope: source.cartan
+contexts:
+  main:
+    - match: '"""'
+      scope: string.quoted.triple.cartan
+      push: triple_string
+    - match: '"(?:(?:(?:[^"\\\n])|(?:\\.)))*"'
+      scope: string.quoted.double.cartan
+    - match: '#(?:[^\n]*)'
+      scope: comment.line.number-sign.cartan
+    - match: '\b(?:false|none|true)\b'
+      scope: constant.language.cartan
+    - match: '\b(?:[0-9][_0-9]*)(?:(?:\.[0-9][_0-9]*))?(?:(?:[eE][+\-]?[0-9]+))?'
+      scope: constant.numeric.cartan
+    - match: '\b(?:and|as|but|each|else|fiber|fold|for|if|in|locked|match|namespace|not|of|or|param|periodic|reduce|require|state|step|struct|tap|texture|then|use|when|while|with)\b'
+      scope: keyword.control.cartan
+    - match: '\.\.=|!=|->|\.\.|\/\/|::|:=|<-|<=|<>|==|=>|>=|\?\?|#|\*|\+|-|\.|\/|:|;|<|=|>|\?|@|\^|\|'
+      scope: keyword.operator.cartan
+  triple_string:
+    - meta_scope: string.quoted.triple.cartan
+    - match: '"""'
+      pop: true

@@ -98,8 +98,7 @@ fields.
 This repository has no command-line tool; the workspace's one executable reads
 syntax through this library. `grammar::grammar()` returns the shared grammar value. The same value drives:
 
-- `grammar::print()`: Tree-sitter grammar JavaScript, which
-  [the grammar example](../examples/grammar.rs) prints.
+- `grammar::print()`: Tree-sitter grammar JavaScript.
 - `grammar::print_json()`: the Tree-sitter `grammar.json` that JavaScript
   evaluates to, which the generator reads without a JavaScript runtime.
 - `grammar::print_scanner()`: the external scanner, `src/scanner.c`, through
@@ -112,6 +111,12 @@ syntax through this library. `grammar::grammar()` returns the shared grammar val
 - `print_vim()` and `print_vim_ftdetect()`: Vim syntax and file detection.
 - `print_sublime()`: Sublime syntax definitions.
 - `print_emacs(builtin_names)`: Emacs source using caller-supplied builtin names.
+- `editors::files(zed)`: every file of the editor packages under
+  [`editors/`](../editors/README.md) but the generated parser, by path. The
+  highlight keyword, operator and punctuation lists and the bracket and indent
+  queries are read off the grammar value; the structural highlights, outline
+  and injections are kept in `src/queries/`. Zed fetches the grammar from the
+  repository and revision `zed` names.
 
 The generic `treegram` package interprets and prints this grammar. Tooling does
 not import a language builtin registry or require compiler execution. These

@@ -1,0 +1,12 @@
+id = "cartan"
+name = "Cartan"
+description = "Cartan syntax highlighting, brackets, indentation and outline."
+version = "0.1.0"
+schema_version = 1
+authors = ["Cartan contributors"]
+repository = "https://github.com/cartan-lang/cartan-syntax"
+
+[grammars.cartan]
+repository = "https://github.com/cartan-lang/cartan-syntax"
+rev = "0000000000000000000000000000000000000000"
+path = "editors/tree-sitter-cartan"

@@ -1,0 +1,40 @@
+{
+  "name": "cartan",
+  "displayName": "Cartan",
+  "description": "Cartan syntax highlighting, printed by cartan-syntax.",
+  "version": "0.1.0",
+  "publisher": "cartan-lang",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cartan-lang/cartan-syntax"
+  },
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "cartan",
+        "aliases": [
+          "Cartan",
+          "cartan"
+        ],
+        "extensions": [
+          ".cart"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "cartan",
+        "scopeName": "source.cartan",
+        "path": "./syntaxes/cartan.tmLanguage.json"
+      }
+    ]
+  }
+}

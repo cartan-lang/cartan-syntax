@@ -1,12 +1,25 @@
-//! The Tree-sitter parser generated from the grammar value, compiled and
-//! run against the interpreter's reading of the same text.
+//! The editor packages under `editors/`: the Tree-sitter parser generated
+//! from the grammar value, compiled and run against the interpreter's
+//! reading of the same text, its queries read against it, and the
+//! committed tree held to the printed one.
 
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::OnceLock;
 
+use cartan_syntax::editors::{self, ZedGrammar, GRAMMAR_PATH, REPOSITORY};
 use cartan_syntax::{grammar, parse_document};
-use tree_sitter::{Language, Parser};
+use tree_sitter::{Language, Parser, Query};
+
+/// Set, the drift test writes the printed files instead of comparing them.
+const BLESS: &str = "CARTAN_SYNTAX_BLESS";
+
+/// Set, the revision the committed Zed manifest fetches the grammar at.
+const ZED_REV: &str = "CARTAN_SYNTAX_ZED_REV";
+
+/// The revision a first manifest names until one is pinned.
+const UNPINNED: &str = "0000000000000000000000000000000000000000";
 
 /// The files `tree-sitter generate` writes under `src/`, by path relative
 /// to it.
@@ -27,6 +40,7 @@ fn tree() -> &'static Path {
         let mut hasher = std::hash::DefaultHasher::new();
         json.hash(&mut hasher);
         grammar::print_scanner().hash(&mut hasher);
+        env!("CARGO_PKG_VERSION").hash(&mut hasher);
         let root = Path::new(env!("CARGO_TARGET_TMPDIR"))
             .join("tree-sitter-cartan")
             .join(format!("{:016x}", hasher.finish()));
@@ -42,6 +56,11 @@ fn tree() -> &'static Path {
             let grammar_path = src.join("grammar.json");
             std::fs::write(&grammar_path, json).unwrap();
             std::fs::write(src.join("scanner.c"), grammar::print_scanner()).unwrap();
+            // the configuration whose version the generator writes in
+            let config = format!("{GRAMMAR_PATH}/tree-sitter.json");
+            let printed = editors::files(&published(UNPINNED));
+            let (_, json) = printed.iter().find(|(p, _)| *p == config).unwrap();
+            std::fs::write(fresh.join("tree-sitter.json"), json).unwrap();
             let mut diagnostics = Vec::new();
             tree_sitter_generate::generate_parser_in_directory(
                 &fresh,
@@ -203,4 +222,154 @@ fn the_generated_parser_reads_each_construct_as_the_interpreter_does() {
         })
         .collect();
     assert!(departures.is_empty(), "{}", departures.join("\n"));
+}
+
+/// The Zed grammar source the committed manifest names.
+fn published(rev: &str) -> ZedGrammar {
+    ZedGrammar {
+        repository: REPOSITORY.to_string(),
+        rev: rev.to_string(),
+    }
+}
+
+/// Every file under `editors/`, by its path from the repository root:
+/// what the library prints and what the generator wrote.
+fn printed(zed: &ZedGrammar) -> Vec<(String, String)> {
+    let mut files = editors::files(zed);
+    let src = tree().join("src");
+    for path in GENERATED {
+        let text = std::fs::read_to_string(src.join(path)).unwrap();
+        files.push((format!("{GRAMMAR_PATH}/src/{path}"), text));
+    }
+    files.sort();
+    files
+}
+
+fn repository_root() -> &'static Path {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+}
+
+/// The revision the committed manifest names, which the drift test
+/// keeps: no file can name the commit that holds it.
+fn committed_rev() -> Option<String> {
+    let text =
+        std::fs::read_to_string(repository_root().join("editors/zed/extension.toml")).ok()?;
+    let line = text.lines().find(|l| l.starts_with("rev = \""))?;
+    Some(
+        line.trim_start_matches("rev = \"")
+            .trim_end_matches('"')
+            .to_string(),
+    )
+}
+
+/// Every file under a directory, by its path from the repository root.
+fn files_under(dir: &Path, out: &mut Vec<String>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries {
+        let path = entry.unwrap().path();
+        if path.is_dir() {
+            files_under(&path, out);
+        } else {
+            let relative = path.strip_prefix(repository_root()).unwrap();
+            out.push(relative.to_string_lossy().replace('\\', "/"));
+        }
+    }
+}
+
+fn write(root: &Path, files: &[(String, String)]) {
+    for (path, text) in files {
+        let path = root.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    }
+}
+
+/// The Zed extension as a local development copy under `out/zed/`, which
+/// fetches the grammar from this checkout at the commit `HEAD` names.
+fn write_zed_development_copy() {
+    let git = |args: &[&str]| {
+        Command::new("git")
+            .args(args)
+            .current_dir(repository_root())
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+    };
+    let Some(head) = git(&["rev-parse", "HEAD"]) else {
+        eprintln!("no Git revision to point the Zed development copy at; not written");
+        return;
+    };
+    if git(&["status", "--porcelain", "--", GRAMMAR_PATH]).is_some_and(|s| !s.is_empty()) {
+        eprintln!(
+            "{GRAMMAR_PATH} has uncommitted changes, which the development copy at {head} lacks"
+        );
+    }
+    let zed = ZedGrammar {
+        repository: format!("file://{}", repository_root().display()),
+        rev: head,
+    };
+    let copy: Vec<(String, String)> = editors::files(&zed)
+        .into_iter()
+        .filter_map(|(path, text)| Some((path.strip_prefix("editors/")?.to_string(), text)))
+        .filter(|(path, _)| path.starts_with("zed/"))
+        .collect();
+    write(&repository_root().join("out"), &copy);
+}
+
+#[test]
+fn the_committed_editor_files_are_the_printed_ones() {
+    let rev = std::env::var(ZED_REV)
+        .ok()
+        .or_else(committed_rev)
+        .unwrap_or_else(|| UNPINNED.to_string());
+    let files = printed(&published(&rev));
+    let mut present = Vec::new();
+    files_under(&repository_root().join("editors"), &mut present);
+    let unprinted: Vec<&String> = present
+        .iter()
+        .filter(|p| !files.iter().any(|(path, _)| path == *p))
+        .collect();
+    if std::env::var_os(BLESS).is_some() {
+        for path in unprinted {
+            std::fs::remove_file(repository_root().join(path)).unwrap();
+        }
+        write(repository_root(), &files);
+        write_zed_development_copy();
+        return;
+    }
+    let differing: Vec<&String> = files
+        .iter()
+        .filter(|(path, text)| {
+            std::fs::read_to_string(repository_root().join(path))
+                .ok()
+                .as_ref()
+                != Some(text)
+        })
+        .map(|(path, _)| path)
+        .collect();
+    assert!(
+        differing.is_empty() && unprinted.is_empty(),
+        "editors/ differs from the printed files in {differing:?} and holds unprinted {unprinted:?}; \
+         print them with {BLESS}=1 cargo test --test editors"
+    );
+}
+
+#[test]
+fn every_query_reads_against_the_generated_language() {
+    let mut problems = Vec::new();
+    for (path, text) in editors::files(&published(UNPINNED)) {
+        if !path.ends_with(".scm") {
+            continue;
+        }
+        if let Err(e) = Query::new(language(), &text) {
+            problems.push(format!("{path}: {e}"));
+        }
+        for p in grammar::grammar().check_query(&text) {
+            problems.push(format!("{path}:{}:{}: {}", p.line, p.col, p.msg));
+        }
+    }
+    assert!(problems.is_empty(), "{}", problems.join("\n"));
 }
