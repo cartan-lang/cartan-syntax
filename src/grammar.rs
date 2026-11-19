@@ -528,20 +528,30 @@ fn build() -> Grammar {
             vec!["_expression".into(), "each_expression".into()],
             // an open range's end may be a brace in the text, and the
             // header's body is one too: the interpreter reads no brace
-            // there, and the parse that leaves the header a body stands
-            vec!["header_open_range".into()],
-            vec!["range_expression_1".into(), "header_open_range".into()],
+            // there, and the parse that leaves the header a body stands.
+            // The header's open axis, `3..` and `..`, is spelled as the
+            // range from, the bounded range's start and the full range
+            // of the header's expression (the second exclusion copy),
+            // and the token after the operator decides
+            vec!["full_range".into(), "header_open_range".into()],
+            vec!["range_from_2".into(), "header_open_range".into()],
+            vec!["range_from_2".into(), "full_range".into(), "header_open_range".into()],
+            vec![
+                "range_expression_2".into(),
+                "range_from_2".into(),
+                "header_open_range".into(),
+            ],
             // `: name` may end there or continue into `(args)` or `[i]`,
             // and which it is shows only at the token after the name; the
             // dynamic precedence on the call and the index settles it
             vec!["_config_atom".into(), "_expression".into()],
-            // after `but` a site update's key (`site_key`, the second
+            // after `but` a site update's key (`site_key`, the first
             // exclusion copy, tied) and a component update's override
             // open alike, and the colon closing the key is what tells
             // them apart. Where both readings stand, the
             // site update's dynamic precedence keeps it, as the
             // interpreter's order does
-            vec!["_expression".into(), "_expression_2".into()],
+            vec!["_expression".into(), "_expression_1".into()],
             // a brace item opens the same way as a pattern and as an
             // expression, and the `:=` is what tells a local from a bare
             // item: the three parenthesized patterns are spelled exactly
@@ -609,6 +619,23 @@ fn build() -> Grammar {
             // definition's head and a call's are read at once, which is
             // what an item standing on a bare call asks for
             vec!["variant_argument".into(), "_pattern".into()],
+            // a brace item opening `u[` is a keyed write's target or an
+            // indexed expression, and the `<-` after the subscript is
+            // what tells the two apart
+            vec!["_expression".into(), "write".into()],
+            // a `..` standing alone in a List or a subscript is the full
+            // range and an open axis alike
+            vec!["full_range".into(), "open_range".into()],
+            // a name after a Map entry opens the next entry and a brace
+            // item's expression alike, and the colon of the entry and
+            // of the configuration zone is spelled alike
+            vec!["_expression".into(), "map_entry".into()],
+            // an annotation's parens open a fiber and a function's
+            // signature alike, and the `->` after them decides
+            vec!["fiber_type".into(), "signature_type".into()],
+            // a name in an annotation's parens is a payload-free variant
+            // and a fiber alike, and the `|` after it decides
+            vec!["variant".into(), "fiber_type".into()],
         ],
         brackets: vec![
             ("(".into(), ")".into()),

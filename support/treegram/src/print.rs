@@ -382,10 +382,15 @@ fn climb_rules(name: &str, doc: &str, c: &Climb, copy: Option<&Copy>) -> Vec<(St
                 Some(c) => rename(body, name, c),
                 None => body,
             };
-            let prec = match op.assoc {
-                Assoc::None => "prec",
-                Assoc::Left => "prec.left",
-                Assoc::Right => "prec.right",
+            // the interpreter reads a prefix operator's operand at the
+            // operator's own precedence, so an operator of that
+            // precedence after the operand extends the operand rather
+            // than the prefix form: tree-sitter's right associativity,
+            // whatever the operator states
+            let prec = match (&op.form, op.assoc) {
+                (Form::Prefix { .. }, _) | (_, Assoc::Right) => "prec.right",
+                (_, Assoc::None) => "prec",
+                (_, Assoc::Left) => "prec.left",
             };
             // in a copy, every precedence is lifted to `2p + 1`: the
             // operators keep their order among themselves, and each stands
