@@ -116,3 +116,19 @@ fn function_separation_preserves_comment_attachment() {
     formats("f(x)=x\r\n \r\n\r\ng(x)=x", "f(x) = x\r\n\r\ng(x) = x");
     formats("f(x)=x\nx=2\ng(x)=x", "f(x) = x\nx = 2\ng(x) = x");
 }
+
+#[test]
+fn braced_branches_and_arms_keep_their_lines() {
+    formats(
+        "x=if c{a}else if d{b}else{c}+1",
+        "x = if c { a } else if d { b } else { c } + 1",
+    );
+    formats(
+        "x=if c{\ny:=1\n  y\n}else{\n0\n}",
+        "x = if c {\n    y := 1\n    y\n} else {\n    0\n}",
+    );
+    formats(
+        "y=match s{\n A (x){x}\nB{1},\n    else {0}\n}",
+        "y = match s {\n    A(x) { x }\n    B { 1 },\n    else { 0 }\n}",
+    );
+}

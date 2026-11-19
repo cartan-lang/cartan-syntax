@@ -78,7 +78,11 @@ impl Spacing {
         match node.kind.as_str() {
             "(" if matches!(
                 parent.kind.as_str(),
-                "parameter_list" | "argument_list" | "variant_arguments" | "constructor_pattern"
+                "parameter_list"
+                    | "argument_list"
+                    | "variant_arguments"
+                    | "constructor_pattern"
+                    | "match_arm"
             ) =>
             {
                 Self::AttachedOpen

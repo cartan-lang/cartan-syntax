@@ -35,7 +35,7 @@ server is registered.
 ## VS Code
 
 Copy or link `vscode/` into the extensions directory as an unpacked
-extension, for example to `~/.vscode/extensions/cartan-lang.cartan-0.1.0`,
+extension, for example to `~/.vscode/extensions/cartan-lang.cartan-0.13.0`,
 and restart VS Code.
 
 ## Vim

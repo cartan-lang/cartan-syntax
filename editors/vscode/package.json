@@ -2,7 +2,7 @@
   "name": "cartan",
   "displayName": "Cartan",
   "description": "Cartan syntax highlighting, printed by cartan-syntax.",
-  "version": "0.1.0",
+  "version": "0.13.0",
   "publisher": "cartan-lang",
   "license": "MIT",
   "repository": {

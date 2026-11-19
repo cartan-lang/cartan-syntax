@@ -93,8 +93,10 @@ pub fn files(zed: &ZedGrammar) -> Vec<(String, String)> {
     out
 }
 
+/// The version every editor package carries: the Cartan product release it
+/// ships with, which the library's own crate version does not track.
 fn version() -> &'static str {
-    env!("CARGO_PKG_VERSION")
+    "0.13.0"
 }
 
 fn json(value: Json) -> String {

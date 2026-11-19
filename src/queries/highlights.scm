@@ -39,6 +39,8 @@
     name: (identifier) @type))
 (variant
   name: (identifier) @variant)
+(match_arm
+  variant: (identifier) @variant)
 (component
   name: (identifier) @property)
 (struct_entry
