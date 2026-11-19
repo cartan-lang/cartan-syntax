@@ -489,10 +489,10 @@ fn build() -> Grammar {
               \n\
               **This file is generated.** The standalone `cartan-syntax` crate\n\
               prints it from `src/grammar.rs`, the same grammar its concrete\n\
-              syntax parser reads directly. Edit that Rust source, run\n\
-              `cargo run --example grammar > grammar.js`, then use an installed\n\
-              Tree-sitter CLI to generate and test an editor parser. Generation\n\
-              alone does not establish Tree-sitter parser conformance.\n\
+              syntax parser reads directly; edit that Rust source. The crate's\n\
+              tests generate the parser from the same value and compare its\n\
+              trees with the interpreter's on one-line fixtures, which is\n\
+              evidence of agreement on those fixtures and no more.\n\
               \n\
               An item is a binding, a port, a function,\n\
               an update block, a use, or a bare expression standing alone — which is\n\

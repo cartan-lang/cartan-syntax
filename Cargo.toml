@@ -18,3 +18,15 @@ serde = { version = "1.0", features = ["derive"], optional = true }
 # Serialize the source AST for a consumer that stores or prints it; off by
 # default so the library needs no registry dependency.
 serde = ["dep:serde"]
+
+[dev-dependencies]
+cc = "1.11.2"
+libloading = "0.9.1"
+tree-sitter = "0.27"
+tree-sitter-generate = { version = "0.27", default-features = false, features = ["load"] }
+tree-sitter-language = "0.1"
+
+# The editor tests run the Tree-sitter generator, whose table construction
+# is slow unoptimized.
+[profile.dev.package.tree-sitter-generate]
+opt-level = 3

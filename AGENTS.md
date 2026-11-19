@@ -68,7 +68,7 @@ implementations without an explicit scope and retirement condition.
 - There is no command-line tool, no diagnostic wording and no Python package.
   The library returns typed diagnostics; the application words them and reaches
   syntax through its own executable. `examples/grammar.rs` prints the
-  Tree-sitter grammar.
+  Tree-sitter grammar JavaScript.
 
 ## Dependencies
 
@@ -99,8 +99,13 @@ cargo run -p cartan-syntax --offline --example grammar > out/grammar.js && node 
 - Documentation is checked from the workspace, and a standalone clone has no
   checker.
 - Offline builds of the `serde` feature need the cached serde crates.
-- Building and running an actual Tree-sitter parser is untested here; only the
-  generated JavaScript is syntax-checked.
+- `cargo test` generates the Tree-sitter parser from `grammar::print_json()`
+  with the `tree-sitter-generate` crate, compiles it with the system C
+  compiler through `cc`, and requires its trees to equal the interpreter's on
+  one-line fixtures (`tests/editors.rs`). These are dev-dependencies only. A
+  cold run generates for about a minute; the result is cached under
+  `target/tmp/` by the grammar's hash. The compile step is set up for macOS
+  and Linux. The parser runs in no editor here; editor behavior is untested.
 - Test syntax-tree structure and spans and malformed input; parser acceptance
   is not semantic validation. A test's Cartan text is as close to a one-liner
   as it can be and tests one capability; programs live only in the

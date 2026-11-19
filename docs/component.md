@@ -100,6 +100,8 @@ syntax through this library. `grammar::grammar()` returns the shared grammar val
 
 - `grammar::print()`: Tree-sitter grammar JavaScript, which
   [the grammar example](../examples/grammar.rs) prints.
+- `grammar::print_json()`: the Tree-sitter `grammar.json` that JavaScript
+  evaluates to, which the generator reads without a JavaScript runtime.
 - `print_textmate()`: lexical highlighting grammar.
 - `print_vim()` and `print_vim_ftdetect()`: Vim syntax and file detection.
 - `print_sublime()`: Sublime syntax definitions.
@@ -187,9 +189,12 @@ pattern bindings use `=`; both forms with `:=` report `Rule::PatternValue` at
 the colon.
 The [syntax tests](../tests/syntax.rs) verify these structures and byte spans.
 
-JavaScript syntax of the generated Tree-sitter grammar is checked with Node.
-Actual Tree-sitter parser generation and execution are untested because the
-Tree-sitter command-line tool is unavailable in this environment. There is no full editor-conformance claim.
+The [editor tests](../tests/editors.rs) generate the Tree-sitter parser from
+`grammar::print_json()`, compile and load it, and require its trees to equal
+the interpreter's on one-line fixtures, one construct each. Tree-sitter reads
+the grammar's precedences and declared conflicts, which the interpreter
+ignores, so agreement is evidence on those fixtures only. There is no full
+editor-conformance claim.
 
 ## Licensing
 
@@ -209,5 +214,6 @@ consuming components.
 
 - Namespace bodies, default arguments, function-header configuration and Tap
   bodies parse to a CST but are unsupported in the AST.
-- Generated Tree-sitter JavaScript passes a syntax check; building and running a
-  Tree-sitter parser is untested here.
+- The generated Tree-sitter parser reads some range and keyed-write forms
+  differently from the interpreter, and it is large (about 43,000 states);
+  no editor package is assembled.
