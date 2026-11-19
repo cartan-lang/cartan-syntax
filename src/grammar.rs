@@ -74,11 +74,17 @@ pub fn print() -> String {
     treegram::print(grammar())
 }
 
+/// The grammar as Tree-sitter's `grammar.json`, the form `grammar.js`
+/// evaluates to and `tree-sitter generate` reads without JavaScript.
+pub fn print_json() -> String {
+    treegram::print_json(grammar())
+}
+
 /// The grammar's lexical layer as a TextMate grammar, for the VS Code
 /// extension (`editors/vscode/syntaxes/`): keywords, strings, numbers,
 /// comments and operators read off the same value, with `true`,
-/// `false` and `none` colored as the constants they are. The
-/// structural coloring is the language server's semantic tokens.
+/// `false` and `none` colored as the constants they are. Structural
+/// coloring is the Tree-sitter grammar's, in the editors that read one.
 pub fn print_textmate() -> String {
     treegram::textmate(grammar(), "source.cartan", CONSTANTS)
 }
@@ -108,14 +114,7 @@ pub fn print_sublime() -> String {
 /// The grammar's lexical layer as an Emacs major mode. The host supplies
 /// its builtin names; syntax has no callable registry.
 pub fn print_emacs(builtin_names: &[&str]) -> String {
-    treegram::emacs(
-        grammar(),
-        "cartan",
-        "cart",
-        CONSTANTS,
-        builtin_names,
-        &["cartan", "lsp"],
-    )
+    treegram::emacs(grammar(), "cartan", "cart", CONSTANTS, builtin_names)
 }
 
 // ---- the precedence table ----------------------------------------------

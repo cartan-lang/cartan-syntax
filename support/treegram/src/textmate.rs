@@ -4,6 +4,7 @@
 //! the one construct stated by name rather than derived, are in
 //! [`crate::lexical`].
 
+use crate::json::json_str;
 use crate::lexical::{self, Lexical};
 use crate::pattern::Dialect;
 use crate::rule::Grammar;
@@ -76,22 +77,4 @@ fn pattern(name: &str, regex: &str) -> String {
         json_str(name),
         json_str(regex)
     )
-}
-
-/// A string as JSON spells it.
-fn json_str(s: &str) -> String {
-    let mut out = String::from("\"");
-    for c in s.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\t' => out.push_str("\\t"),
-            '\r' => out.push_str("\\r"),
-            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
-            c => out.push(c),
-        }
-    }
-    out.push('"');
-    out
 }

@@ -1,15 +1,18 @@
-//! The grammar as a `grammar.js`: the text `tree-sitter generate`
-//! reads. Every combinator prints as its tree-sitter spelling, a
-//! [`Climb`] prints as one `prec`-annotated rule per operator node
-//! beside the expression rule's `choice`, and the interpreter's own
-//! constructs print as the rule they wrap or as nothing.
+//! The grammar as a `grammar.js`, the text `tree-sitter generate`
+//! reads, and as the `grammar.json` that text evaluates to, which the
+//! generator also reads directly. Every combinator prints as its
+//! tree-sitter spelling, a [`Climb`] prints as one `prec`-annotated
+//! rule per operator node beside the expression rule's `choice`, and
+//! the interpreter's own constructs print as the rule they wrap or as
+//! nothing. Both forms come from one walk of the grammar, so they state
+//! the same rules.
 
+use crate::json::Json;
 use crate::rule::{Assoc, Body, Climb, Def, Form, Grammar, Op, Rule};
 
 /// The `grammar.js` text of a grammar.
 pub fn print(g: &Grammar) -> String {
-    let copies = copies(g);
-    COPIES.with(|c| *c.borrow_mut() = copies.clone());
+    let rules = tree_sitter_rules(g);
     let mut out = String::new();
     if !g.doc.is_empty() {
         out.push_str("/**\n");
@@ -42,32 +45,99 @@ pub fn print(g: &Grammar) -> String {
         out.push_str("  ],\n\n");
     }
     out.push_str("  rules: {\n");
-    let mut first = true;
-    for d in &g.rules {
-        for (name, doc, rule) in printed_rules(d, &copies) {
-            if !first {
-                out.push('\n');
-            }
-            first = false;
-            for line in doc.lines() {
-                out.push_str("    // ");
-                out.push_str(line);
-                out.push('\n');
-            }
-            let arg = if mentions_symbol(&rule) { "($)" } else { "(_)" };
-            let flat = format!("    {name}: {arg} => {},", render(&rule, 4, usize::MAX));
-            if flat.len() <= 80 {
-                out.push_str(&flat);
-                out.push('\n');
-            } else {
-                out.push_str(&format!("    {name}: {arg} =>\n      "));
-                out.push_str(&render(&rule, 6, 80));
-                out.push_str(",\n");
-            }
+    for (i, (name, doc, rule)) in rules.iter().enumerate() {
+        if i > 0 {
+            out.push('\n');
+        }
+        for line in doc.lines() {
+            out.push_str("    // ");
+            out.push_str(line);
+            out.push('\n');
+        }
+        let arg = if mentions_symbol(rule) { "($)" } else { "(_)" };
+        let flat = format!("    {name}: {arg} => {},", render(rule, 4, usize::MAX));
+        if flat.len() <= 80 {
+            out.push_str(&flat);
+            out.push('\n');
+        } else {
+            out.push_str(&format!("    {name}: {arg} =>\n      "));
+            out.push_str(&render(rule, 6, 80));
+            out.push_str(",\n");
         }
     }
     out.push_str("  },\n});\n");
     out
+}
+
+/// The `grammar.json` text of a grammar: what the `grammar.js`
+/// [`print()`] writes evaluates to under tree-sitter's DSL, and what
+/// `tree-sitter generate` reads without running JavaScript.
+pub fn print_json(g: &Grammar) -> String {
+    let rules = tree_sitter_rules(g);
+    let names = |list: &[String]| Json::Arr(list.iter().map(|n| Json::str(n)).collect());
+    let mut fields = vec![
+        (
+            "$schema",
+            Json::str(
+                "https://tree-sitter.github.io/tree-sitter/assets/schemas/grammar.schema.json",
+            ),
+        ),
+        ("name", Json::str(&g.name)),
+    ];
+    if let Some(w) = &g.word {
+        fields.push(("word", Json::str(w)));
+    }
+    fields.extend([
+        (
+            "rules",
+            Json::Obj(
+                rules
+                    .iter()
+                    .map(|(name, _, rule)| (name.clone(), rule.to_json()))
+                    .collect(),
+            ),
+        ),
+        (
+            "extras",
+            Json::Arr(
+                g.extras
+                    .iter()
+                    .filter_map(js)
+                    .map(|j| j.to_json())
+                    .collect(),
+            ),
+        ),
+        (
+            "conflicts",
+            Json::Arr(g.conflicts.iter().map(|c| names(c)).collect()),
+        ),
+        ("precedences", Json::Arr(Vec::new())),
+        ("externals", Json::Arr(Vec::new())),
+        ("inline", Json::Arr(Vec::new())),
+        ("supertypes", Json::Arr(Vec::new())),
+        ("reserved", Json::Obj(Vec::new())),
+    ]);
+    let doc = Json::Obj(
+        fields
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect(),
+    );
+    let mut out = doc.pretty();
+    out.push('\n');
+    out
+}
+
+/// Every rule tree-sitter reads, in order — name, the prose above it in
+/// `grammar.js`, and its body — with the exclusion copies the grammar
+/// asks for beside the climbs they copy.
+fn tree_sitter_rules(g: &Grammar) -> Vec<(String, String, Js)> {
+    let copies = copies(g);
+    COPIES.with(|c| *c.borrow_mut() = copies.clone());
+    g.rules
+        .iter()
+        .flat_map(|d| printed_rules(d, &copies))
+        .collect()
 }
 
 /// An exclusion copy of a climb: `Without(name, nodes)` somewhere in
@@ -211,10 +281,10 @@ fn suffix(c: &Copy) -> &str {
 /// the same reduced grammar.
 fn rename(j: Js, name: &str, copy: &Copy) -> Js {
     match j {
-        Js::Leaf(s) if s == format!("$.{name}") => Js::sym(&copy.name),
-        Js::Leaf(s) => Js::Leaf(s),
+        Js::Sym(s) if s == name => Js::sym(&copy.name),
         Js::Call(n, args) => Js::Call(n, args.into_iter().map(|a| rename(a, name, copy)).collect()),
         Js::List(items) => Js::List(items.into_iter().map(|a| rename(a, name, copy)).collect()),
+        leaf => leaf,
     }
 }
 
@@ -374,7 +444,7 @@ fn js(r: &Rule) -> Option<Js> {
     Some(match r {
         Rule::Blank => blank(),
         Rule::Str(s) => Js::str(s),
-        Rule::Pat(p) => Js::Leaf(p.to_js()),
+        Rule::Pat(p) => Js::Pat(p.to_regex()),
         Rule::Sym(n) => Js::sym(n),
         Rule::Without(n, ns, tied) => Js::sym(&copy_name(n, ns, *tied)),
         // a sequence inside a sequence, and a choice inside a choice,
@@ -449,15 +519,24 @@ thread_local! {
 
 fn mentions_symbol(j: &Js) -> bool {
     match j {
-        Js::Leaf(s) => s.starts_with("$."),
+        Js::Sym(_) => true,
+        Js::Str(_) | Js::Num(_) | Js::Pat(_) => false,
         Js::Call(_, args) | Js::List(args) => args.iter().any(mentions_symbol),
     }
 }
 
-/// A JavaScript expression, laid out by [`render`].
+/// A tree-sitter DSL expression: laid out as JavaScript by [`render`],
+/// and as the `grammar.json` rule it evaluates to by [`Js::to_json`].
 #[derive(Clone, Debug)]
 enum Js {
-    Leaf(String),
+    /// `$.name`.
+    Sym(String),
+    /// A string literal.
+    Str(String),
+    Num(i32),
+    /// A regex, without its delimiters.
+    Pat(String),
+    /// A DSL function applied to its arguments: `seq`, `prec.left`, ….
     Call(String, Vec<Js>),
     List(Vec<Js>),
 }
@@ -470,13 +549,77 @@ impl Js {
         Js::List(items)
     }
     fn sym(name: &str) -> Js {
-        Js::Leaf(format!("$.{name}"))
+        Js::Sym(name.to_string())
     }
     fn str(s: &str) -> Js {
-        Js::Leaf(js_string(s))
+        Js::Str(s.to_string())
     }
     fn num(n: i32) -> Js {
-        Js::Leaf(n.to_string())
+        Js::Num(n)
+    }
+
+    /// The `grammar.json` rule tree-sitter's DSL evaluates this
+    /// expression to.
+    fn to_json(&self) -> Json {
+        let rule = |kind: &str, fields: Vec<(&str, Json)>| {
+            let mut all = vec![("type".to_string(), Json::str(kind))];
+            all.extend(fields.into_iter().map(|(k, v)| (k.to_string(), v)));
+            Json::Obj(all)
+        };
+        let members = |args: &[Js]| Json::Arr(args.iter().map(Js::to_json).collect());
+        match self {
+            Js::Sym(name) => rule("SYMBOL", vec![("name", Json::str(name))]),
+            Js::Str(s) => rule("STRING", vec![("value", Json::str(s))]),
+            Js::Pat(p) => rule("PATTERN", vec![("value", Json::str(p))]),
+            Js::Num(n) => Json::Num(*n),
+            Js::List(items) => members(items),
+            Js::Call(f, args) => match (f.as_str(), args.as_slice()) {
+                ("blank", []) => rule("BLANK", vec![]),
+                ("seq", args) => rule("SEQ", vec![("members", members(args))]),
+                ("choice", args) => rule("CHOICE", vec![("members", members(args))]),
+                ("optional", [r]) => rule(
+                    "CHOICE",
+                    vec![(
+                        "members",
+                        Json::Arr(vec![r.to_json(), rule("BLANK", vec![])]),
+                    )],
+                ),
+                ("repeat", [r]) => rule("REPEAT", vec![("content", r.to_json())]),
+                ("repeat1", [r]) => rule("REPEAT1", vec![("content", r.to_json())]),
+                ("token", [r]) => rule("TOKEN", vec![("content", r.to_json())]),
+                ("token.immediate", [r]) => rule("IMMEDIATE_TOKEN", vec![("content", r.to_json())]),
+                ("field", [Js::Str(name), r]) => rule(
+                    "FIELD",
+                    vec![("name", Json::str(name)), ("content", r.to_json())],
+                ),
+                ("alias", [r, target]) => {
+                    let (named, value) = match target {
+                        Js::Sym(name) => (true, name),
+                        Js::Str(name) => (false, name),
+                        other => panic!("an alias names a symbol or a string, not {other:?}"),
+                    };
+                    rule(
+                        "ALIAS",
+                        vec![
+                            ("content", r.to_json()),
+                            ("named", Json::Bool(named)),
+                            ("value", Json::str(value)),
+                        ],
+                    )
+                }
+                (prec, [n, r]) if prec.starts_with("prec") => {
+                    let kind = match prec {
+                        "prec" => "PREC",
+                        "prec.left" => "PREC_LEFT",
+                        "prec.right" => "PREC_RIGHT",
+                        "prec.dynamic" => "PREC_DYNAMIC",
+                        other => panic!("no precedence `{other}`"),
+                    };
+                    rule(kind, vec![("value", n.to_json()), ("content", r.to_json())])
+                }
+                (f, args) => panic!("no DSL function `{f}` of {} arguments", args.len()),
+            },
+        }
     }
 }
 
@@ -502,9 +645,9 @@ fn render(j: &Js, indent: usize, width: usize) -> String {
         return flat;
     }
     let (open, close, args) = match j {
-        Js::Leaf(_) => return flat,
         Js::Call(name, args) => (format!("{name}("), ")", args),
         Js::List(items) => ("[".to_string(), "]", items),
+        _ => return flat,
     };
     let pad = " ".repeat(indent + 2);
     let mut out = open;
@@ -521,7 +664,10 @@ fn render(j: &Js, indent: usize, width: usize) -> String {
 
 fn flat(j: &Js) -> String {
     match j {
-        Js::Leaf(s) => s.clone(),
+        Js::Sym(name) => format!("$.{name}"),
+        Js::Str(s) => js_string(s),
+        Js::Num(n) => n.to_string(),
+        Js::Pat(p) => format!("/{p}/"),
         Js::Call(name, args) => {
             let items: Vec<String> = args.iter().map(flat).collect();
             format!("{name}({})", items.join(", "))

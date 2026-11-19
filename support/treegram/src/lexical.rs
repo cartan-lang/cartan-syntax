@@ -4,8 +4,8 @@
 //!
 //! An editor's coloring is regex matching over one line, so what a
 //! printer states is what a lexer can see — comments, strings,
-//! numbers, keywords, operators — and the structural coloring comes
-//! from a language server's semantic tokens.
+//! numbers, keywords, operators — and structural coloring is left to
+//! a Tree-sitter grammar or a language server.
 //!
 //! What prints is read off the value. The keyword set is every literal
 //! token the rules state whose text matches the grammar's word

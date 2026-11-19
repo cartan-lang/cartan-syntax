@@ -6,7 +6,9 @@
 //! tree-sitter states through precedence annotations and this crate
 //! states outright, the expression rule with its operator table
 //! ([`Climb`]). Two readers take that value. [`print()`] writes it as a
-//! `grammar.js` that `tree-sitter generate` accepts, for the editors.
+//! `grammar.js` that `tree-sitter generate` accepts, for the editors,
+//! and [`print_json()`] as the `grammar.json` that file evaluates to, which
+//! the generator reads with no JavaScript runtime.
 //! [`parse()`] reads a document against it directly, in Rust, and
 //! returns a concrete tree with byte spans on every node — no C, no
 //! generated parser, nothing that stops a wasm build.
@@ -33,6 +35,7 @@
 //! newline as whitespace lists it in `extras`.
 
 pub mod emacs;
+pub mod json;
 pub mod lexical;
 pub mod parse;
 pub mod pattern;
@@ -48,7 +51,7 @@ pub use emacs::emacs;
 pub use lexical::Lexical;
 pub use parse::{parse, Parse};
 pub use pattern::{Dialect, Pat};
-pub use print::print;
+pub use print::{print, print_json};
 pub use query::{NodeType, QueryProblem, Roster};
 pub use rule::*;
 pub use sublime::sublime;

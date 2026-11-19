@@ -1,8 +1,8 @@
 //! The grammar's lexical layer as an Emacs major mode, printed from
 //! the same [`Grammar`] value [`crate::print()`] reads. The file is a
-//! complete `.el` — a syntax table, the font-lock rules, the
-//! `auto-mode-alist` entry and an eglot registration — so putting it
-//! on the load path and requiring it is the whole installation.
+//! complete `.el` — a syntax table, the font-lock rules and the
+//! `auto-mode-alist` entry — so putting it on the load path and
+//! requiring it is the whole installation.
 //!
 //! Emacs colors comments and strings from the syntax table rather than
 //! from font-lock patterns, so the comment and string rules print as
@@ -19,17 +19,9 @@ use crate::rule::Grammar;
 /// The Emacs major mode of `g`, as one Elisp file. `lang` is the mode's
 /// name — `cartan`, giving `cartan-mode` — `ext` is the file
 /// extension with no dot, `constants` names the word tokens that are
-/// values rather than keywords, `builtins` names the callables the
-/// language confers, and `server` is the language server's command
-/// line, which eglot starts.
-pub fn emacs(
-    g: &Grammar,
-    lang: &str,
-    ext: &str,
-    constants: &[&str],
-    builtins: &[&str],
-    server: &[&str],
-) -> String {
+/// values rather than keywords, and `builtins` names the callables
+/// the language confers.
+pub fn emacs(g: &Grammar, lang: &str, ext: &str, constants: &[&str], builtins: &[&str]) -> String {
     let lex = Lexical::of(g, constants);
     let mut out = String::new();
     out.push_str(&format!(
@@ -45,8 +37,7 @@ pub fn emacs(
          ;; triple-quoted string through a `syntax-propertize' rule that\n\
          ;; reads its first quote as a generic string fence.  Font-lock\n\
          ;; states the keywords, the constants, the builtins and the\n\
-         ;; numbers.  Structural coloring comes from the language server,\n\
-         ;; which eglot starts where eglot is installed.\n\n\
+         ;; numbers.\n\n\
          ;;; Code:\n\n",
     );
 
@@ -127,13 +118,6 @@ pub fn emacs(
     out.push_str(&format!(
         ";;;###autoload\n\
          (add-to-list 'auto-mode-alist '(\"\\\\.{ext}\\\\'\" . {lang}-mode))\n\n"
-    ));
-
-    let cmd: Vec<String> = server.iter().map(|s| lisp_str(s)).collect();
-    out.push_str(&format!(
-        "(with-eval-after-load 'eglot\n  \
-         (add-to-list 'eglot-server-programs '({lang}-mode {})))\n\n",
-        cmd.join(" ")
     ));
 
     out.push_str(&format!(
