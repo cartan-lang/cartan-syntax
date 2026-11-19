@@ -238,13 +238,13 @@ impl Grammar {
                     out.children.insert(n.clone());
                 }
             },
-            Rule::Without(n, excluded, _) => {
+            Rule::Without(ex) => {
                 // the expression rule with those operator nodes left
                 // out, which is the rule the printer writes as an
                 // exclusion copy with every node aliased back
                 let mut inner = NodeType::default();
-                self.walk_def(n, &mut inner, seen);
-                for node in excluded {
+                self.walk_def(&ex.expr, &mut inner, seen);
+                for node in &ex.excluded {
                     inner.children.remove(node);
                 }
                 out.children.extend(inner.children);
@@ -278,7 +278,8 @@ impl Grammar {
             | Rule::NotAhead(_)
             | Rule::NotAheadSoft(_)
             | Rule::Ahead(_)
-            | Rule::Refuse(..) => {}
+            | Rule::Refuse(..)
+            | Rule::Lookahead(_) => {}
         }
     }
 }

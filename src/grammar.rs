@@ -9,8 +9,9 @@
 //! A newline is a token, `_newline`, and not an extra: it separates
 //! wherever a comma separates — items, Map entries, brace items,
 //! argument lists, rows — at every depth. Two rules join
-//! lines instead, and both are stated in the tokens rather than in a
-//! scanner. **A line that has not finished speaking continues**: after
+//! lines instead, and both are stated in the grammar, which the
+//! interpreter reads directly and Tree-sitter through the scanner
+//! treegram prints from it. **A line that has not finished speaking continues**: after
 //! an operator, an opener, `=`, `:=`, `<-` or a keyword an expression
 //! follows, the grammar allows newlines, written as `nl()`. **A line
 //! that opens with a continuation continues the line above**: an
@@ -78,6 +79,13 @@ pub fn print() -> String {
 /// evaluates to and `tree-sitter generate` reads without JavaScript.
 pub fn print_json() -> String {
     treegram::print_json(grammar())
+}
+
+/// The external scanner Tree-sitter compiles beside the generated
+/// parser (`src/scanner.c`), which reads the newline token and the
+/// grammar's lookaheads.
+pub fn print_scanner() -> String {
+    treegram::scanner(grammar()).expect("the grammar reads newlines through a scanner")
 }
 
 /// The grammar's lexical layer as a TextMate grammar, for the VS Code
@@ -211,12 +219,25 @@ fn expr() -> Rule {
     sym("_expression")
 }
 
+/// Tree-sitter's lookahead where an operator's operand is optional: it
+/// holds where no operand follows, or a brace does, which an operand
+/// never opens with there. The interpreter's greedy reading takes the
+/// operand wherever one follows.
+const NO_OPERAND: &str = "_no_operand";
+
+/// Tree-sitter's lookahead where a comprehension's bare body begins
+/// against its header: the next token begins an expression and cannot
+/// continue the header's, which is where the interpreter's greedy
+/// reading of the header ends.
+const OPERAND: &str = "_bare_operand";
+
 /// A loop header's expression: the brace and the colon after it belong
 /// to the header, and a paren after it is the
 /// comprehension's bare body going missing, which the body's own
 /// sentence reports rather than the call refusal.
 fn header_expr() -> Rule {
     without(
+        "header",
         "_expression",
         &["payload_expression", "config_expression", "call_refusal"],
     )
@@ -232,6 +253,7 @@ fn header_expr() -> Rule {
 /// the expression rule and tree-sitter keeps both readings to the colon.
 fn site_key() -> Rule {
     without_tied(
+        "key",
         "_expression",
         &[
             "payload_expression",
@@ -320,6 +342,7 @@ fn comprehension_body() -> Rule {
                 1,
                 seq(vec![
                     not_ahead(choice(vec!["(".into(), "[".into()])),
+                    lookahead(OPERAND),
                     field("body", expr()),
                 ]),
             ),
@@ -388,19 +411,33 @@ fn descriptions(guard: Option<Rule>, least_one: bool) -> Vec<Rule> {
 /// `..=e` and `s..`, its ends read by `end`. A start and the operator
 /// open a range too, and the range takes the end where one follows:
 /// the open form stands where none does, so it yields to the range.
-fn open_range(range_op: &Rule, end: fn() -> Rule, start: fn(Rule) -> Rule) -> Rule {
+fn open_range(range_op: &Rule, end: fn() -> Rule, start: fn(Rule) -> Rule, prec: i32) -> Rule {
     choice(vec![
-        seq(vec![
-            // Only probe the rooted expression at a possible periodic prefix.
-            // Probing other expressions can memoize matches before diagnostics
-            // are recorded.
-            not_ahead_soft(seq(vec![ahead(".."), sym("periodic_range")])),
-            field("operator", range_op.clone()),
-            optional(seq(vec![not_ahead("{"), field("end", end())])),
-        ]),
+        // `..` and `..e` are the full range's and the range to's spelling
+        // too, and where both stand the open axis is the reading, as the
+        // order of the alternatives that hold it makes it for the
+        // interpreter; the end reads as the range to's does
+        prec_dynamic(
+            1,
+            prec_right(
+                prec,
+                seq(vec![
+                    // Only probe the rooted expression at a possible periodic
+                    // prefix. Probing other expressions can memoize matches
+                    // before diagnostics are recorded.
+                    not_ahead_soft(seq(vec![ahead(".."), sym("periodic_range")])),
+                    field("operator", range_op.clone()),
+                    choice(vec![
+                        seq(vec![not_ahead("{"), field("end", end())]),
+                        lookahead(NO_OPERAND),
+                    ]),
+                ]),
+            ),
+        ),
         start(seq(vec![
             field("start", end()),
             field("operator", range_op.clone()),
+            lookahead(NO_OPERAND),
         ])),
     ])
 }
@@ -485,6 +522,23 @@ fn build() -> Grammar {
 
     Grammar {
         name: "cartan".into(),
+        newline: Some("_newline".into()),
+        lookaheads: vec![
+            Lookahead {
+                name: NO_OPERAND.into(),
+                holds: Holds::NoOperand {
+                    operand: "_expression".into(),
+                    or_before: vec!["{".into()],
+                },
+            },
+            Lookahead {
+                name: OPERAND.into(),
+                holds: Holds::Operand {
+                    operand: "_expression".into(),
+                    except: vec!["(".into(), "[".into(), "{".into()],
+                },
+            },
+        ],
         doc: "tree-sitter-cartan — a grammar for cartan documents (`.cart`).\n\
               \n\
               **This file is generated.** The standalone `cartan-syntax` crate\n\
@@ -504,15 +558,16 @@ fn build() -> Grammar {
               at every depth. A line continues where it has not finished\n\
               speaking — after an operator, an opener or a keyword wanting an\n\
               expression, newlines are allowed — and a line opening with an\n\
-              infix operator continues the line above: such an operator is one\n\
-              token carrying its leading newlines, aliased to the operator, so\n\
-              the longest match at a line end takes it over the separator.\n\
-              A token that can begin an expression is not one, so\n\
+              infix operator continues the line above. The external scanner,\n\
+              `src/scanner.c`, reads both rules: it returns a newline only\n\
+              where the parser can take a separator and the next line opens\n\
+              with no continuation, and the newline is whitespace elsewhere.\n\
+              A token that can begin an expression is no continuation, so\n\
               `[1\\n -2\\n 3]` keeps its three items and `[0..4\\n ..8]` its two\n\
               axes. A word\n\
-              operator opening a line — `with`, `but`, `and`, `or` — takes one\n\
-              whitespace character after the word in its token, which is what\n\
-              keeps `without = 2` on a fresh line a binding."
+              operator opening a line — `with`, `but`, `and`, `or` — continues\n\
+              it only with whitespace after the word, which is what keeps\n\
+              `without = 2` on a fresh line a binding."
             .into(),
         extras: vec![Rule::Pat(p::plus(p::class(" \t\r", &[]))), sym("comment")],
         word: Some("identifier".into()),
@@ -524,34 +579,26 @@ fn build() -> Grammar {
             // A texture's body is either a braced body or an expression,
             // and the closing paren can share a newline with the caller.
             vec!["texture_expression".into(), "_expression".into()],
-            vec!["_expression".into(), "for_expression".into()],
-            vec!["_expression".into(), "each_expression".into()],
             // an open range's end may be a brace in the text, and the
             // header's body is one too: the interpreter reads no brace
             // there, and the parse that leaves the header a body stands.
-            // The header's open axis, `3..` and `..`, is spelled as the
-            // range from, the bounded range's start and the full range
-            // of the header's expression (the second exclusion copy),
-            // and the token after the operator decides
-            vec!["full_range".into(), "header_open_range".into()],
-            vec!["range_from_2".into(), "header_open_range".into()],
-            vec!["range_from_2".into(), "full_range".into(), "header_open_range".into()],
-            vec![
-                "range_expression_2".into(),
-                "range_from_2".into(),
-                "header_open_range".into(),
-            ],
+            // The header's open axis, `3..` and `..e`, is spelled as the
+            // range from and the range to of the header's expression (the
+            // `header` exclusion copy); the open axis's dynamic precedence
+            // keeps it
+            vec!["range_from_header".into(), "header_open_range".into()],
+            vec!["range_to_header".into(), "header_open_range".into()],
             // `: name` may end there or continue into `(args)` or `[i]`,
             // and which it is shows only at the token after the name; the
             // dynamic precedence on the call and the index settles it
             vec!["_config_atom".into(), "_expression".into()],
-            // after `but` a site update's key (`site_key`, the first
+            // after `but` a site update's key (`site_key`, the `key`
             // exclusion copy, tied) and a component update's override
             // open alike, and the colon closing the key is what tells
             // them apart. Where both readings stand, the
             // site update's dynamic precedence keeps it, as the
             // interpreter's order does
-            vec!["_expression".into(), "_expression_1".into()],
+            vec!["_expression".into(), "_expression_key".into()],
             // a brace item opens the same way as a pattern and as an
             // expression, and the `:=` is what tells a local from a bare
             // item: the three parenthesized patterns are spelled exactly
@@ -571,10 +618,6 @@ fn build() -> Grammar {
             // or, through a bare run's first position, a constructor
             // pattern, and the `=` or the `,` after the parens decides
             vec!["parameter".into(), "constructor_pattern".into()],
-            // a Map literal's walk and the `each` comprehension share
-            // their header, and the walk's dynamic precedence settles a
-            // brace holding one toward the Map
-            vec!["_expression".into(), "map_walk".into()],
             // a component read's key opens the way an expression opens
             // — a name, a number, a parenthesized run of numbers — and
             // the `of` after it is what tells the two apart
@@ -590,18 +633,6 @@ fn build() -> Grammar {
             vec!["fiber_type".into(), "_pattern".into()],
             vec!["fiber_type".into(), "_expression".into()],
             vec!["fiber_type".into(), "_expression".into(), "_pattern".into()],
-            // a product's component and a sum's variant are spelled
-            // alike — a name, a colon, a fiber — and the separator
-            // after the first one is what tells the two apart
-            //
-            vec!["component".into(), "variant".into()],
-            // a variant taking no payload is a bare name, which opens
-            // the way a parenthesized expression and a parenthesized
-            // pattern open: the `|` after the first one is what tells
-            // the sum from the two
-            vec!["_expression".into(), "variant".into()],
-            vec!["_pattern".into(), "variant".into()],
-            vec!["_expression".into(), "_pattern".into(), "variant".into()],
             // a brace item and a Map entry open alike — a name, a colon,
             // a name — and the `:=` after the fiber is what tells the
             // annotated local from the entry
@@ -623,9 +654,10 @@ fn build() -> Grammar {
             // indexed expression, and the `<-` after the subscript is
             // what tells the two apart
             vec!["_expression".into(), "write".into()],
-            // a `..` standing alone in a List or a subscript is the full
-            // range and an open axis alike
-            vec!["full_range".into(), "open_range".into()],
+            // `..e` standing alone in a List or a subscript is the range
+            // to and an open axis alike; the open axis's dynamic
+            // precedence keeps it
+            vec!["range_to".into(), "open_range".into()],
             // a name after a Map entry opens the next entry and a brace
             // item's expression alike, and the colon of the entry and
             // of the configuration zone is spelled alike
@@ -1469,7 +1501,7 @@ fn build() -> Grammar {
                         .doc("`..e` / `..=e` — a range with no start, an ordinary value as any\nrange is: `r = ..e`, `f(..=e)`. Its end reads at the range's own\nprecedence, so `..n - 1` is `..(n - 1)`. Where a bounded range follows\nthe `..`, the whole is the periodic axis `..a..b` instead."),
                     infix("range_expression", RANGE, Assoc::Left, "left", seq(vec![field("operator", range_op.clone()), not_ahead("{")]), "right")
                         .doc("`a..b` / `a..=b` — the loosest operator there is, Rust's own\nprecedence, so `0..n - 1` reads `0..(n - 1)`. It groups left here,\nand a later analysis stage refuses `a..b..c`: a range states two endpoints.\nAn end reads no brace, which is a header's body after `for i in 3..`.\nThe end stands on the operator's line: `0..` is complete as the open\nrange, so a newline after the operator ends it."),
-                    postfix("range_from", RANGE, "start", field("operator", range_op.clone()))
+                    postfix("range_from", RANGE, "start", seq(vec![field("operator", range_op.clone()), lookahead(NO_OPERAND)]))
                         .doc("`s..` — a range with no end, where no end follows the operator\n: the range above takes one where it can. A newline after the\noperator ends it, so `r = 0..` is complete."),
                     postfix("periodic_expression", RANGE, "axis", PERIODIC)
                         .doc("`0..n periodic` — the other spelling of the periodic axis `..0..n`,\nstill accepted. It stands on a range and nowhere else, so it reads at\nthe range's own precedence and a later analysis stage refuses it on\nanything but a range: the word states an axis of a box, and a box's\naxis is a range."),
@@ -1779,7 +1811,7 @@ fn build() -> Grammar {
                 "full_range",
                 "`..` — the range with neither end, an ordinary value: `r = ..`,\n\
                  `f(..)`. It stands where no end follows; `..e` takes one.",
-                field("operator", Rule::from("..")),
+                seq(vec![field("operator", Rule::from("..")), lookahead(NO_OPERAND)]),
             ),
             def(
                 "open_range",
@@ -1788,7 +1820,7 @@ fn build() -> Grammar {
                  missing end. Elsewhere the same ranges are ordinary values\n\
                  through `range_to`, `range_from` and `full_range`. `..=` with no\n\
                  end has nothing to reach, which a later analysis stage says.",
-                open_range(&range_op, expr, |r| prec(-1, r)),
+                open_range(&range_op, expr, |r| prec(-1, r), RANGE),
             ),
             def(
                 "header_open_range",
@@ -1800,7 +1832,7 @@ fn build() -> Grammar {
                 // whose precedences treegram lifts to `2p + 1`: the open
                 // start ties the range there, and the conflict below
                 // leaves the two to the text that follows
-                open_range(&range_op, header_expr, |r| prec(2 * RANGE + 1, r)),
+                open_range(&range_op, header_expr, |r| prec(2 * RANGE + 1, r), 2 * RANGE + 1),
             ),
             def(
                 "configurable_expression",
@@ -2449,13 +2481,18 @@ fn build() -> Grammar {
                  the subscript is read, its `[` against the name as an index's is,\n\
                  so that source normalization refuses it by name rather than the\n\
                  line failing to parse.",
-                seq(vec![
-                    field("target", sym("identifier")),
-                    optional(field("key", sym("subscript"))),
-                    "<-".into(),
-                    nl(),
-                    field("value", expr()),
-                ]),
+                // a keyed write's target reads as an index too, and the
+                // write is the reading, as a brace item tries it first
+                prec_dynamic(
+                    1,
+                    seq(vec![
+                        field("target", sym("identifier")),
+                        optional(field("key", sym("subscript"))),
+                        "<-".into(),
+                        nl(),
+                        field("value", expr()),
+                    ]),
+                ),
             ),
             // ---- tokens --------------------------------------------------
             def(
@@ -2562,7 +2599,7 @@ fn build() -> Grammar {
                     immediate("{"),
                     nl(),
                     expecting(
-                        field("expr", without("_expression", &["config_expression"])),
+                        field("expr", without("hole", "_expression", &["config_expression"])),
                         Stated::TemplateHole.label(),
                     ),
                     optional(field("spec", sym("format_spec"))),

@@ -27,12 +27,25 @@
 //!
 //! # Newlines
 //!
-//! Nothing here treats a newline specially. A grammar that reads a
-//! newline as a separator states it as a token and keeps it out of
-//! `extras`, then writes where a newline may stand — after an
-//! operator, before a closer — with `repeat` of that token, and the
-//! same statement reaches both readers. A grammar that reads a
-//! newline as whitespace lists it in `extras`.
+//! A grammar that reads a newline as a separator states it as a token,
+//! keeps it out of `extras` and names it [`Grammar::newline`], then
+//! writes where a newline may stand — after an operator, before a
+//! closer — with `repeat` of that token, and an operator that may open a
+//! line as a token carrying its own leading newlines. The interpreter
+//! reads those statements as written. Tree-sitter reads the newline
+//! through the external scanner [`scanner()`] prints: a newline is the
+//! token only where the parser can take a separator and the next line
+//! opens with no continuation, and whitespace everywhere else, which is
+//! what the optional newlines state. A grammar that reads a newline as
+//! whitespace lists it in `extras`.
+//!
+//! # Lookaheads
+//!
+//! Where the interpreter's greedy, ordered reading decides by the token
+//! that follows — an optional operand taken wherever one follows, two
+//! operands side by side split where the first can go no further — the
+//! grammar states the decision as a [`Lookahead`] for tree-sitter, which
+//! the same scanner makes and the interpreter passes over.
 
 pub mod emacs;
 pub mod json;
@@ -42,6 +55,7 @@ pub mod pattern;
 pub mod print;
 pub mod query;
 pub mod rule;
+pub mod scanner;
 pub mod sublime;
 pub mod textmate;
 pub mod tree;
@@ -54,6 +68,7 @@ pub use pattern::{Dialect, Pat};
 pub use print::{print, print_json};
 pub use query::{NodeType, QueryProblem, Roster};
 pub use rule::*;
+pub use scanner::scanner;
 pub use sublime::sublime;
 pub use textmate::textmate;
 pub use tree::{line_of, Diag, Field, Node, Said};

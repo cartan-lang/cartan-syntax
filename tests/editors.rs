@@ -26,17 +26,25 @@ fn tree() -> &'static Path {
         let json = grammar::print_json();
         let mut hasher = std::hash::DefaultHasher::new();
         json.hash(&mut hasher);
+        grammar::print_scanner().hash(&mut hasher);
         let root = Path::new(env!("CARGO_TARGET_TMPDIR"))
             .join("tree-sitter-cartan")
             .join(format!("{:016x}", hasher.finish()));
-        let src = root.join("src");
-        if !GENERATED.iter().all(|path| src.join(path).exists()) {
+        if !root.exists() {
+            // generated beside the cache and moved into it whole, so a
+            // failed generation leaves nothing behind to be reused
+            let fresh = root.with_extension("partial");
+            if fresh.exists() {
+                std::fs::remove_dir_all(&fresh).unwrap();
+            }
+            let src = fresh.join("src");
             std::fs::create_dir_all(&src).unwrap();
             let grammar_path = src.join("grammar.json");
             std::fs::write(&grammar_path, json).unwrap();
+            std::fs::write(src.join("scanner.c"), grammar::print_scanner()).unwrap();
             let mut diagnostics = Vec::new();
             tree_sitter_generate::generate_parser_in_directory(
-                &root,
+                &fresh,
                 None::<PathBuf>,
                 Some(&grammar_path),
                 tree_sitter_generate::ABI_VERSION_MAX,
@@ -48,6 +56,8 @@ fn tree() -> &'static Path {
             )
             .unwrap_or_else(|e| panic!("tree-sitter generate: {e}"));
             assert!(diagnostics.is_empty(), "{diagnostics:?}");
+            assert!(GENERATED.iter().all(|path| src.join(path).exists()));
+            std::fs::rename(&fresh, &root).unwrap();
         }
         root
     })
@@ -79,7 +89,8 @@ fn language() -> &'static Language {
             command
                 .args(["-shared", "-fPIC", "-o"])
                 .arg(&library)
-                .arg(src.join("parser.c"));
+                .arg(src.join("parser.c"))
+                .arg(src.join("scanner.c"));
             let status = command.status().unwrap();
             assert!(status.success(), "{command:?}");
         }
@@ -142,16 +153,38 @@ const FIXTURES: &[&str] = &[
     "x = 0..n periodic",
     "b = [..0..ny, 0..nx]",
     "x = a[.., 1]",
+    "b = [.., 0..]",
+    "y = for i in 0..n { i }",
+    "y = for i in .. { i }",
     "y = for i in 3.. { i }",
+    "y = for i in 0..n i * 2",
+    "y = each i in 0..n { i }",
     "y = fold s := 0 for i in 0..n { s + i }",
     "y = match s { Circle(r) then r, else 0 }",
     "x = { y := 2\n y }",
     "x = { [a, b] := p\n a }",
     "step { u <- u + 1 }",
+    "step { u[i] <- 1 }",
     "x = view with c",
     "x = a but 0..n: v",
     "x = f(a) : style { body }",
     "require(n > 0, \"positive\")",
+    // newlines: a separator where an item may end, whitespace where a
+    // line has not finished, and no separator before a continuation
+    "\n\nx = 1\n\n\ny = 2\n",
+    "x = 1 # one\n# two\ny = 2",
+    "x = if a\n    then 1\n    else 2",
+    "x = a == 1\n    and b\n    or c",
+    "x = a -\n    b",
+    "x = 2 * (\n    a +\n    b\n)",
+    "x = [1\n -2\n 3]",
+    "x = [1\n +2]",
+    "x = [0..4\n ..8]",
+    "x = a\nwithout = 2",
+    "x = v\n    with c",
+    "x = f(a,\n  b)",
+    "x = {\n  a: 1\n  b: 2\n}",
+    "x = 0..\ny = 1",
 ];
 
 #[test]

@@ -5,9 +5,9 @@
 //! the word token, the conflicts.
 //!
 //! Two readers take a grammar, and each has a few constructs the other
-//! ignores. **The printer alone reads** `PrecDynamic` and the
-//! `conflicts` list, which are how tree-sitter's GLR parser settles an
-//! ambiguity the ordered-choice interpreter settles by the order the
+//! ignores. **The printer alone reads** `PrecDynamic`, `Lookahead` and
+//! the `conflicts` list, which are how tree-sitter's GLR parser settles
+//! an ambiguity the ordered-choice interpreter settles by the order the
 //! alternatives are written in. **The interpreter alone reads**
 //! `NotAhead`, `NotAheadSoft`, `Expect`, `Refuse` and `Without`, which are lookahead,
 //! diagnostics and an exclusion tree-sitter states through precedence
@@ -73,18 +73,42 @@ pub enum Rule {
     /// refused match's fields among those it reports. The printer
     /// omits it.
     Refuse(Box<Rule>, Label),
-    /// Interpreter only: the expression rule named, parsed with these
-    /// operator nodes excluded, in this expression and in the operands
-    /// of its operators, up to the next ordinary rule. The printer
-    /// prints the reference alone, to an exclusion copy that outranks
-    /// the original unless the third field, `tied`, holds.
-    Without(String, Vec<String>, bool),
+    /// The expression rule named, parsed with these operator nodes
+    /// excluded, in this expression and in the operands of its
+    /// operators, up to the next ordinary rule. The printer prints the
+    /// reference alone, to an exclusion copy named for the exclusion's
+    /// label.
+    Without(Exclusion),
+    /// Printer only: the zero-width check the grammar's
+    /// [`Grammar::lookaheads`] entry of this name states, which an
+    /// external scanner makes for tree-sitter where the interpreter's
+    /// ordered choice already decides. The interpreter matches nothing
+    /// here.
+    Lookahead(String),
     /// Interpreter only: where the first rule fails, the text from here
     /// to the next match of the second rule — the boundary, sought with
     /// the grammar's brackets kept balanced and its tokens skipped
     /// whole — becomes an `ERROR` node and the failure a diagnostic,
     /// and the parse goes on. The printer prints the first rule alone.
     Recover(Box<Rule>, Box<Rule>),
+}
+
+/// An expression rule read with some of its operator nodes left out
+/// ([`Rule::Without`]).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Exclusion {
+    /// The expression rule.
+    pub expr: String,
+    /// The operator nodes left out.
+    pub excluded: Vec<String>,
+    /// The name tree-sitter's copy of the rule is printed under: the
+    /// copy is `{expr}_{label}`, and each of its operator nodes
+    /// `{node}_{label}`. Every exclusion with one label states the same
+    /// rule.
+    pub label: String,
+    /// Whether the copy ties with the original rather than outranking
+    /// it ([`without_tied`]).
+    pub tied: bool,
 }
 
 /// **A diagnostic a grammar states, by the number it gave it.** The
@@ -192,10 +216,53 @@ pub struct Grammar {
     pub word: Option<String>,
     /// Printer only: tree-sitter's declared conflicts.
     pub conflicts: Vec<Vec<String>>,
+    /// The token a newline is, where the grammar reads a newline as a
+    /// separator. The printer then reads it through an external
+    /// scanner: a newline is that token only where the parser can take
+    /// a separator, and whitespace elsewhere, so the newlines a rule
+    /// allows with `repeat` of the token print as nothing; and a line
+    /// that opens with a token carrying its own leading newlines — an
+    /// operator that continues the line above — is no separator.
+    pub newline: Option<String>,
+    /// Printer only: the zero-width checks [`Rule::Lookahead`] names.
+    pub lookaheads: Vec<Lookahead>,
     /// The bracket pairs error recovery keeps balanced when it skips to
     /// an item boundary.
     pub brackets: Vec<(String, String)>,
     pub rules: Vec<Def>,
+}
+
+/// A zero-width check tree-sitter needs where the interpreter's ordered
+/// choice decides: it holds or not by the token that comes next, which
+/// an external scanner reads. The interpreter reads none of it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Lookahead {
+    /// The external token's name, which [`Rule::Lookahead`] refers to.
+    pub name: String,
+    pub holds: Holds,
+}
+
+/// When a [`Lookahead`] holds, by the token that comes next.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Holds {
+    /// Where no operand follows: the next token cannot begin the rule
+    /// `operand`, or is one of `or_before`. An operator whose operand
+    /// is optional takes it where one follows, as the interpreter's
+    /// greedy reading does.
+    NoOperand {
+        operand: String,
+        or_before: Vec<String>,
+    },
+    /// Where a new operand begins: the next token can begin the rule
+    /// `operand`, cannot continue the operand just read — it opens none
+    /// of the infix or postfix operators of the expression rule
+    /// `operand` — and is none of `except`. Two operands written side
+    /// by side split there, as the interpreter's greedy reading of the
+    /// first splits them.
+    Operand {
+        operand: String,
+        except: Vec<String>,
+    },
 }
 
 impl Grammar {
@@ -256,7 +323,12 @@ fn literals(r: &Rule, out: &mut Vec<String>) {
         | Rule::Expect(r, _)
         | Rule::Refuse(r, _)
         | Rule::Recover(r, _) => literals(r, out),
-        Rule::Token(_) | Rule::Blank | Rule::Pat(_) | Rule::Sym(_) | Rule::Without(..) => {}
+        Rule::Token(_)
+        | Rule::Blank
+        | Rule::Pat(_)
+        | Rule::Sym(_)
+        | Rule::Without(_)
+        | Rule::Lookahead(_) => {}
     }
 }
 
@@ -353,12 +425,15 @@ pub fn refusing(r: impl Into<Rule>, label: Label) -> Rule {
     Rule::Refuse(Box::new(r.into()), label)
 }
 
-pub fn without(expr: &str, nodes: &[&str]) -> Rule {
-    Rule::Without(
-        expr.to_string(),
-        nodes.iter().map(|s| s.to_string()).collect(),
-        false,
-    )
+/// [`Rule::Without`]: `expr` with `nodes` left out, its tree-sitter copy
+/// named for `label`.
+pub fn without(label: &str, expr: &str, nodes: &[&str]) -> Rule {
+    Rule::Without(Exclusion {
+        expr: expr.to_string(),
+        excluded: nodes.iter().map(|s| s.to_string()).collect(),
+        label: label.to_string(),
+        tied: false,
+    })
 }
 
 /// [`without`] at a position where the interpreter backtracks rather
@@ -366,12 +441,18 @@ pub fn without(expr: &str, nodes: &[&str]) -> Rule {
 /// it, so tree-sitter keeps both readings and a later token decides, as
 /// the interpreter's ordered choice does by retrying. A conflict between
 /// the two rules is then stated in the grammar's `conflicts`.
-pub fn without_tied(expr: &str, nodes: &[&str]) -> Rule {
-    Rule::Without(
-        expr.to_string(),
-        nodes.iter().map(|s| s.to_string()).collect(),
-        true,
-    )
+pub fn without_tied(label: &str, expr: &str, nodes: &[&str]) -> Rule {
+    Rule::Without(Exclusion {
+        expr: expr.to_string(),
+        excluded: nodes.iter().map(|s| s.to_string()).collect(),
+        label: label.to_string(),
+        tied: true,
+    })
+}
+
+/// [`Rule::Lookahead`]: the check the grammar's lookahead `name` states.
+pub fn lookahead(name: &str) -> Rule {
+    Rule::Lookahead(name.to_string())
 }
 
 pub fn recover(r: impl Into<Rule>, boundary: impl Into<Rule>) -> Rule {

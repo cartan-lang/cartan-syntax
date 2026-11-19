@@ -760,10 +760,10 @@ impl<'g, 's> Engine<'g, 's> {
         scope: Option<&Scope>,
     ) -> Outcome {
         match r {
-            Rule::Blank => Ok(Some((Vec::new(), pos))),
+            Rule::Blank | Rule::Lookahead(_) => Ok(Some((Vec::new(), pos))),
             Rule::Str(s) => Ok(self.literal(s, pos, false, ctx, field)),
             Rule::Pat(p) => Ok(self.pattern(p, pos, false, ctx, field, None)),
-            Rule::Without(name, nodes, _) => self.without(name, nodes, pos, ctx, field, scope),
+            Rule::Without(ex) => self.without(&ex.expr, &ex.excluded, pos, ctx, field, scope),
             Rule::Token(r) => self.token(r, pos, ctx, field, scope),
             Rule::Immediate(r) => self.immediate(r, pos, ctx, field, scope),
             Rule::Alias(r, name) => self.alias(r, name, pos, ctx, field, scope),

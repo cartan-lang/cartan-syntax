@@ -159,7 +159,8 @@ fn collect(r: &Rule, out: &mut Vec<String>) {
         | Rule::NotAheadSoft(_)
         | Rule::Ahead(_)
         | Rule::Refuse(..)
-        | Rule::Without(..) => {}
+        | Rule::Without(_)
+        | Rule::Lookahead(_) => {}
     }
 }
 
@@ -202,7 +203,8 @@ fn rule_regex(r: &Rule, g: &Grammar, depth: usize, d: Dialect) -> Option<String>
         | Rule::NotAheadSoft(_)
         | Rule::Ahead(_)
         | Rule::Refuse(..)
-        | Rule::Without(..) => String::new(),
+        | Rule::Without(_)
+        | Rule::Lookahead(_) => String::new(),
     })
 }
 

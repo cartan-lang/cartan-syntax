@@ -102,6 +102,12 @@ syntax through this library. `grammar::grammar()` returns the shared grammar val
   [the grammar example](../examples/grammar.rs) prints.
 - `grammar::print_json()`: the Tree-sitter `grammar.json` that JavaScript
   evaluates to, which the generator reads without a JavaScript runtime.
+- `grammar::print_scanner()`: the external scanner, `src/scanner.c`, through
+  which Tree-sitter reads newlines and the grammar's lookaheads. A newline is
+  a separator only where the parser can take one and the next line opens with
+  no continuation; the lookaheads make the decisions the interpreter's greedy
+  reading makes, where an optional range end or a comprehension's bare body
+  follows.
 - `print_textmate()`: lexical highlighting grammar.
 - `print_vim()` and `print_vim_ftdetect()`: Vim syntax and file detection.
 - `print_sublime()`: Sublime syntax definitions.
@@ -214,6 +220,7 @@ consuming components.
 
 - Namespace bodies, default arguments, function-header configuration and Tap
   bodies parse to a CST but are unsupported in the AST.
-- The generated Tree-sitter parser reads some range and keyed-write forms
-  differently from the interpreter, and it is large (about 43,000 states);
-  no editor package is assembled.
+- The scanner takes a line opening with a continuation operator as a
+  continuation wherever the next item starts, while the interpreter does so
+  only where the operator can follow; a document item opening with `+`, `:`
+  or a word operator after an item that cannot take one reads differently.
