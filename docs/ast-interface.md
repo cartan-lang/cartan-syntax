@@ -79,7 +79,7 @@ domain belongs to analysis.
 Under the workspace [domains and reads](../../docs/records/array-fibers.md#domains-and-reads)
 record, ranges are ordinary values. `s..e`, `s..=e`, `s..`, `..e`, `..=e` and
 `..` are each `ExprKind::Range { start, end, inclusive }` wherever an expression
-stands, including bindings, arguments, conditional arms, box literals and
+stands, including bindings, arguments, conditional branches, box literals and
 subscripts. The range binds more loosely than every other operator, so
 `0..n - 1` and `s.. - 1` take the whole operand on each side, and a newline after
 the operator ends an open range. A line opening with `..` begins a new item.
@@ -363,6 +363,27 @@ operand at the same nesting level, yields
 on that colon. A colon inside a parenthesized partial product is an ordinary
 product entry.
 
+## Conditionals
+
+`if c { a } else { b }` is `ExprKind::If { condition, consequence, alternative }`.
+Each branch is a braced body, written as any body is, with `:=` locals and
+`require` statements beside exactly one result; it takes no `<-` write, which
+is an unsupported construct there. A branch whose body holds only its result
+normalizes to that result expression, with the result's own span; any other
+branch is `ExprKind::Body`, spanning its braces. `else if` chains without
+further braces, `if a { x } else if b { y } else { z }`, the alternative being
+the inner conditional. Without `else` the alternative is absent.
+
+The condition is read in the header zone, as a loop header and a `match`
+scrutinee are, so the brace after it always opens the consequence and is never
+a payload on the condition. The braces make the conditional a complete primary
+expression: `if c { a } else { b } + 1` adds one to the whole conditional, and
+no `else` is ever left for an inner `if` to take. The consequence's brace stands
+on the condition's line and the alternative's on the `else` line; a missing one
+is the grammar diagnostic `Rule::IfBody`. `else` is a continuation word, so a
+line opening with `else` after the consequence's closing brace continues the
+conditional. `then` is an ordinary name.
+
 ## Optional values
 
 Optional surface syntax follows the workspace [optional values](../../docs/records/optional-values.md)
@@ -375,8 +396,8 @@ takes `T|None` as `StructEntry.annotation`; the entry is always present and its
 value may be absent. Fiber components take a bare fiber type, so an alternative
 there is a grammar error.
 
-`none` is `ExprKind::None`. `if c then a` without `else` is `ExprKind::If` with
-`alternative: None`; `else` binds to the nearest `if`. `a ?? b` is
+`none` is `ExprKind::None`. A [conditional](#conditionals) without `else` is
+`ExprKind::If` with `alternative: None`. `a ?? b` is
 `ExprKind::Default { value, fallback, operator_span }`: one token,
 right-associative, looser than arithmetic and tighter than comparisons and the
 Boolean words, and a line beginning with `??` continues the previous expression.
@@ -409,20 +430,21 @@ tell them from function calls, products and values. Variant membership, roster
 duplicates, payload fitting, alias identity and array construction are analysis
 checks.
 
-`match s { … }` is `ExprKind::Match(Box<Match { scrutinee, arms, otherwise }>)`.
-Each `MatchArm { variant, payload, body, span }` keeps source order and repeated
-variants; a bare unit arm has `payload: None`. `A(x)` and `A(_)` carry the
-written pattern. `B(X: x, Y: y)` carries the same `PatternKind::Components`
-payload as `B((X: x, Y: y))`, spanning the components without the arm's
-parentheses. The final `else` arm is `ElseArm { body, span }`. A second `else`
-arm yields `DuplicateElseArm { first_span }`, and a variant arm after it yields
-`ArmAfterElse { else_span }`, each spanning the offending arm. Arms separate by
-commas or newlines. A conditional in an arm body, outside brackets, that takes
-a line-leading `else` yields `LineLeadingArmElse { else_span, conditional_span }`
-spanning that `else`: the line could equally open the `else` arm. Writing
-`else` on the consequence's line, bracketing the conditional or ending the arm
-with a comma disambiguates; conditionals outside `match` keep the ordinary
-continuation rule. Coverage,
+`match s { A(x) { x }, Unit { 0 }, else { 1 } }` is
+`ExprKind::Match(Box<Match { scrutinee, arms, otherwise }>)`. Each
+`MatchArm { variant, payload, body, span }` keeps source order and repeated
+variants; a bare unit arm, `Unit { … }`, has `payload: None`. `A(x)` and `A(_)`
+carry the written pattern. `B(X: x, Y: y)` carries the same
+`PatternKind::Components` payload as `B((X: x, Y: y))`, spanning the components
+without the arm's parentheses. The final `else { … }` arm is
+`ElseArm { body, span }`, its span starting at the keyword. Every arm's body is
+braced and normalizes as a conditional's branch does: its result alone, or
+`ExprKind::Body` where it holds locals or requirements. A missing brace after
+an arm's pattern or its `else` is the grammar diagnostic `Rule::ArmBody`. A
+second `else` arm yields `DuplicateElseArm { first_span }`, and a variant arm
+after it yields `ArmAfterElse { else_span }`, each spanning the offending arm.
+Arms separate by commas or newlines, and since `else` is a continuation word an
+`else` arm may also follow an arm's closing brace directly. Coverage,
 duplicate arms, parentheses against the roster, the scrutinee's type, arm
 result meets and selected-arm demand are analysis checks; an empty or else-only
 `match` normalizes.

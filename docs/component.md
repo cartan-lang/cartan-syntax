@@ -141,8 +141,11 @@ Grammar and source-form failures return the original diagnostics. A spacing
 change that cannot be verified returns `FormatError::ChangedSyntax` with a
 span in the original text. The function takes borrowed source and never
 modifies it. Tests cover declarations, annotations, Tuples, function equations,
-update blocks, multiline bodies, calls and comprehensions, along with idempotence,
-comment placement and exact literal spelling.
+update blocks, multiline bodies, calls, comprehensions, braced conditionals and
+`match` arms, along with idempotence, comment placement and exact literal
+spelling. A conditional or an arm keeps the lines it was written on: one line,
+`if c { a } else { b }`, stays one line, and a broken body is indented as any
+body is.
 
 ## Prompt support
 
