@@ -74,7 +74,7 @@ implementations without an explicit scope and retirement condition.
 ## Dependencies
 
 The compiler and application depend on this repository through
-Cargo Git dependencies on `main` with the absolute local `file://` URL, and take
+Cargo Git dependencies on `main` at `https://github.com/cartan-lang/cartan-syntax`, and take
 all Syntax packages in one lock update. Each consumer's `Cargo.lock` records the
 revision it uses. Agree interface changes with the consuming owner and announce
 the tested commit; never edit a consumer's checkout or Cargo cache. Create a
