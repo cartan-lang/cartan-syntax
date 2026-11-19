@@ -24,7 +24,7 @@ Syntax owns source parsing, normalization, source locations and syntax-form
 errors. The [compiler](../../cartan-compiler/docs/design.md) owns name resolution,
 type checking, configurable semantics, overload selection, domain interpretation
 and computational graph construction under the workspace's
-[language scope](../../docs/records/language-scope.md). Retained configurable
+[language scope](../../cartan/docs/records/language-scope.md). Retained configurable
 syntax does not imply runtime function values, returned functions or dynamic
 callees. Syntax normalizes function-signature parameter annotations without
 selecting overloads or binding static function arguments.
@@ -76,7 +76,7 @@ Indexing retains its source expression and index expressions. A list of periodic
 ranges remains a list containing periodic range expressions; recognizing a
 domain belongs to analysis.
 
-Under the workspace [domains and reads](../../docs/records/array-fibers.md#domains-and-reads)
+Under the workspace [domains and reads](../../cartan/docs/records/array-fibers.md#domains-and-reads)
 record, ranges are ordinary values. `s..e`, `s..=e`, `s..`, `..e`, `..=e` and
 `..` are each `ExprKind::Range { start, end, inclusive }` wherever an expression
 stands, including bindings, arguments, conditional branches, box literals and
@@ -168,7 +168,7 @@ execution support.
 
 String and template normalization is the source interface under the
 workspace's
-[settled string semantics](../../docs/records/collections.md#structs-tuples-lists-and-strings).
+[settled string semantics](../../cartan/docs/records/collections.md#structs-tuples-lists-and-strings).
 `ExprKind::String(StringLiteral { form, raw, value })` covers `"…"` and, in
 expression position, `"""…"""`; `form` is `StringForm::Quoted` or `Triple`, `raw`
 is the written spelling including delimiters, and the expression span covers it.
@@ -277,7 +277,7 @@ Bracket literals retain `ExprKind::List(Vec<Expr>)` for API compatibility. The
 accepted language contract assigns them fixed positional tuple identity; this
 AST spelling does not classify them as Lists. The compiler assigns their
 semantic type. See the workspace
-[pattern contract](../../docs/records/patterns.md).
+[pattern contract](../../cartan/docs/records/patterns.md).
 
 `each x in xs { value }` uses `ExprKind::Each(Box<Comprehension>)`, distinct from
 `For` and reusing the ordered binder, collection and body expressions. Bare value
@@ -285,15 +285,15 @@ bodies and nested walks retain their original spans. Braced bodies keep their
 ordinary local/result ordering and require exactly one result. Syntax preserves
 collection expressions without deciding their eligibility, element type or
 runtime length; the compiler owns those checks under the
-[collection contract](../../docs/records/collections.md). Map-producing entry
+[collection contract](../../cartan/docs/records/collections.md). Map-producing entry
 bodies remain outside this normalization slice. AST admission does not establish
 portable List storage or execution on any backend.
 
 ## Function-signature parameters
 
 Function-signature parameters preserve written signatures. The compiler owns
-overload semantics under the [language scope](../../docs/records/language-scope.md);
-the [static-dispatch proposal](../../docs/work/static-multiple-dispatch.md)
+overload semantics under the [language scope](../../cartan/docs/records/language-scope.md);
+the [static-dispatch proposal](../../cartan/docs/work/static-multiple-dispatch.md)
 records unresolved extensions, not parser guarantees. `Parameter.annotation` is
 `Option<ParameterAnnotation>`: `ParameterAnnotation::Value(Annotation)` for an
 ordinary type, or `ParameterAnnotation::Signature(Signature { arguments, result,
@@ -332,7 +332,7 @@ this alternative.
 ## Component reads and updates
 
 Component reads, updates and patterns follow the workspace
-[component reads and updates](../../docs/records/components-and-updates.md) record.
+[component reads and updates](../../cartan/docs/records/components-and-updates.md) record.
 `key of value` is `ExprKind::Projection { key, value }`, where `key` is a
 `ComponentKey`: `Name`, `Position(NumberLiteral)` or `Pair { row, column, span }`.
 A number keeps its written spelling; analysis checks that it is an in-range
@@ -374,7 +374,7 @@ conditional. `then` is an ordinary name.
 
 ## Optional values
 
-Optional surface syntax follows the workspace [optional values](../../docs/records/optional-values.md)
+Optional surface syntax follows the workspace [optional values](../../cartan/docs/records/optional-values.md)
 record. `T|None` in an annotation or type argument is
 `AnnotationKind::Optional { value, none_span }`, and composes with parameter
 signatures as an ordinary annotation. It is the only union: any other
@@ -395,7 +395,7 @@ whether a mark has an operation to lift through are analysis checks.
 
 ## Sum fibers
 
-Sum declarations follow the workspace [sum fibers](../../docs/records/sum-fibers.md) record. `fiber Name =
+Sum declarations follow the workspace [sum fibers](../../cartan/docs/records/sum-fibers.md) record. `fiber Name =
 (A: T | B)` is `ItemKind::Sum(Sum { name, variants })`; a product declaration
 remains `ItemKind::Fiber`. Each `Variant { name, payload, span }` keeps declared
 order and duplicate names, and a unit variant has `payload: None`. An inline
@@ -443,7 +443,7 @@ The brace-literal source interface uses
 `ExprKind::Map(Vec<MapEntry>)` for static `name: value` entries and computed
 `expression => value` entries, including mixed literals such as
 `{name: 1, k => value}`. The variant name is not a semantic type: under the
-accepted [collection contract](../../docs/records/collections.md#map-entries),
+accepted [collection contract](../../cartan/docs/records/collections.md#map-entries),
 all-static literals represent Structs and any computed entry makes the literal
 a Map. `{}` retains an empty entry vector; `{value}` remains a body. Syntax
 does not infer a type for either form.
@@ -509,7 +509,7 @@ follows from AST acceptance.
 
 Constructor chains and literal closing preserve written configurable forms.
 Their meaning belongs to the [compiler](../../cartan-compiler/docs/design.md)
-under the [language scope](../../docs/records/language-scope.md). Syntax
+under the [language scope](../../cartan/docs/records/language-scope.md). Syntax
 acceptance does not establish evaluation or expansion support.
 
 ## Normalization and diagnostics
@@ -520,7 +520,7 @@ spans remain different, matching the source. A scalar binder `i` stays a name;
 it must not normalize to the singleton pattern `[i]`. Site patterns such as
 `(rho, _, pre): Primitive` remain distinct from list patterns.
 
-Under the workspace [patterns](../../docs/records/patterns.md) record,
+Under the workspace [patterns](../../cartan/docs/records/patterns.md) record,
 `Head(p, …)` is `PatternKind::Constructor { head, items }`, `(k: p, …)` is
 `PatternKind::Components(Vec<ComponentPattern { key, pattern, span }>)` with a
 name or position `ComponentKey`, and `{ k, k2: p }` is
@@ -653,7 +653,7 @@ may appear in text.
 ## Local dependency delivery
 
 Workspace consumers follow the shared
-[dependency policy](../../docs/records/local-git-dependencies.md). Each consumer
+[dependency policy](../../cartan/docs/records/local-git-dependencies.md). Each consumer
 owns its dependency declaration and lockfile, which records the consumed commit.
 The supplier includes the local `support/treegram` package. Working-tree edits
 and branch switches do not change a consumer's locked revision; consumers adopt

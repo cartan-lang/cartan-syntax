@@ -1,9 +1,9 @@
 # Working in cartan-syntax
 
-Read README and docs/component.md first. The workspace root's
-[AGENTS.md](../AGENTS.md) holds the shared rules: workflow, ownership, HANDOFF,
-design doctrine and escalation, commits and documentation. This file adds only
-what is specific to this repository.
+Read README and docs/component.md first. Cartan's
+[AGENTS.md](../cartan/AGENTS.md) holds the workspace's shared rules: workflow,
+ownership, HANDOFF, design doctrine and escalation, commits and documentation.
+This file adds only what is specific to this repository.
 
 ## Scope
 
@@ -52,8 +52,7 @@ cargo check --features serde --offline
 cargo test --workspace --offline
 cargo clippy --workspace --all-targets --offline -- -D warnings
 RUSTDOCFLAGS=-Dwarnings cargo doc --workspace --no-deps --offline
-# From the workspace root:
-uv run --no-sync cartdev docs check --root cartan-syntax --strict
+uv run --project ../cartan/dev cartdev docs check --root cartan-syntax --strict
 git diff --check
 node --check editors/tree-sitter-cartan/grammar.js
 ```
