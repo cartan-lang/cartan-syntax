@@ -1235,19 +1235,9 @@ fn configuration_chains_bind_left_and_keep_atom_call_index_and_dot_literal() {
 }
 
 #[test]
-fn configurable_forms_preserve_supported_values_and_reject_unhandled_map_forms() {
+fn configurable_forms_preserve_supported_values_and_reject_malformed_ones() {
     // Scope, types and configurable settings are graph decisions, not syntax checks.
     expression(":{x: (:base {y}), y: if flag { a } else { b }} {missing}");
-    for (source, kind) in [
-        ("{(key): 1}", "computed_key"),
-        ("{each k in keys {(k): 1}}", "map_walk"),
-    ] {
-        let errors = ast::parse_expression(source).unwrap_err();
-        assert!(
-            matches!(&errors[..], [Error::Form(FormDiagnostic { kind: FormDiagnosticKind::UnsupportedConstruct { kind: actual }, .. })] if actual == kind),
-            "{source}: {errors:?}"
-        );
-    }
     for source in [":base {}", ":base {1,2}"] {
         let errors = ast::parse_expression(source).unwrap_err();
         assert!(

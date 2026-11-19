@@ -8547,17 +8547,8 @@
                 "type": "SEQ",
                 "members": [
                   {
-                    "type": "CHOICE",
-                    "members": [
-                      {
-                        "type": "SYMBOL",
-                        "name": "map_walk"
-                      },
-                      {
-                        "type": "SYMBOL",
-                        "name": "map_entry"
-                      }
-                    ]
+                    "type": "SYMBOL",
+                    "name": "map_entry"
                   },
                   {
                     "type": "REPEAT",
@@ -8581,17 +8572,8 @@
                           }
                         },
                         {
-                          "type": "CHOICE",
-                          "members": [
-                            {
-                              "type": "SYMBOL",
-                              "name": "map_walk"
-                            },
-                            {
-                              "type": "SYMBOL",
-                              "name": "map_entry"
-                            }
-                          ]
+                          "type": "SYMBOL",
+                          "name": "map_entry"
                         }
                       ]
                     }
@@ -8639,17 +8621,8 @@
                 "type": "FIELD",
                 "name": "key",
                 "content": {
-                  "type": "CHOICE",
-                  "members": [
-                    {
-                      "type": "SYMBOL",
-                      "name": "identifier"
-                    },
-                    {
-                      "type": "SYMBOL",
-                      "name": "computed_key"
-                    }
-                  ]
+                  "type": "SYMBOL",
+                  "name": "identifier"
                 }
               },
               {
@@ -8717,138 +8690,6 @@
           }
         ]
       }
-    },
-    "computed_key": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "STRING",
-          "value": "("
-        },
-        {
-          "type": "REPEAT",
-          "content": {
-            "type": "CHOICE",
-            "members": [
-              {
-                "type": "STRING",
-                "value": ","
-              },
-              {
-                "type": "SYMBOL",
-                "name": "_newline"
-              }
-            ]
-          }
-        },
-        {
-          "type": "SYMBOL",
-          "name": "_expression"
-        },
-        {
-          "type": "REPEAT",
-          "content": {
-            "type": "CHOICE",
-            "members": [
-              {
-                "type": "STRING",
-                "value": ","
-              },
-              {
-                "type": "SYMBOL",
-                "name": "_newline"
-              }
-            ]
-          }
-        },
-        {
-          "type": "STRING",
-          "value": ")"
-        }
-      ]
-    },
-    "map_walk": {
-      "type": "PREC_DYNAMIC",
-      "value": 3,
-      "content": {
-        "type": "SEQ",
-        "members": [
-          {
-            "type": "STRING",
-            "value": "each"
-          },
-          {
-            "type": "FIELD",
-            "name": "binders",
-            "content": {
-              "type": "SYMBOL",
-              "name": "binder_list"
-            }
-          },
-          {
-            "type": "STRING",
-            "value": "in"
-          },
-          {
-            "type": "FIELD",
-            "name": "collection",
-            "content": {
-              "type": "SYMBOL",
-              "name": "_expression_header"
-            }
-          },
-          {
-            "type": "FIELD",
-            "name": "body",
-            "content": {
-              "type": "CHOICE",
-              "members": [
-                {
-                  "type": "SYMBOL",
-                  "name": "map"
-                },
-                {
-                  "type": "SYMBOL",
-                  "name": "map_walk_entry"
-                }
-              ]
-            }
-          }
-        ]
-      }
-    },
-    "map_walk_entry": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "FIELD",
-          "name": "key",
-          "content": {
-            "type": "SYMBOL",
-            "name": "computed_key"
-          }
-        },
-        {
-          "type": "ALIAS",
-          "content": {
-            "type": "TOKEN",
-            "content": {
-              "type": "PATTERN",
-              "value": ":"
-            }
-          },
-          "named": false,
-          "value": ":"
-        },
-        {
-          "type": "FIELD",
-          "name": "value",
-          "content": {
-            "type": "SYMBOL",
-            "name": "_expression"
-          }
-        }
-      ]
     },
     "body": {
       "type": "SEQ",
@@ -9611,10 +9452,6 @@
       "_pattern",
       "map_sub_pattern",
       "map_entry"
-    ],
-    [
-      "parenthesized_expression",
-      "computed_key"
     ],
     [
       "variant_argument",

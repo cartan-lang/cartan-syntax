@@ -222,10 +222,6 @@ pub enum Rule {
     ListRepeat,
     /// A `tap` with no braced writes.
     TapBody,
-    /// A Map literal's walk with no `in` after its binders.
-    WalkIn,
-    /// A Map literal's walk with no entry for its body.
-    WalkBody,
     /// A `param` declared inside a body.
     LocalParam,
     /// A local declared with `=` inside a body.
@@ -293,8 +289,6 @@ impl Rule {
         Rule::ParenComma,
         Rule::ListRepeat,
         Rule::TapBody,
-        Rule::WalkIn,
-        Rule::WalkBody,
         Rule::LocalParam,
         Rule::BodyEquals,
         Rule::ComponentWrite,
@@ -372,8 +366,6 @@ impl Rule {
             | Rule::ParenComma
             | Rule::ListRepeat
             | Rule::TapBody
-            | Rule::WalkIn
-            | Rule::WalkBody
             | Rule::LocalParam
             | Rule::TemplateHole
             | Rule::RequireCondition

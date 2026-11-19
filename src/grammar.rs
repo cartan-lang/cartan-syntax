@@ -614,7 +614,6 @@ fn build() -> Grammar {
                 "map_sub_pattern".into(),
                 "map_entry".into(),
             ],
-            vec!["parenthesized_expression".into(), "computed_key".into()],
             // inside a head's parens a name and a tight colon opens a
             // parameter and a sum fiber's variant argument alike, and
             // what follows decides. The two meet only where a
@@ -1536,8 +1535,7 @@ fn build() -> Grammar {
                  follow it. **The paren follows the head immediately**, as the\n\
                  subscript's bracket follows its target: `f(x)` is a call and\n\
                  `f (x)` is the name `f` beside a parenthesized value, which is\n\
-                 what lets a header's collection stand beside a bare body and a\n\
-                 Map walk's collection beside its entry. A\n\
+                 what lets a header's collection stand beside a bare body. A\n\
                  parenthesized fiber description heads a call too,\n\
                  `(D: Real, E: Real)(1, 0)`, which is the anonymous spelling of a\n\
                  declared product's constructor:\n\
@@ -2222,11 +2220,8 @@ fn build() -> Grammar {
                 "map",
                 "`{ name: v, expression => w }` — a brace literal with static\n\
                  names and computed keys in source order. An empty brace is\n\
-                 a literal rather than a body. The older `(e): v` and embedded\n\
-                 walk forms remain CST-only; normalization rejects them.",
-                // Keep the existing embedded-walk reading before trying an
-                // arbitrary computed key expression beginning with `each`.
-                prec(1, seq(vec!["{".into(), items(choice(vec![sym("map_walk"), sym("map_entry")])), "}".into()])),
+                 a literal rather than a body.",
+                prec(1, seq(vec!["{".into(), items(sym("map_entry")), "}".into()])),
             ),
             def(
                 "map_entry",
@@ -2269,7 +2264,7 @@ fn build() -> Grammar {
                         ])),
                         choice(vec![
                             seq(vec![
-                                field("key", choice(vec![sym("identifier"), sym("computed_key")])),
+                                field("key", sym("identifier")),
                                 field("separator", colon()),
                                 nl(),
                                 field("value", expr()),
@@ -2286,60 +2281,6 @@ fn build() -> Grammar {
                         ]),
                     ]),
                 ),
-            ),
-            def(
-                "computed_key",
-                "`(expr)` — a Map entry's key computed rather than named, since\n\
-                 a bare identifier in a Map literal is the key's own name\n\
-                . The expression returns a Str.",
-                // the separator runs are the parenthesized expression's,
-                // so the four forms that open with `(` share one prefix
-                seq(vec!["(".into(), repeat(sep()), expr(), repeat(sep()), ")".into()]),
-            ),
-            def(
-                "map_walk",
-                "`each k in ks (k): f(k)` — a comprehension among a Map\n\
-                 literal's entries: the header is `each`'s, and\n\
-                 the body is the one entry the walk writes per element, whose\n\
-                 key is parenthesized. **The body is that entry, braced or\n\
-                 bare**: `each k in ks (k): v` and `each k in ks { (k): v }`\n\
-                 are the one walk, as a List's splice takes both spellings.\n\
-                 The braceless form reads because a call's paren follows its\n\
-                 head immediately, so the collection ends at the space before\n\
-                 the key. The walk is one item of the literal, so its entries\n\
-                 land in walk order among the others. The dynamic precedence\n\
-                 outranks the braced comprehension body's, so a brace holding a\n\
-                 walk reads as the Map it is rather than as a body whose one\n\
-                 item is an `each`.",
-                prec_dynamic(3, seq(vec![
-                    "each".into(),
-                    nl(),
-                    field("binders", sym("binder_list")),
-                    expecting("in", Stated::WalkIn.label()),
-                    nl(),
-                    field("collection", header_expr()),
-                    expecting(
-                        field("body", choice(vec![sym("map"), sym("map_walk_entry")])),
-                        Stated::WalkBody.label(),
-                    ),
-                ])),
-            ),
-            def(
-                "map_walk_entry",
-                "`(k): v` standing as a Map literal's walk body with no brace\n\
-                 around it. It is the entry `map_entry` spells,\n\
-                 held to the computed key: a bare name is the key's own name,\n\
-                 which every element would then share, and the walk's brace-free\n\
-                 body is the one place where a bare name here would also open a\n\
-                 comprehension's bare body dressed by a configuration zone. The\n\
-                 braced spelling takes `map_entry` through `map`, and the two\n\
-                 lower as one entry.",
-                seq(vec![
-                    field("key", sym("computed_key")),
-                    colon(),
-                    nl(),
-                    field("value", expr()),
-                ]),
             ),
             def(
                 "body",

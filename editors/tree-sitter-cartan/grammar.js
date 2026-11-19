@@ -55,7 +55,6 @@ module.exports = grammar({
     [$.fiber_type, $._expression, $._pattern],
     [$._expression, $._pattern, $.map_entry],
     [$._expression, $._pattern, $.map_sub_pattern, $.map_entry],
-    [$.parenthesized_expression, $.computed_key],
     [$.variant_argument, $._pattern],
     [$._expression, $.write],
     [$.range_to, $.open_range],
@@ -1577,8 +1576,7 @@ module.exports = grammar({
     // follow it. **The paren follows the head immediately**, as the
     // subscript's bracket follows its target: `f(x)` is a call and
     // `f (x)` is the name `f` beside a parenthesized value, which is
-    // what lets a header's collection stand beside a bare body and a
-    // Map walk's collection beside its entry. A
+    // what lets a header's collection stand beside a bare body. A
     // parenthesized fiber description heads a call too,
     // `(D: Real, E: Real)(1, 0)`, which is the anonymous spelling of a
     // declared product's constructor:
@@ -2277,8 +2275,7 @@ module.exports = grammar({
 
     // `{ name: v, expression => w }` — a brace literal with static
     // names and computed keys in source order. An empty brace is
-    // a literal rather than a body. The older `(e): v` and embedded
-    // walk forms remain CST-only; normalization rejects them.
+    // a literal rather than a body.
     map: ($) =>
       prec(
         1,
@@ -2287,13 +2284,8 @@ module.exports = grammar({
           repeat(choice(",", $._newline)),
           optional(
             seq(
-              choice($.map_walk, $.map_entry),
-              repeat(
-                seq(
-                  repeat1(choice(",", $._newline)),
-                  choice($.map_walk, $.map_entry),
-                ),
-              ),
+              $.map_entry,
+              repeat(seq(repeat1(choice(",", $._newline)), $.map_entry)),
               repeat(choice(",", $._newline)),
             ),
           ),
@@ -2312,7 +2304,7 @@ module.exports = grammar({
         2,
         choice(
           seq(
-            field("key", choice($.identifier, $.computed_key)),
+            field("key", $.identifier),
             field("separator", alias(token(/:/), ":")),
             field("value", $._expression),
           ),
@@ -2322,58 +2314,6 @@ module.exports = grammar({
             field("value", $._expression),
           ),
         ),
-      ),
-
-    // `(expr)` — a Map entry's key computed rather than named, since
-    // a bare identifier in a Map literal is the key's own name
-    // . The expression returns a Str.
-    computed_key: ($) =>
-      seq(
-        "(",
-        repeat(choice(",", $._newline)),
-        $._expression,
-        repeat(choice(",", $._newline)),
-        ")",
-      ),
-
-    // `each k in ks (k): f(k)` — a comprehension among a Map
-    // literal's entries: the header is `each`'s, and
-    // the body is the one entry the walk writes per element, whose
-    // key is parenthesized. **The body is that entry, braced or
-    // bare**: `each k in ks (k): v` and `each k in ks { (k): v }`
-    // are the one walk, as a List's splice takes both spellings.
-    // The braceless form reads because a call's paren follows its
-    // head immediately, so the collection ends at the space before
-    // the key. The walk is one item of the literal, so its entries
-    // land in walk order among the others. The dynamic precedence
-    // outranks the braced comprehension body's, so a brace holding a
-    // walk reads as the Map it is rather than as a body whose one
-    // item is an `each`.
-    map_walk: ($) =>
-      prec.dynamic(
-        3,
-        seq(
-          "each",
-          field("binders", $.binder_list),
-          "in",
-          field("collection", $._expression_header),
-          field("body", choice($.map, $.map_walk_entry)),
-        ),
-      ),
-
-    // `(k): v` standing as a Map literal's walk body with no brace
-    // around it. It is the entry `map_entry` spells,
-    // held to the computed key: a bare name is the key's own name,
-    // which every element would then share, and the walk's brace-free
-    // body is the one place where a bare name here would also open a
-    // comprehension's bare body dressed by a configuration zone. The
-    // braced spelling takes `map_entry` through `map`, and the two
-    // lower as one entry.
-    map_walk_entry: ($) =>
-      seq(
-        field("key", $.computed_key),
-        alias(token(/:/), ":"),
-        field("value", $._expression),
       ),
 
     // A braced body can hold `:=` locals, expressions and `<-`
