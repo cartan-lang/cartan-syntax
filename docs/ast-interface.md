@@ -357,12 +357,6 @@ covers the `but` keyword and `overrides` is any value. `but` binds looser than
 previous expression. Every update law (keys, fitting, recursion over nested
 partial products, arrays of products, structs) belongs to analysis.
 
-The removed spatial replacement `base but key: value`, where a colon follows the
-operand at the same nesting level, yields
-`FormDiagnosticKind::RemovedSpatialUpdate { key_span }` with the diagnostic span
-on that colon. A colon inside a parenthesized partial product is an ordinary
-product entry.
-
 ## Conditionals
 
 `if c { a } else { b }` is `ExprKind::If { condition, consequence, alternative }`.
@@ -520,9 +514,8 @@ These forms preserve source only. The compiler owns setting/default scopes, type
 inference and fitting, duplicate/unknown-key diagnostics, joins, live substitution,
 interface closing, configurable consumption and the prohibition on configurable
 values nested inside settings. Syntax preserves such nested expressions when
-otherwise supported so the compiler can diagnose them. The retired function-header
-configuration `f(x):{c:1}=body` and positional parameter defaults remain
-unsupported normalized forms. No execution support follows from AST acceptance.
+otherwise supported so the compiler can diagnose them. No execution support
+follows from AST acceptance.
 
 Constructor chains and literal closing preserve written configurable forms.
 Their meaning belongs to the [compiler](../../cartan-compiler/docs/design.md)
@@ -563,7 +556,7 @@ Structured errors distinguish `Grammar(Diagnostic)` from
 relevant payloads: unsupported construct and its CST kind, comparison/range
 chain, body result count, a use alias combined with selectors, malformed
 format precision or notation, misplaced signatures, component keys of the
-wrong length, the removed spatial update, stated types on patterns other than
+wrong length, stated types on patterns other than
 names, discards and positional tuples, a type alternative other than `None`,
 misplaced documentation, a lock on a `param` and a keyed write. `Error::span()` returns the full byte range; errors
 derive `Clone`, `Debug`, `PartialEq` and `Eq`. Grammar diagnostics are preserved

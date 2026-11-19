@@ -191,8 +191,6 @@ pub enum Rule {
     /// A conditional's branch with no braced body after its condition or
     /// its `else`.
     IfBody,
-    /// A dot spelling a namespace step.
-    NamespaceDot,
     /// A dot reading a value's component.
     ComponentDot,
     /// Parens applied to what is no named function.
@@ -232,8 +230,6 @@ pub enum Rule {
     LocalParam,
     /// A local declared with `=` inside a body.
     BodyEquals,
-    /// A body opening with the retired clause comprehension's `in`.
-    ClauseComprehension,
     /// A write naming a component of a port.
     ComponentWrite,
     /// A `state` local with no `:=`.
@@ -282,7 +278,6 @@ impl Rule {
         Rule::AnnotationAlternative,
         Rule::UpdateBody,
         Rule::IfBody,
-        Rule::NamespaceDot,
         Rule::ComponentDot,
         Rule::CallHead,
         Rule::PrimedCall,
@@ -302,7 +297,6 @@ impl Rule {
         Rule::WalkBody,
         Rule::LocalParam,
         Rule::BodyEquals,
-        Rule::ClauseComprehension,
         Rule::ComponentWrite,
         Rule::StateLocal,
         Rule::TemplateHole,
@@ -369,7 +363,6 @@ impl Rule {
             | Rule::PatternValue
             | Rule::AnnotationAlternative
             | Rule::UpdateBody
-            | Rule::NamespaceDot
             | Rule::ComponentDot
             | Rule::CallHead
             | Rule::FoldIn
@@ -382,7 +375,6 @@ impl Rule {
             | Rule::WalkIn
             | Rule::WalkBody
             | Rule::LocalParam
-            | Rule::ClauseComprehension
             | Rule::TemplateHole
             | Rule::RequireCondition
             | Rule::RequireMessage => &[],

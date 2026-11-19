@@ -44,7 +44,6 @@ module.exports = grammar({
     [$.range_from_header, $.header_open_range],
     [$.range_to_header, $.header_open_range],
     [$._config_atom, $._expression],
-    [$._expression, $._expression_key],
     [$._expression, $._pattern],
     [$._expression, $.map_sub_pattern],
     [$._expression, $._pattern, $.map_sub_pattern],
@@ -750,7 +749,6 @@ module.exports = grammar({
         $.periodic_expression,
         $.binary_expression,
         $.with_expression,
-        $.site_update_expression,
         $.but_expression,
         $.absent_expression,
         $.index_expression,
@@ -963,29 +961,6 @@ module.exports = grammar({
         ),
       ),
 
-    // `base but key: value` — the site update: the
-    // field on the left with the sites the key states holding the value and
-    // every other site kept. The key is an expression — a range or a box,
-    // `space(x)`, a mask — closed by its colon, so it reads no
-    // configuration zone; the chain groups left at `with`'s precedence, and a
-    // line opening with `but` continues the one above. It stands before the
-    // component update, which the interpreter reads when no colon closes a
-    // key: `cam but (d: 3.0)` names a component, `a but (n - 1): 0.0` a site.
-    site_update_expression: ($) =>
-      prec.dynamic(
-        1,
-        prec.left(
-          11,
-          seq(
-            field("target", $._expression),
-            "but",
-            field("key", $._expression_key),
-            ":",
-            field("value", $._expression),
-          ),
-        ),
-      ),
-
     // `base but override` — the product-fiber component update
     // : the value on the left with the components the
     // override names replaced, at `with`'s precedence and grouping left.
@@ -1082,242 +1057,6 @@ module.exports = grammar({
         ),
       ),
 
-    // `_expression` without `payload_expression` and `config_expression` and `call_refusal` and `site_update_expression` and `but_expression`:
-    // the rule a reference through `without` in the grammar's source
-    // reads — a loop header's expression, whose brace and colon belong
-    // to the header. Every node is aliased to its name in `_expression`, so
-    // the tree is the same tree; the precedences are lifted to
-    // `2p + 1` so the header's reading wins wherever the two could
-    // take the same text.
-    _expression_key: ($) =>
-      choice(
-        $.configurable_expression,
-        $.texture_expression,
-        $.call_expression,
-        $.qualified_identifier,
-        $.boolean,
-        $.none,
-        $.template_string,
-        $.identifier,
-        $.number,
-        $.triple_string,
-        $.string,
-        $.list,
-        $.product,
-        $.parenthesized_expression,
-        $.map,
-        $.body,
-        $.tap_expression,
-        $.for_expression,
-        $.each_expression,
-        $.fold_expression,
-        $.conditional_expression,
-        $.match_expression,
-        $.full_range,
-        alias($.unary_expression_key, $.unary_expression),
-        alias($.periodic_range_key, $.periodic_range),
-        alias($.range_to_key, $.range_to),
-        alias($.range_expression_key, $.range_expression),
-        alias($.range_from_key, $.range_from),
-        alias($.periodic_expression_key, $.periodic_expression),
-        alias($.binary_expression_key, $.binary_expression),
-        alias($.with_expression_key, $.with_expression),
-        alias($.absent_expression_key, $.absent_expression),
-        alias($.index_expression_key, $.index_expression),
-        alias($.component_expression_key, $.component_expression),
-        alias($.configure_dot_expression_key, $.configure_dot_expression),
-      ),
-
-    unary_expression_key: ($) =>
-      choice(
-        prec.right(
-          9,
-          seq(field("operator", "not"), field("operand", $._expression_key)),
-        ),
-        prec.right(
-          19,
-          seq(field("operator", "-"), field("operand", $._expression_key)),
-        ),
-        prec.right(
-          19,
-          seq(field("operator", "+"), field("operand", $._expression_key)),
-        ),
-      ),
-
-    periodic_range_key: ($) =>
-      prec.right(
-        5,
-        seq(
-          field("operator", ".."),
-          field("axis", alias($.range_expression_key, $.range_expression)),
-        ),
-      ),
-
-    range_to_key: ($) =>
-      prec.right(
-        3,
-        seq(
-          field("operator", choice("..=", "..")),
-          field("end", $._expression_key),
-        ),
-      ),
-
-    range_expression_key: ($) =>
-      prec.left(
-        3,
-        seq(
-          field("left", $._expression_key),
-          field("operator", choice("..=", "..")),
-          field("right", $._expression_key),
-        ),
-      ),
-
-    range_from_key: ($) =>
-      prec.left(
-        3,
-        seq(
-          field("start", $._expression_key),
-          field("operator", choice("..=", "..")),
-          $._no_operand,
-        ),
-      ),
-
-    periodic_expression_key: ($) =>
-      prec.left(3, seq(field("axis", $._expression_key), "periodic")),
-
-    binary_expression_key: ($) =>
-      choice(
-        prec.left(
-          5,
-          seq(
-            field("left", $._expression_key),
-            field("operator", "or"),
-            field("right", $._expression_key),
-          ),
-        ),
-        prec.left(
-          7,
-          seq(
-            field("left", $._expression_key),
-            field("operator", "and"),
-            field("right", $._expression_key),
-          ),
-        ),
-        prec.left(
-          11,
-          seq(
-            field("left", $._expression_key),
-            field(
-              "operator",
-              choice(
-                alias(token(/==/), "=="),
-                alias(token(/!=/), "!="),
-                alias(token(/<=/), "<="),
-                alias(token(/>=/), ">="),
-                alias(token(/</), "<"),
-                alias(token(/>/), ">"),
-              ),
-            ),
-            field("right", $._expression_key),
-          ),
-        ),
-        prec.right(
-          13,
-          seq(
-            field("left", $._expression_key),
-            field("operator", alias(token(/\?\?/), "??")),
-            field("right", $._expression_key),
-          ),
-        ),
-        prec.left(
-          15,
-          seq(
-            field("left", $._expression_key),
-            field("operator", alias(token(/\+/), "+")),
-            field("right", $._expression_key),
-          ),
-        ),
-        prec.left(
-          15,
-          seq(
-            field("left", $._expression_key),
-            field("operator", alias(token(/<>/), "<>")),
-            field("right", $._expression_key),
-          ),
-        ),
-        prec.left(
-          15,
-          seq(
-            field("left", $._expression_key),
-            field("operator", "-"),
-            field("right", $._expression_key),
-          ),
-        ),
-        prec.left(
-          17,
-          seq(
-            field("left", $._expression_key),
-            field(
-              "operator",
-              choice(
-                alias(token(/\*/), "*"),
-                alias(token(/\/\//), "//"),
-                alias(token(/\//), "/"),
-                alias(token(/@/), "@"),
-              ),
-            ),
-            field("right", $._expression_key),
-          ),
-        ),
-        prec.right(
-          21,
-          seq(
-            field("left", $._expression_key),
-            field("operator", alias(token(/\^/), "^")),
-            field("right", $._expression_key),
-          ),
-        ),
-      ),
-
-    with_expression_key: ($) =>
-      prec.left(
-        23,
-        seq(
-          field("target", $._expression_key),
-          "with",
-          field("control", $._expression_key),
-        ),
-      ),
-
-    absent_expression_key: ($) =>
-      prec.left(27, seq(field("value", $._expression_key), "?")),
-
-    index_expression_key: ($) =>
-      prec.left(
-        27,
-        seq(field("target", $._expression_key), field("index", $.subscript)),
-      ),
-
-    component_expression_key: ($) =>
-      prec.right(
-        25,
-        seq(
-          field("key", $.component_key),
-          "of",
-          field("value", $._expression_key),
-        ),
-      ),
-
-    configure_dot_expression_key: ($) =>
-      prec.left(
-        27,
-        seq(
-          field("target", $._expression_key),
-          field("operator", alias(token(/\./), ".")),
-          field("config", $.map),
-        ),
-      ),
-
     // `_expression` without `payload_expression` and `config_expression` and `call_refusal`:
     // the rule a reference through `without` in the grammar's source
     // reads — a loop header's expression, whose brace and colon belong
@@ -1360,7 +1099,6 @@ module.exports = grammar({
           alias($.periodic_expression_header, $.periodic_expression),
           alias($.binary_expression_header, $.binary_expression),
           alias($.with_expression_header, $.with_expression),
-          alias($.site_update_expression_header, $.site_update_expression),
           alias($.but_expression_header, $.but_expression),
           alias($.absent_expression_header, $.absent_expression),
           alias($.index_expression_header, $.index_expression),
@@ -1530,21 +1268,6 @@ module.exports = grammar({
         ),
       ),
 
-    site_update_expression_header: ($) =>
-      prec.dynamic(
-        1,
-        prec.left(
-          23,
-          seq(
-            field("target", $._expression_header),
-            "but",
-            field("key", $._expression_key),
-            ":",
-            field("value", $._expression_header),
-          ),
-        ),
-      ),
-
     but_expression_header: ($) =>
       prec.left(
         23,
@@ -1626,7 +1349,6 @@ module.exports = grammar({
           alias($.periodic_expression_hole, $.periodic_expression),
           alias($.binary_expression_hole, $.binary_expression),
           alias($.with_expression_hole, $.with_expression),
-          alias($.site_update_expression_hole, $.site_update_expression),
           alias($.but_expression_hole, $.but_expression),
           alias($.absent_expression_hole, $.absent_expression),
           alias($.index_expression_hole, $.index_expression),
@@ -1794,21 +1516,6 @@ module.exports = grammar({
           field("target", $._expression_hole),
           "with",
           field("control", $._expression_hole),
-        ),
-      ),
-
-    site_update_expression_hole: ($) =>
-      prec.dynamic(
-        1,
-        prec.left(
-          23,
-          seq(
-            field("target", $._expression_hole),
-            "but",
-            field("key", $._expression_key),
-            ":",
-            field("value", $._expression_hole),
-          ),
         ),
       ),
 

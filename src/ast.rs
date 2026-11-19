@@ -814,11 +814,6 @@ pub enum FormDiagnosticKind {
         position: SignaturePosition,
         signature_span: Span,
     },
-    /// The removed spatial replacement `base but key: value`. The diagnostic
-    /// span is the colon after the key; `key_span` covers the key.
-    RemovedSpatialUpdate {
-        key_span: Span,
-    },
     /// A parenthesized component key with other than two positions.
     ComponentKeyPositions {
         found: usize,

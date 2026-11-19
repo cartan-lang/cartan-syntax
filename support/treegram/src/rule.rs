@@ -106,9 +106,6 @@ pub struct Exclusion {
     /// `{node}_{label}`. Every exclusion with one label states the same
     /// rule.
     pub label: String,
-    /// Whether the copy ties with the original rather than outranking
-    /// it ([`without_tied`]).
-    pub tied: bool,
 }
 
 /// **A diagnostic a grammar states, by the number it gave it.** The
@@ -432,21 +429,6 @@ pub fn without(label: &str, expr: &str, nodes: &[&str]) -> Rule {
         expr: expr.to_string(),
         excluded: nodes.iter().map(|s| s.to_string()).collect(),
         label: label.to_string(),
-        tied: false,
-    })
-}
-
-/// [`without`] at a position where the interpreter backtracks rather
-/// than commits: its copy ties with the original instead of outranking
-/// it, so tree-sitter keeps both readings and a later token decides, as
-/// the interpreter's ordered choice does by retrying. A conflict between
-/// the two rules is then stated in the grammar's `conflicts`.
-pub fn without_tied(label: &str, expr: &str, nodes: &[&str]) -> Rule {
-    Rule::Without(Exclusion {
-        expr: expr.to_string(),
-        excluded: nodes.iter().map(|s| s.to_string()).collect(),
-        label: label.to_string(),
-        tied: true,
     })
 }
 

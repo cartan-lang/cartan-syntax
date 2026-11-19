@@ -1139,7 +1139,6 @@ impl Reader<'_> {
             "component_expression" => self.projection(node),
             "product" => self.product(node),
             "but_expression" => self.update(node),
-            "site_update_expression" => self.site_update(node),
             "list" => self.list(node),
             "range_expression" | "open_range" | "header_open_range" | "range_from" | "range_to"
             | "full_range" => self.range(node),
@@ -1360,26 +1359,6 @@ impl Reader<'_> {
                 end: start + 3,
             },
         })
-    }
-
-    /// The removed spatial replacement `base but key: value`, refused at its
-    /// colon.
-    fn site_update(&self, node: &Node) -> Result<ExprKind> {
-        let key = field(node, "key")?;
-        let colon = node
-            .children
-            .iter()
-            .find(|child| child.kind == ":" && child.start >= key.end)
-            .ok_or_else(|| unsupported(node))?;
-        Err(form_at(
-            Span {
-                start: colon.end - 1,
-                end: colon.end,
-            },
-            FormDiagnosticKind::RemovedSpatialUpdate {
-                key_span: span(key),
-            },
-        ))
     }
 
     fn list(&self, node: &Node) -> Result<ExprKind> {

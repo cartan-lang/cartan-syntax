@@ -260,11 +260,10 @@ impl<'g> Presentation<'g> {
         };
         // a copy outranks the original wherever the two could both take a
         // word — a header's expression followed by a bare body — since the
-        // interpreter's climb is greedy in the same place; a tied copy
-        // stands where the interpreter retries instead, and ranks equal
+        // interpreter's climb is greedy in the same place
         let choice = match copy {
-            Some(c) if !c.ex.tied => Js::call("prec", vec![Js::num(1), Js::call("choice", alts)]),
-            _ => Js::call("choice", alts),
+            Some(_) => Js::call("prec", vec![Js::num(1), Js::call("choice", alts)]),
+            None => Js::call("choice", alts),
         };
         let mut out = vec![(own(name), doc.to_string(), choice)];
         for node in nodes {

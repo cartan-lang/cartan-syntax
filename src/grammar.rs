@@ -243,28 +243,6 @@ fn header_expr() -> Rule {
     )
 }
 
-/// A site update's key: a header expression, closed by
-/// its colon, that holds no update of its own at its top level. A key is
-/// greedy — `a but 0..n - 1: v` reads the whole range — so a `but` after
-/// a parenthesized override, `cam but (d: 3.0) but (f: 1.0)`, would
-/// otherwise open a key that no colon closes; a key that is itself an
-/// update is parenthesized. The interpreter tries the key and retries
-/// the component update where no colon closes it, so the copy ties with
-/// the expression rule and tree-sitter keeps both readings to the colon.
-fn site_key() -> Rule {
-    without_tied(
-        "key",
-        "_expression",
-        &[
-            "payload_expression",
-            "config_expression",
-            "call_refusal",
-            "site_update_expression",
-            "but_expression",
-        ],
-    )
-}
-
 /// The colon a brace's three readings share: a Map entry's, a Map
 /// pattern's and a local's stated fiber, together with the
 /// configuration zone's, which stands on any expression and so on a
@@ -592,13 +570,6 @@ fn build() -> Grammar {
             // and which it is shows only at the token after the name; the
             // dynamic precedence on the call and the index settles it
             vec!["_config_atom".into(), "_expression".into()],
-            // after `but` a site update's key (`site_key`, the `key`
-            // exclusion copy, tied) and a component update's override
-            // open alike, and the colon closing the key is what tells
-            // them apart. Where both readings stand, the
-            // site update's dynamic precedence keeps it, as the
-            // interpreter's order does
-            vec!["_expression".into(), "_expression_key".into()],
             // a brace item opens the same way as a pattern and as an
             // expression, and the `:=` is what tells a local from a bare
             // item: the three parenthesized patterns are spelled exactly
@@ -1489,16 +1460,6 @@ fn build() -> Grammar {
                     infix("binary_expression", POWER, Assoc::Right, "left", seq(vec![field("operator", cont("^")), nl()]), "right"),
                     infix("with_expression", ATTACH, Assoc::Left, "target", seq(vec![cont_word("with"), nl()]), "control")
                         .doc("`view with control` — attachment, chainable, never a child. The\ncontrol takes the postfix zones of its own — `with scrub(g) : cfg { … }`\n— and not a further `with`, so the chain stays flat."),
-                    infix(
-                        "site_update_expression",
-                        ATTACH,
-                        Assoc::Left,
-                        "target",
-                        seq(vec![cont_word("but"), nl(), field("key", site_key()), ":".into(), nl()]),
-                        "value",
-                    )
-                    .dynamic(1)
-                    .doc("`base but key: value` — the site update: the\nfield on the left with the sites the key states holding the value and\nevery other site kept. The key is an expression — a range or a box,\n`space(x)`, a mask — closed by its colon, so it reads no\nconfiguration zone; the chain groups left at `with`'s precedence, and a\nline opening with `but` continues the one above. It stands before the\ncomponent update, which the interpreter reads when no colon closes a\nkey: `cam but (d: 3.0)` names a component, `a but (n - 1): 0.0` a site."),
                     infix("but_expression", ATTACH, Assoc::Left, "target", seq(vec![cont_word("but"), nl()]), "override")
                         .doc("`base but override` — the product-fiber component update\n: the value on the left with the components the\noverride names replaced, at `with`'s precedence and grouping left."),
                     postfix("absent_expression", POSTFIX, "value", "?")
@@ -1538,17 +1499,6 @@ fn build() -> Grammar {
                         .doc("`head(…) { items }` — call sugar for a trailing List argument; a\nbrace whose first item is a `port <-` write is the writes a control\nhead takes, which a later analysis stage decides"),
                     postfix("payload_expression", POSTFIX, "target", field("body", sym("list")))
                         .doc("`head [a, b]` — a payload of one row, exactly `head { [a, b] }`\n. The bracket opens on the head's line, as the\nbrace does, so `head` and a `[` on the next line stay two items.\nThe index takes its `[` immediately after its target, so `xs[i]`\nreads the element and `xs [i]` is this zone."),
-                    postfix(
-                        "namespace_dot_refusal",
-                        POSTFIX,
-                        "target",
-                        refusing(
-                            seq(vec![cont("."), sym("identifier")]),
-                            Stated::NamespaceDot.label(),
-                        ),
-                    )
-                    .targets(&["identifier"])
-                    .doc("`ns.x` — the retired spelling of a namespace step, refused with\n`ns::x`. The dot is no separator in the language: a namespace is\n`::` and a component is `of`, so the one lexical run a name and a\ndot open is named here rather than left to the elaborator."),
                     postfix(
                         "dot_refusal",
                         POSTFIX,
@@ -2412,10 +2362,6 @@ fn build() -> Grammar {
                                 not_ahead("="),
                             ]),
                             Stated::BodyEquals.label(),
-                        ),
-                        refusing(
-                            seq(vec!["in".into(), nl()]),
-                            Stated::ClauseComprehension.label(),
                         ),
                         refusing(
                             seq(vec![

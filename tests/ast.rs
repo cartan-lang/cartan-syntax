@@ -1982,27 +1982,6 @@ fn updates_take_partial_products_chain_left_and_bind_looser_than_reads() {
     }
 }
 
-#[test]
-fn the_removed_spatial_update_is_a_typed_error_at_its_colon() {
-    for (source, key) in [
-        ("u but 0..4: 1.0", "0..4"),
-        ("u but (n - 1): 0.0", "(n - 1)"),
-        ("u but [0..1, 1..2]: v", "[0..1, 1..2]"),
-        ("u but mask: v", "mask"),
-    ] {
-        let errors = ast::parse_expression(source).unwrap_err();
-        let [Error::Form(FormDiagnostic {
-            kind: FormDiagnosticKind::RemovedSpatialUpdate { key_span },
-            span,
-        })] = errors.as_slice()
-        else {
-            panic!("{source}: {errors:?}");
-        };
-        assert_eq!(&source[span.start..span.end], ":", "{source}");
-        assert_eq!(&source[key_span.start..key_span.end], key, "{source}");
-    }
-}
-
 fn local_pattern(source: &str) -> Pattern {
     let ExprKind::Body(body) = expression(source).kind else {
         panic!("{source}");

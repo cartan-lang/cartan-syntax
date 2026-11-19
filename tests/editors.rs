@@ -190,7 +190,6 @@ const FIXTURES: &[&str] = &[
     "step { u <- u + 1 }",
     "step { u[i] <- 1 }",
     "x = view with c",
-    "x = a but 0..n: v",
     "x = f(a) : style { body }",
     "require(n > 0, \"positive\")",
     // newlines: a separator where an item may end, whitespace where a
