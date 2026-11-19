@@ -201,10 +201,13 @@ the colon.
 The [syntax tests](../tests/syntax.rs) verify these structures and byte spans.
 
 The [editor tests](../tests/editors.rs) generate the Tree-sitter parser from
-`grammar::print_json()`, compile and load it, and require its trees to equal
-the interpreter's on one-line fixtures, one construct each. Tree-sitter reads
-the grammar's precedences and declared conflicts, which the interpreter
-ignores, so agreement is evidence on those fixtures only. There is no full
+`grammar::print_json()`, compile and load it with the generated scanner, and
+require its trees to equal the interpreter's on short fixtures, one construct
+or newline rule each. Tree-sitter reads the grammar's precedences, declared
+conflicts and lookaheads, which the interpreter ignores, so agreement is
+evidence on those fixtures only. Every emitted query loads against the
+generated language, and the committed `editors/` tree must equal the printed
+one. Editor behavior is not observed by these tests, and there is no full
 editor-conformance claim.
 
 ## Licensing

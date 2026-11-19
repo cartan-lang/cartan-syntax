@@ -1,4 +1,4 @@
 cartan-syntax is Cartan's grammar, parser and source syntax tree. One grammar
 produces concrete syntax trees, a normalized source AST for the numerical
-workload subset, and editor grammar definitions. Syntax performs no name
+workload subset, and the editor packages under `editors/`. Syntax performs no name
 resolution, typing, graph construction or evaluation.
