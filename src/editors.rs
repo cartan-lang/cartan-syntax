@@ -60,6 +60,12 @@ pub fn files(zed: &ZedGrammar) -> Vec<(String, String)> {
             grammar::print_scanner(),
         ),
         ("editors/zed/extension.toml".into(), zed_manifest(zed)),
+        // The Zed registry reads the licence inside the extension's own
+        // directory; the repository's licence is its only source.
+        (
+            "editors/zed/LICENSE".into(),
+            include_str!("../LICENSE").into(),
+        ),
         (format!("{ZED_LANGUAGE}/config.toml"), zed_config()),
         (format!("{ZED_LANGUAGE}/highlights.scm"), highlights()),
         (format!("{ZED_LANGUAGE}/brackets.scm"), brackets()),
