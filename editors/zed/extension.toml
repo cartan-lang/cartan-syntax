@@ -8,5 +8,5 @@ repository = "https://github.com/cartan-lang/cartan-syntax"
 
 [grammars.cartan]
 repository = "https://github.com/cartan-lang/cartan-syntax"
-rev = "1c19d130d031c57dc3f429103f5cb6c70da16a0c"
+rev = "3cc0293386adbadf9da56bfbcbaa4eed50ae5cac"
 path = "editors/tree-sitter-cartan"
