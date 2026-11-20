@@ -560,9 +560,11 @@ language validation, and CST acceptance alone remains weaker evidence.
 The grammar defines precedence and newline grouping; consumers preserve the
 normalized tree's written association. Unary `+`
 is `UnaryOperator::Plus` and stands wherever unary `-` does, so `+0.5` and
-`-0.5` read alike. A line opening with `+` still continues the line above as
-the binary operator, so `[1\n +2]` is one item while `[1\n -2]` is two; a
-continued subtraction places its operator at the end of the preceding line.
+`-0.5` read alike. A line opening with `+` or `-` followed by whitespace
+continues the line above as the binary operator, so a sum or difference may be
+written one term to a line; a sign written against its operand begins a fresh
+item, so `[1\n -2\n 3]` keeps three items and `[1\n + 2]` is the one item
+`1 + 2`.
 
 The value body preserves local/result order, including a local after the result.
 The adapter must explicitly reject orders it cannot represent, rather than

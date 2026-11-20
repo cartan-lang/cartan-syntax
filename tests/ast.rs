@@ -2807,8 +2807,9 @@ fn unary_plus_reads_as_unary_minus_does() {
         panic!();
     };
     assert_eq!(unary(&right).0, UnaryOperator::Plus);
-    // A line opening with `+` continues the line above; one opening with `-` does not.
-    let ExprKind::List(items) = expression("[1\n +2]").kind else {
+    // A line opening with a sign and whitespace continues the line above;
+    // a sign written against its operand begins a fresh item.
+    let ExprKind::List(items) = expression("[1\n + 2]").kind else {
         panic!();
     };
     assert!(matches!(
@@ -2821,10 +2822,29 @@ fn unary_plus_reads_as_unary_minus_does() {
             ..
         }]
     ));
-    let ExprKind::List(items) = expression("[1\n -2]").kind else {
+    let ExprKind::List(items) = expression("[1\n - 2]").kind else {
         panic!();
     };
-    assert_eq!(items.len(), 2);
+    assert!(matches!(
+        items.as_slice(),
+        [Expr {
+            kind: ExprKind::Binary {
+                operator: BinaryOperator::Subtract,
+                ..
+            },
+            ..
+        }]
+    ));
+    for signed in ["[1\n -2]", "[1\n +2]"] {
+        let ExprKind::List(items) = expression(signed).kind else {
+            panic!();
+        };
+        assert_eq!(items.len(), 2, "{signed:?}");
+        assert!(
+            matches!(items[1].kind, ExprKind::Unary { .. }),
+            "{signed:?}"
+        );
+    }
 }
 
 fn range_parts(expr: &Expr) -> (Option<&Expr>, Option<&Expr>, bool) {

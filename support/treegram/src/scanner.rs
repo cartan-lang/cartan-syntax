@@ -572,11 +572,12 @@ static Next next_token(TSLexer *lexer, bool spaced) {
 
     /// The function that tells whether the line at the lexer, after a
     /// newline, opens with a continuation: the token there, read as the
-    /// lexer reads it, is one, and a word is followed by a character its
-    /// pattern states.
+    /// lexer reads it, is one, and a word or an operator whose pattern
+    /// states a character after it is followed by that character.
     fn continuation_fn(&self) -> String {
         let mut words = String::new();
         let mut literals = String::new();
+        let mut followed = String::new();
         for c in &self.continuations {
             if let Some(k) = self.keywords.iter().position(|k| *k == c.text) {
                 let test = match &c.follow {
@@ -585,13 +586,13 @@ static Next next_token(TSLexer *lexer, bool spaced) {
                 };
                 words.push_str(&format!("      case {}:\n        return {test};\n", k + 1));
             } else if let Some(l) = self.literals.iter().position(|l| *l == c.text) {
-                if c.follow.is_some() {
-                    panic!(
-                        "the continuation `{}` states a character after an operator",
-                        c.text
-                    );
+                match &c.follow {
+                    Some(items) => {
+                        let test = class_test("lexer->lookahead", items, false);
+                        followed.push_str(&format!("    case {}:\n      return {test};\n", l + 1));
+                    }
+                    None => literals.push_str(&format!("    case {}:\n", l + 1)),
                 }
-                literals.push_str(&format!("    case {}:\n", l + 1));
             } else {
                 panic!("the continuation `{}` is no token of the grammar", c.text);
             }
@@ -602,10 +603,14 @@ static Next next_token(TSLexer *lexer, bool spaced) {
         out.push_str("  if (is_word_start(lexer->lookahead)) {\n    switch (read_word(lexer)) {\n");
         out.push_str(&words);
         out.push_str("      default:\n        return false;\n    }\n  }\n");
-        if !literals.is_empty() {
+        if !literals.is_empty() || !followed.is_empty() {
             out.push_str("  switch (literal(lexer)) {\n");
-            out.push_str(&literals);
-            out.push_str("      return true;\n  }\n");
+            if !literals.is_empty() {
+                out.push_str(&literals);
+                out.push_str("      return true;\n");
+            }
+            out.push_str(&followed);
+            out.push_str("  }\n");
         }
         out.push_str("  return false;\n}\n\n");
         out

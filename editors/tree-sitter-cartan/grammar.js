@@ -22,12 +22,13 @@
  * `src/scanner.c`, reads both rules: it returns a newline only
  * where the parser can take a separator and the next line opens
  * with no continuation, and the newline is whitespace elsewhere.
- * A token that can begin an expression is no continuation, so
- * `[1\n -2\n 3]` keeps its three items and `[0..4\n ..8]` its two
- * axes. A word
- * operator opening a line — `with`, `but`, `and`, `or` — continues
- * it only with whitespace after the word, which is what keeps
- * `without = 2` on a fresh line a binding.
+ * A token that only begins an expression is no continuation, so
+ * `[0..4\n ..8]` keeps its two axes. A word operator opening a
+ * line — `with`, `but`, `and`, `or` — continues it only with
+ * whitespace after the word, which is what keeps `without = 2` on
+ * a fresh line a binding, and `+` and `-` do the same: `+ b` opening
+ * a line continues a sum, while `-2` written against its operand
+ * begins a fresh item, so `[1\n -2\n 3]` keeps its three items.
  */
 
 module.exports = grammar({
@@ -757,8 +758,9 @@ module.exports = grammar({
 
     // `not`, above the comparisons and below `and`
     // unary `+`, standing wherever unary `-` does, so `+0.5` and `-0.5`
-    // read alike. A line opening with `+` still continues the line above,
-    // the continuation token taking it as the binary operator.
+    // read alike. A line opening with `+` and whitespace continues the line
+    // above, the continuation token taking it as the binary operator; `+x`
+    // written against its operand at a line start is this sign.
     unary_expression: ($) =>
       choice(
         prec.right(
@@ -840,14 +842,16 @@ module.exports = grammar({
     // and stands between the comparisons and arithmetic, so `m ?? 0 > 3` is
     // `(m ?? 0) > 3` and `m ?? n + 1` is `m ?? (n + 1)`. The lexer's longest
     // match takes it over the postfix absence mark `?`.
+    // `+` and `-` open a line as word operators do: followed by whitespace
+    // they continue the line above, so a sum may be written one term to a
+    // line; written against its operand, a sign begins a fresh item, so
+    // `[1\n -2\n 3]` keeps its three items
     // `a <> b` — the join: the string two strings make, the list two
     // lists make end to end, the union two Maps make. It stands at `+`'s
     // precedence and groups left, and it is a continuation operator, so a
     // line opening with `<>` attaches to the line above it. The lexer's
     // longest match takes it over `<` followed by `>`, which is no legal
     // sequence.
-    // `-` carries no leading newlines: a line opening with `-` is a fresh
-    // signed item, so `[1\n -2\n 3]` keeps its three items
     // `@` is the action operator: infix at the
     // multiplicative level, left-associative, so `g @ a @ b` is the scalar
     // and `(R1 * R2) @ v` composes then acts
@@ -899,7 +903,7 @@ module.exports = grammar({
           7,
           seq(
             field("left", $._expression),
-            field("operator", alias(token(/\+/), "+")),
+            field("operator", "+"),
             field("right", $._expression),
           ),
         ),
@@ -1209,7 +1213,7 @@ module.exports = grammar({
           15,
           seq(
             field("left", $._expression_header),
-            field("operator", alias(token(/\+/), "+")),
+            field("operator", "+"),
             field("right", $._expression_header),
           ),
         ),
@@ -1460,7 +1464,7 @@ module.exports = grammar({
           15,
           seq(
             field("left", $._expression_hole),
-            field("operator", alias(token(/\+/), "+")),
+            field("operator", "+"),
             field("right", $._expression_hole),
           ),
         ),

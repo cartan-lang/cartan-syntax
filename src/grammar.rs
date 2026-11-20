@@ -18,17 +18,18 @@
 //! infix operator that may open a line is one token that includes its own
 //! leading newlines — `cont("+")` is the pattern `(\n[ \t\r]*)*\+`,
 //! read as `"+"` — so the longest match at a line end takes the
-//! operator rather than the separator. **A token that can begin an
-//! expression never continues the line above**, with one exception: `-`,
-//! `not`, `..` and `..=` are no continuation, so `[1\n -2\n 3]` keeps
-//! its three items and `[0..4\n ..8]` its two axes, while unary `+`,
-//! which may begin an expression, is read as the binary continuation at
-//! the start of a line, so `[1\n +2]` is the one item `1 + 2`. A range is
-//! complete at its operator, `0..` being the open range, so `..` takes
-//! no newline after it either. A word operator that may open
-//! a line — `with`, `but`, `and`, `or`, `else` — takes one whitespace character
-//! after the word in its token, so `without = 2` on a fresh line is
-//! still a binding.
+//! operator rather than the separator. **A token that only begins an
+//! expression never continues the line above**: `not`, `..` and `..=` are
+//! no continuation, so `[0..4\n ..8]` keeps its two axes. A range is
+//! complete at its operator, `0..` being the open range, so `..` takes no
+//! newline after it either. A word operator that may open a line —
+//! `with`, `but`, `and`, `or`, `else` — takes one whitespace character
+//! after the word in its token, so `without = 2` on a fresh line is still
+//! a binding. **`+` and `-` follow the word operators' rule**: followed by
+//! whitespace at a line start they continue the line above, so a sum may
+//! be written one term to a line; written against their operand they are
+//! signs and begin a fresh item, so `[1\n -2\n 3]` keeps its three items
+//! and a body may end in `-y`.
 //!
 //! # What the interpreter alone states
 //!
@@ -544,12 +545,13 @@ fn build() -> Grammar {
               `src/scanner.c`, reads both rules: it returns a newline only\n\
               where the parser can take a separator and the next line opens\n\
               with no continuation, and the newline is whitespace elsewhere.\n\
-              A token that can begin an expression is no continuation, so\n\
-              `[1\\n -2\\n 3]` keeps its three items and `[0..4\\n ..8]` its two\n\
-              axes. A word\n\
-              operator opening a line — `with`, `but`, `and`, `or` — continues\n\
-              it only with whitespace after the word, which is what keeps\n\
-              `without = 2` on a fresh line a binding."
+              A token that only begins an expression is no continuation, so\n\
+              `[0..4\\n ..8]` keeps its two axes. A word operator opening a\n\
+              line — `with`, `but`, `and`, `or` — continues it only with\n\
+              whitespace after the word, which is what keeps `without = 2` on\n\
+              a fresh line a binding, and `+` and `-` do the same: `+ b` opening\n\
+              a line continues a sum, while `-2` written against its operand\n\
+              begins a fresh item, so `[1\\n -2\\n 3]` keeps its three items."
             .into(),
         extras: vec![Rule::Pat(p::plus(p::class(" \t\r", &[]))), sym("comment")],
         word: Some("identifier".into()),
@@ -1425,7 +1427,7 @@ fn build() -> Grammar {
                         .doc("`not`, above the comparisons and below `and`"),
                     prefix("unary_expression", NEG, seq(vec![field("operator", "-"), nl()]), "operand"),
                     prefix("unary_expression", NEG, seq(vec![field("operator", "+"), nl()]), "operand")
-                        .doc("unary `+`, standing wherever unary `-` does, so `+0.5` and `-0.5`\nread alike. A line opening with `+` still continues the line above,\nthe continuation token taking it as the binary operator."),
+                        .doc("unary `+`, standing wherever unary `-` does, so `+0.5` and `-0.5`\nread alike. A line opening with `+` and whitespace continues the line\nabove, the continuation token taking it as the binary operator; `+x`\nwritten against its operand at a line start is this sign."),
                     prefix("periodic_range", RANGE + 1, seq(vec![field("operator", ".."), not_ahead("{")]), "axis")
                         .operand_root("range_expression")
                         .doc("`..a..b` — a periodic axis. The bounded range after the leading\n`..` takes the expression context's precedence and exclusions. For\nexample, `..0..n + 1` wraps `0..(n + 1)` and `for i in ..0..n { i }`\nleaves the brace for the comprehension body. `a..b periodic` is\nthe equivalent postfix spelling."),
@@ -1443,11 +1445,11 @@ fn build() -> Grammar {
                         .doc("the comparisons group left here, and a later analysis stage refuses a chain\n— `a < b < c` is two comparisons and says so"),
                     infix("binary_expression", DEFAULT, Assoc::Right, "left", seq(vec![field("operator", cont("??")), nl()]), "right")
                         .doc("`x ?? y` — the presence default: `x` where it is\npresent, `y` where it is absent. It groups right, so defaults chain,\nand stands between the comparisons and arithmetic, so `m ?? 0 > 3` is\n`(m ?? 0) > 3` and `m ?? n + 1` is `m ?? (n + 1)`. The lexer's longest\nmatch takes it over the postfix absence mark `?`."),
-                    infix("binary_expression", ADD, Assoc::Left, "left", seq(vec![field("operator", cont("+")), nl()]), "right"),
+                    infix("binary_expression", ADD, Assoc::Left, "left", seq(vec![field("operator", cont_word("+")), nl()]), "right")
+                        .doc("`+` and `-` open a line as word operators do: followed by whitespace\nthey continue the line above, so a sum may be written one term to a\nline; written against its operand, a sign begins a fresh item, so\n`[1\\n -2\\n 3]` keeps its three items"),
                     infix("binary_expression", ADD, Assoc::Left, "left", seq(vec![field("operator", cont("<>")), nl()]), "right")
                         .doc("`a <> b` — the join: the string two strings make, the list two\nlists make end to end, the union two Maps make. It stands at `+`'s\nprecedence and groups left, and it is a continuation operator, so a\nline opening with `<>` attaches to the line above it. The lexer's\nlongest match takes it over `<` followed by `>`, which is no legal\nsequence."),
-                    infix("binary_expression", ADD, Assoc::Left, "left", seq(vec![field("operator", "-"), nl()]), "right")
-                        .doc("`-` carries no leading newlines: a line opening with `-` is a fresh\nsigned item, so `[1\\n -2\\n 3]` keeps its three items"),
+                    infix("binary_expression", ADD, Assoc::Left, "left", seq(vec![field("operator", cont_word("-")), nl()]), "right"),
                     infix("binary_expression", MUL, Assoc::Left, "left", seq(vec![field("operator", choice(vec![cont("*"), cont("//"), cont("/"), cont("@")])), nl()]), "right")
                         .doc("`@` is the action operator: infix at the\nmultiplicative level, left-associative, so `g @ a @ b` is the scalar\nand `(R1 * R2) @ v` composes then acts"),
                     infix("binary_expression", POWER, Assoc::Right, "left", seq(vec![field("operator", cont("^")), nl()]), "right"),

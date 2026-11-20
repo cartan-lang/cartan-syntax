@@ -314,7 +314,6 @@ static bool continues_line(TSLexer *lexer) {
     case 20:
     case 27:
     case 30:
-    case 7:
     case 23:
     case 6:
     case 15:
@@ -325,6 +324,10 @@ static bool continues_line(TSLexer *lexer) {
     case 11:
     case 26:
       return true;
+    case 7:
+      return lexer->lookahead == 32 || lexer->lookahead == 9 || lexer->lookahead == 13 || lexer->lookahead == 10;
+    case 9:
+      return lexer->lookahead == 32 || lexer->lookahead == 9 || lexer->lookahead == 13 || lexer->lookahead == 10;
   }
   return false;
 }

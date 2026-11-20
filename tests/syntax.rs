@@ -142,7 +142,19 @@ fn preserves_newline_separation_continuation_and_open_ranges() {
         2
     );
     let tree = expression("[1\n+2]");
-    assert_eq!(value(&tree).named_children().count(), 1);
+    assert_eq!(value(&tree).named_children().count(), 2);
+    for sign in ["+", "-"] {
+        let tree = expression(&format!("[1\n{sign} 2\n  {sign}\n3]"));
+        assert_eq!(value(&tree).named_children().count(), 1, "{sign}");
+        let tree = expression(&format!("{{ y := 2\n {sign}y }}"));
+        assert_eq!(nodes(&tree.root, "unary_expression").len(), 1, "{sign}");
+    }
+    let tree = valid_document(
+        "f(u, i) =\n      + u[i - 1]\n      + u[i + 1]\n      - u[i + 0] * 2\ng = 1\n",
+    );
+    assert_eq!(tree.root.named_children().count(), 2);
+    assert_eq!(nodes(&tree.root, "binary_expression").len(), 6);
+    assert_eq!(nodes(&tree.root, "unary_expression").len(), 1);
     let tree = expression("[0..\n8]");
     assert_eq!(value(&tree).named_children().count(), 2);
     let tree = expression("[..0..n, 3.., ..n, ..]");
@@ -152,7 +164,8 @@ fn preserves_newline_separation_continuation_and_open_ranges() {
     assert_eq!(value(&tree).named_children().count(), 4);
     assert_eq!(nodes(&tree.root, "periodic_expression").len(), 1);
 
-    let tree = parse_expression("if (a + b)\n- c < 3 { 1 } else { 0 }");
+    expression("if (a + b)\n- c < 3 { 1 } else { 0 }");
+    let tree = parse_expression("if (a + b)\n-c < 3 { 1 } else { 0 }");
     assert!(tree.has_errors());
     assert!(matches!(
         tree.diagnostics[0].kind,

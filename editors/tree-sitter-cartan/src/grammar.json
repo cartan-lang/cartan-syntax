@@ -2978,15 +2978,7 @@
                 "type": "FIELD",
                 "name": "operator",
                 "content": {
-                  "type": "ALIAS",
-                  "content": {
-                    "type": "TOKEN",
-                    "content": {
-                      "type": "PATTERN",
-                      "value": "\\+"
-                    }
-                  },
-                  "named": false,
+                  "type": "STRING",
                   "value": "+"
                 }
               },
@@ -4222,15 +4214,7 @@
                 "type": "FIELD",
                 "name": "operator",
                 "content": {
-                  "type": "ALIAS",
-                  "content": {
-                    "type": "TOKEN",
-                    "content": {
-                      "type": "PATTERN",
-                      "value": "\\+"
-                    }
-                  },
-                  "named": false,
+                  "type": "STRING",
                   "value": "+"
                 }
               },
@@ -5324,15 +5308,7 @@
                 "type": "FIELD",
                 "name": "operator",
                 "content": {
-                  "type": "ALIAS",
-                  "content": {
-                    "type": "TOKEN",
-                    "content": {
-                      "type": "PATTERN",
-                      "value": "\\+"
-                    }
-                  },
-                  "named": false,
+                  "type": "STRING",
                   "value": "+"
                 }
               },
