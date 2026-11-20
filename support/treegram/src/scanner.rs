@@ -15,6 +15,12 @@
 //! looks past blank lines and indentation for those texts, and for a
 //! word continuation the one character after the word its pattern
 //! states. A newline before the end of the text separates nothing.
+//! An operator that is a prefix operator too, such as `-`, opens a line
+//! two ways, continuing the expression above or beginning an item, and
+//! the interpreter continues only where the operator can follow: such
+//! operators are external tokens as well, though the scanner never
+//! returns them, so that tree-sitter states where the parser can take
+//! each, and the newline before one separates wherever it cannot.
 //!
 //! **The lookaheads** ([`Grammar::lookaheads`]). Each is a zero-width
 //! token the scanner returns where it is valid and its condition holds
@@ -32,7 +38,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::pattern::{ClassItem, Pat};
-use crate::print::{externals, op_text, ERROR_SENTINEL};
+use crate::print::{externals, op_text, External, ERROR_SENTINEL};
 use crate::rule::{Body, Climb, Form, Grammar, Holds, Lookahead, Rule};
 
 /// The `src/scanner.c` of a grammar, or nothing where the grammar
@@ -54,8 +60,16 @@ pub fn scanner(g: &Grammar) -> Option<String> {
         name = g.name
     ));
     out.push_str("enum TokenType {\n");
-    for name in &externals {
-        out.push_str(&format!("  {},\n", c_name(name)));
+    let mut continuation = 0;
+    for external in &externals {
+        let name = match external {
+            External::Named(name) => c_name(name),
+            External::Continuation { .. } => {
+                continuation += 1;
+                format!("CONTINUATION_{}", continuation - 1)
+            }
+        };
+        out.push_str(&format!("  {name},\n"));
     }
     out.push_str("};\n\n");
     out.push_str(&format!(
@@ -123,7 +137,9 @@ bool tree_sitter_{name}_external_scanner_scan(void *payload, TSLexer *lexer,
     lexer->result_symbol = {nl};
     while (is_space(lexer->lookahead) || lexer->lookahead == '\n') step(lexer);
     if (lexer->eof(lexer)) return false;
-    return !continues_line(lexer);
+    int continuation = continuation_at(lexer);
+    if (continuation == NO_CONTINUATION) return true;
+    return continuation != CONTINUATION && !recovering && !valid_symbols[continuation];
   }}
 "#,
             nl = c_name(newline)
@@ -190,12 +206,36 @@ fn class_test(var: &str, items: &[ClassItem], negated: bool) -> String {
     }
 }
 
-/// An operator that may open a line: its text, and for a word the
-/// characters one of which must follow it.
+/// An operator that may open a line: its text, for a word the characters
+/// one of which must follow it, the pattern of the token it is printed as,
+/// where it is not printed as its text, and whether it is a prefix
+/// operator too.
 #[derive(Clone, Debug, PartialEq)]
 struct Continuation {
     text: String,
     follow: Option<Vec<ClassItem>>,
+    token: Option<String>,
+    prefix: bool,
+}
+
+/// The operators that may open a line and are prefix operators too, as
+/// the external tokens that tell the scanner where the parser can take
+/// each. Such a line reads two ways, a continued expression or a fresh item
+/// opening with the prefix operator, and the interpreter continues it only
+/// where the operator can follow; the scanner does the same. An operator
+/// that is no prefix opens no item, so a line it opens where it cannot
+/// follow is refused either way; it needs no external token, and each it
+/// had would keep tree-sitter from merging parse states.
+pub(crate) fn continuations(g: &Grammar) -> Vec<External> {
+    Reader::of(g)
+        .continuations
+        .into_iter()
+        .filter(|c| c.prefix)
+        .map(|c| External::Continuation {
+            text: c.text,
+            token: c.token,
+        })
+        .collect()
 }
 
 /// What a rule can begin with, as the scanner reads the next token.
@@ -295,6 +335,19 @@ impl<'g> Reader<'g> {
             nullable: BTreeMap::new(),
         };
         reader.nullable = reader.nullables();
+        let mut prefixes = Starts::default();
+        for d in &g.rules {
+            if let Body::Climb(c) = &d.body {
+                for op in &c.ops {
+                    if let Form::Prefix { head, .. } = &op.form {
+                        reader.first(head, &mut prefixes, &mut BTreeSet::new());
+                    }
+                }
+            }
+        }
+        for c in &mut reader.continuations {
+            c.prefix = prefixes.literals.contains(&c.text) || prefixes.keywords.contains(&c.text);
+        }
         reader
     }
 
@@ -577,42 +630,41 @@ static Next next_token(TSLexer *lexer, bool spaced) {
     fn continuation_fn(&self) -> String {
         let mut words = String::new();
         let mut literals = String::new();
-        let mut followed = String::new();
+        let mut checked = 0;
         for c in &self.continuations {
+            let token = if c.prefix {
+                checked += 1;
+                format!("CONTINUATION_{}", checked - 1)
+            } else {
+                "CONTINUATION".to_string()
+            };
+            let hit = match &c.follow {
+                Some(items) => format!(
+                    "{} ? {token} : NO_CONTINUATION",
+                    class_test("lexer->lookahead", items, false)
+                ),
+                None => token,
+            };
             if let Some(k) = self.keywords.iter().position(|k| *k == c.text) {
-                let test = match &c.follow {
-                    Some(items) => class_test("lexer->lookahead", items, false),
-                    None => "true".to_string(),
-                };
-                words.push_str(&format!("      case {}:\n        return {test};\n", k + 1));
+                words.push_str(&format!("      case {}:\n        return {hit};\n", k + 1));
             } else if let Some(l) = self.literals.iter().position(|l| *l == c.text) {
-                match &c.follow {
-                    Some(items) => {
-                        let test = class_test("lexer->lookahead", items, false);
-                        followed.push_str(&format!("    case {}:\n      return {test};\n", l + 1));
-                    }
-                    None => literals.push_str(&format!("    case {}:\n", l + 1)),
-                }
+                literals.push_str(&format!("    case {}:\n      return {hit};\n", l + 1));
             } else {
                 panic!("the continuation `{}` is no token of the grammar", c.text);
             }
         }
         let mut out = String::from(
-            "/* Whether the line at the lexer opens with an operator that continues\n * the line above. */\nstatic bool continues_line(TSLexer *lexer) {\n",
+            "/* What opens the line at the lexer: no operator that continues the line\n * above, one that always does, or the external token of one that is a\n * prefix operator too, which continues it where the parser can take it. */\n#define NO_CONTINUATION -1\n#define CONTINUATION -2\n\nstatic int continuation_at(TSLexer *lexer) {\n",
         );
         out.push_str("  if (is_word_start(lexer->lookahead)) {\n    switch (read_word(lexer)) {\n");
         out.push_str(&words);
-        out.push_str("      default:\n        return false;\n    }\n  }\n");
-        if !literals.is_empty() || !followed.is_empty() {
+        out.push_str("      default:\n        return NO_CONTINUATION;\n    }\n  }\n");
+        if !literals.is_empty() {
             out.push_str("  switch (literal(lexer)) {\n");
-            if !literals.is_empty() {
-                out.push_str(&literals);
-                out.push_str("      return true;\n");
-            }
-            out.push_str(&followed);
+            out.push_str(&literals);
             out.push_str("  }\n");
         }
-        out.push_str("  return false;\n}\n\n");
+        out.push_str("  return NO_CONTINUATION;\n}\n\n");
         out
     }
 
@@ -954,6 +1006,10 @@ fn continuation(p: &Pat) -> Option<(Vec<ClassItem>, Continuation)> {
     let (Pat::Star(one) | Pat::Plus(one)) = lead else {
         return None;
     };
+    // as the grammar prints it: a token that may open on the line it
+    // continues is its text's pattern, and one that must open a line is
+    // the text it aliases
+    let token = matches!(lead, Pat::Star(_)).then(|| Pat::Seq(rest.to_vec()).to_regex());
     let Pat::Seq(line) = &**one else { return None };
     let [Pat::Ch('\n'), Pat::Star(indent)] = line.as_slice() else {
         return None;
@@ -988,7 +1044,15 @@ fn continuation(p: &Pat) -> Option<(Vec<ClassItem>, Continuation)> {
             _ => panic!("a continuation token is its text and at most one class after it: {p:?}"),
         }
     }
-    Some((indent.clone(), Continuation { text, follow }))
+    Some((
+        indent.clone(),
+        Continuation {
+            text,
+            follow,
+            token,
+            prefix: false,
+        },
+    ))
 }
 
 /// A token pattern without the leading newlines a continuation carries:

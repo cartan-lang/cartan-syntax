@@ -140,6 +140,11 @@ fn a_sum_written_one_term_to_a_line_lines_up_its_operators() {
         "laplacian(u: Array<Real, 2>, i: Int, j: Int) =\n  u[i - 1, j + 0]\n     + u[i + 1, j + 0]\n + u[i + 0, j - 1]\n        + u[i + 0, j + 1]\n   - u[i + 0, j + 0] * 4\n",
         "laplacian(u: Array<Real, 2>, i: Int, j: Int) =\n      u[i - 1, j + 0]\n    + u[i + 1, j + 0]\n    + u[i + 0, j - 1]\n    + u[i + 0, j + 1]\n    - u[i + 0, j + 0] * 4\n",
     );
+    // every term signed, after a line ending in spaces
+    formats(
+        "f(u: Real, v: Real) = \n   + u\n   - v\n",
+        "f(u: Real, v: Real) =\n    + u\n    - v\n",
+    );
     // a leading `+` on the first term
     formats(
         "laplacian(u: Array<Real, 2>, i: Int, j: Int) =\n+ u[i - 1, j + 0]\n  + u[i + 1, j + 0]\n- u[i + 0, j + 0] * 4\n",

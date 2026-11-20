@@ -36,7 +36,7 @@ module.exports = grammar({
 
   extras: ($) => [/[ \t\r]+/, $.comment, /\n/],
 
-  externals: ($) => [$._newline, $._no_operand, $._bare_operand, $._error_sentinel],
+  externals: ($) => [$._newline, $._no_operand, $._bare_operand, "+", "-", $._error_sentinel],
 
   word: ($) => $.identifier,
 

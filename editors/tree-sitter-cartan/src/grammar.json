@@ -9346,6 +9346,14 @@
       "name": "_bare_operand"
     },
     {
+      "type": "STRING",
+      "value": "+"
+    },
+    {
+      "type": "STRING",
+      "value": "-"
+    },
+    {
       "type": "SYMBOL",
       "name": "_error_sentinel"
     }

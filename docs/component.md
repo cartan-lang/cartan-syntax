@@ -104,9 +104,12 @@ syntax through this library. `grammar::grammar()` returns the shared grammar val
 - `grammar::print_scanner()`: the external scanner, `src/scanner.c`, through
   which Tree-sitter reads newlines and the grammar's lookaheads. A newline is
   a separator only where the parser can take one and the next line opens with
-  no continuation; the lookaheads make the decisions the interpreter's greedy
-  reading makes, where an optional range end or a comprehension's bare body
-  follows.
+  no continuation. `+ ` and `- `, which are prefix operators too, continue the
+  line only where the parser can take the binary operator, as the
+  interpreter reads them, so they are listed among the externals to tell the
+  scanner where that is; elsewhere the line begins a signed item. The
+  lookaheads make the decisions the interpreter's greedy reading makes, where
+  an optional range end or a comprehension's bare body follows.
 - `print_textmate()`: lexical highlighting grammar.
 - `print_vim()` and `print_vim_ftdetect()`: Vim syntax and file detection.
 - `print_sublime()`: Sublime syntax definitions.
@@ -248,8 +251,3 @@ consuming components.
 
 - Namespace bodies and Tap bodies parse to a CST but are unsupported in the
   AST.
-- The scanner takes a line opening with a continuation operator as a
-  continuation wherever the next item starts, while the interpreter does so
-  only where the operator can follow; a document item opening with `+ `,
-  `- `, `:` or a word operator after an item that cannot take one reads
-  differently.

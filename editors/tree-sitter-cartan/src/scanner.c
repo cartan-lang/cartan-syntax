@@ -7,6 +7,8 @@ enum TokenType {
   NEWLINE,
   NO_OPERAND,
   BARE_OPERAND,
+  CONTINUATION_0,
+  CONTINUATION_1,
   ERROR_SENTINEL,
 };
 
@@ -287,49 +289,68 @@ static Next next_token(TSLexer *lexer, bool spaced) {
   return next;
 }
 
-/* Whether the line at the lexer opens with an operator that continues
- * the line above. */
-static bool continues_line(TSLexer *lexer) {
+/* What opens the line at the lexer: no operator that continues the line
+ * above, one that always does, or the external token of one that is a
+ * prefix operator too, which continues it where the parser can take it. */
+#define NO_CONTINUATION -1
+#define CONTINUATION -2
+
+static int continuation_at(TSLexer *lexer) {
   if (is_word_start(lexer->lookahead)) {
     switch (read_word(lexer)) {
       case 18:
-        return lexer->lookahead == 32 || lexer->lookahead == 9 || lexer->lookahead == 13 || lexer->lookahead == 10;
+        return lexer->lookahead == 32 || lexer->lookahead == 9 || lexer->lookahead == 13 || lexer->lookahead == 10 ? CONTINUATION : NO_CONTINUATION;
       case 1:
-        return lexer->lookahead == 32 || lexer->lookahead == 9 || lexer->lookahead == 13 || lexer->lookahead == 10;
+        return lexer->lookahead == 32 || lexer->lookahead == 9 || lexer->lookahead == 13 || lexer->lookahead == 10 ? CONTINUATION : NO_CONTINUATION;
       case 32:
-        return lexer->lookahead == 32 || lexer->lookahead == 9 || lexer->lookahead == 13 || lexer->lookahead == 10;
+        return lexer->lookahead == 32 || lexer->lookahead == 9 || lexer->lookahead == 13 || lexer->lookahead == 10 ? CONTINUATION : NO_CONTINUATION;
       case 3:
-        return lexer->lookahead == 32 || lexer->lookahead == 9 || lexer->lookahead == 13 || lexer->lookahead == 10;
+        return lexer->lookahead == 32 || lexer->lookahead == 9 || lexer->lookahead == 13 || lexer->lookahead == 10 ? CONTINUATION : NO_CONTINUATION;
       case 5:
-        return lexer->lookahead == 32 || lexer->lookahead == 9 || lexer->lookahead == 13 || lexer->lookahead == 10;
+        return lexer->lookahead == 32 || lexer->lookahead == 9 || lexer->lookahead == 13 || lexer->lookahead == 10 ? CONTINUATION : NO_CONTINUATION;
       default:
-        return false;
+        return NO_CONTINUATION;
     }
   }
   switch (literal(lexer)) {
     case 25:
+      return CONTINUATION;
     case 1:
+      return CONTINUATION;
     case 22:
+      return CONTINUATION;
     case 28:
+      return CONTINUATION;
     case 20:
+      return CONTINUATION;
     case 27:
+      return CONTINUATION;
     case 30:
-    case 23:
-    case 6:
-    case 15:
-    case 14:
-    case 31:
-    case 34:
-    case 16:
-    case 11:
-    case 26:
-      return true;
+      return CONTINUATION;
     case 7:
-      return lexer->lookahead == 32 || lexer->lookahead == 9 || lexer->lookahead == 13 || lexer->lookahead == 10;
+      return lexer->lookahead == 32 || lexer->lookahead == 9 || lexer->lookahead == 13 || lexer->lookahead == 10 ? CONTINUATION_0 : NO_CONTINUATION;
+    case 23:
+      return CONTINUATION;
     case 9:
-      return lexer->lookahead == 32 || lexer->lookahead == 9 || lexer->lookahead == 13 || lexer->lookahead == 10;
+      return lexer->lookahead == 32 || lexer->lookahead == 9 || lexer->lookahead == 13 || lexer->lookahead == 10 ? CONTINUATION_1 : NO_CONTINUATION;
+    case 6:
+      return CONTINUATION;
+    case 15:
+      return CONTINUATION;
+    case 14:
+      return CONTINUATION;
+    case 31:
+      return CONTINUATION;
+    case 34:
+      return CONTINUATION;
+    case 16:
+      return CONTINUATION;
+    case 11:
+      return CONTINUATION;
+    case 26:
+      return CONTINUATION;
   }
-  return false;
+  return NO_CONTINUATION;
 }
 
 static bool begins_expression(Next next) {
@@ -467,7 +488,9 @@ bool tree_sitter_cartan_external_scanner_scan(void *payload, TSLexer *lexer,
     lexer->result_symbol = NEWLINE;
     while (is_space(lexer->lookahead) || lexer->lookahead == '\n') step(lexer);
     if (lexer->eof(lexer)) return false;
-    return !continues_line(lexer);
+    int continuation = continuation_at(lexer);
+    if (continuation == NO_CONTINUATION) return true;
+    return continuation != CONTINUATION && !recovering && !valid_symbols[continuation];
   }
   if (recovering || !(valid_symbols[NO_OPERAND] || valid_symbols[BARE_OPERAND])) return false;
   lexer->mark_end(lexer);

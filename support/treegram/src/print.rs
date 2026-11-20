@@ -9,10 +9,10 @@
 //!
 //! Where the grammar names a newline token or states lookaheads, the
 //! presentation reads them through an external scanner, which
-//! [`crate::scanner()`] prints from the same value: the newline token
-//! and every lookahead are `externals`, a newline is otherwise an
-//! extra, and the newlines a rule allows with `repeat` of the token
-//! print as nothing.
+//! [`crate::scanner()`] prints from the same value: the newline token,
+//! every lookahead and each operator that may open a line and is a prefix
+//! operator too are `externals`, a newline is otherwise an extra, and the
+//! newlines a rule allows with `repeat` of the token print as nothing.
 
 use crate::json::Json;
 use crate::rule::{Assoc, Body, Climb, Def, Exclusion, Form, Grammar, Op, Rule};
@@ -40,7 +40,7 @@ pub fn print(g: &Grammar) -> String {
     out.push_str(&render(&Js::list(p.extras.clone()), 2, 80));
     out.push_str(",\n\n");
     if !p.externals.is_empty() {
-        let names: Vec<Js> = p.externals.iter().map(|n| Js::sym(n)).collect();
+        let names: Vec<Js> = p.externals.iter().map(External::js).collect();
         out.push_str("  externals: ($) => ");
         out.push_str(&render(&Js::list(names), 2, 80));
         out.push_str(",\n\n");
@@ -90,7 +90,7 @@ pub fn print(g: &Grammar) -> String {
 pub fn print_json(g: &Grammar) -> String {
     let p = Presentation::of(g);
     let names = |list: &[String]| Json::Arr(list.iter().map(|n| Json::str(n)).collect());
-    let symbols = |list: &[String]| Json::Arr(list.iter().map(|n| Js::sym(n).to_json()).collect());
+    let externals = |list: &[External]| Json::Arr(list.iter().map(|e| e.js().to_json()).collect());
     let mut fields = vec![
         (
             "$schema",
@@ -122,7 +122,7 @@ pub fn print_json(g: &Grammar) -> String {
             Json::Arr(g.conflicts.iter().map(|c| names(c)).collect()),
         ),
         ("precedences", Json::Arr(Vec::new())),
-        ("externals", symbols(&p.externals)),
+        ("externals", externals(&p.externals)),
         ("inline", Json::Arr(Vec::new())),
         ("supertypes", Json::Arr(Vec::new())),
         ("reserved", Json::Obj(Vec::new())),
@@ -143,14 +143,45 @@ pub fn print_json(g: &Grammar) -> String {
 /// no rule, and the scanner returns nothing while it is valid.
 pub(crate) const ERROR_SENTINEL: &str = "_error_sentinel";
 
+/// An external token: one the grammar names, or an operator that may open
+/// a line, which tree-sitter's own lexer reads but which is listed so the
+/// scanner learns whether the parser can take it.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum External {
+    Named(String),
+    /// The operator's text, and the pattern of the token it is printed as,
+    /// or none where it is printed as its text.
+    Continuation {
+        text: String,
+        token: Option<String>,
+    },
+}
+
+impl External {
+    fn js(&self) -> Js {
+        match self {
+            External::Named(name) => Js::sym(name),
+            External::Continuation { text, token: None } => Js::str(text),
+            External::Continuation {
+                token: Some(pattern),
+                ..
+            } => Js::call("token", vec![Js::Pat(pattern.clone())]),
+        }
+    }
+}
+
 /// The external tokens of a grammar, in the order the scanner numbers
-/// them: the newline token, each lookahead, and the error sentinel. None
-/// where the grammar states neither a newline token nor a lookahead.
-pub(crate) fn externals(g: &Grammar) -> Vec<String> {
-    let mut out: Vec<String> = g.newline.iter().cloned().collect();
-    out.extend(g.lookaheads.iter().map(|l| l.name.clone()));
+/// them: the newline token, each lookahead, each operator that may open a
+/// line, and the error sentinel. None where the grammar states neither a
+/// newline token nor a lookahead.
+pub(crate) fn externals(g: &Grammar) -> Vec<External> {
+    let mut out: Vec<External> = g.newline.iter().cloned().map(External::Named).collect();
+    out.extend(g.lookaheads.iter().map(|l| External::Named(l.name.clone())));
     if !out.is_empty() {
-        out.push(ERROR_SENTINEL.to_string());
+        if g.newline.is_some() {
+            out.extend(crate::scanner::continuations(g));
+        }
+        out.push(External::Named(ERROR_SENTINEL.to_string()));
     }
     out
 }
@@ -163,7 +194,7 @@ struct Presentation<'g> {
     g: &'g Grammar,
     copies: Vec<Copy>,
     extras: Vec<Js>,
-    externals: Vec<String>,
+    externals: Vec<External>,
     rules: Vec<(String, String, Js)>,
 }
 

@@ -2845,6 +2845,27 @@ fn unary_plus_reads_as_unary_minus_does() {
             "{signed:?}"
         );
     }
+    // a function written one signed term to a line, the first included:
+    // `(+u) - v`
+    let document = ast::parse_document("f(u: Real, v: Real) = \n   + u\n   - v\n").unwrap();
+    let ItemKind::Function(function) = &document.items[0].kind else {
+        panic!("a function");
+    };
+    let ExprKind::Binary {
+        operator: BinaryOperator::Subtract,
+        left,
+        ..
+    } = &function.body.kind
+    else {
+        panic!("a difference");
+    };
+    assert!(matches!(
+        left.kind,
+        ExprKind::Unary {
+            operator: UnaryOperator::Plus,
+            ..
+        }
+    ));
 }
 
 fn range_parts(expr: &Expr) -> (Option<&Expr>, Option<&Expr>, bool) {
