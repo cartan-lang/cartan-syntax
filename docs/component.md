@@ -250,5 +250,6 @@ consuming components.
   AST.
 - The scanner takes a line opening with a continuation operator as a
   continuation wherever the next item starts, while the interpreter does so
-  only where the operator can follow; a document item opening with `+`, `:`
-  or a word operator after an item that cannot take one reads differently.
+  only where the operator can follow; a document item opening with `+ `,
+  `- `, `:` or a word operator after an item that cannot take one reads
+  differently.
