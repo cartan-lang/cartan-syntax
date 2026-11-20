@@ -1,5 +1,6 @@
 use cartan_syntax::literal::{
-    number, parse_assignment, parse_literal, AssignmentError, Literal, LiteralError, NumberError,
+    number, parse_assignment, parse_literal, signed_number, AssignmentError, Literal, LiteralError,
+    NumberError,
 };
 
 #[test]
@@ -78,4 +79,18 @@ fn source_number_spellings_convert_at_the_current_widths() {
     assert_eq!(number("2.5e1"), Ok(Literal::Real(25.0)));
     assert_eq!(number("2147483648"), Err(NumberError::IntRange));
     assert_eq!(number("1e40"), Err(NumberError::RealRange));
+    // A sign belongs to the literal: the least Int has no positive spelling.
+    assert_eq!(
+        signed_number("2147483648", true),
+        Ok(Literal::Int(i32::MIN))
+    );
+    assert_eq!(
+        signed_number("2147483649", true),
+        Err(NumberError::IntRange)
+    );
+    assert_eq!(
+        signed_number("2147483648", false),
+        Err(NumberError::IntRange)
+    );
+    assert_eq!(signed_number("2.5", true), Ok(Literal::Real(-2.5)));
 }

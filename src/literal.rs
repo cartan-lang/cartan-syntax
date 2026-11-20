@@ -127,7 +127,12 @@ pub fn number(written: &str) -> Result<Literal, NumberError> {
     signed_number(written, false)
 }
 
-fn signed_number(written: &str, negative: bool) -> Result<Literal, NumberError> {
+/// The value of a number spelling under a sign written before it, as one
+/// literal: the sign is applied before the value is narrowed, so the least
+/// Int, `-2147483648`, is a literal though `2147483648` is not. Source
+/// analysis takes a negated number spelling through this, as
+/// [`parse_literal`] does a configured one.
+pub fn signed_number(written: &str, negative: bool) -> Result<Literal, NumberError> {
     let digits: String = written.chars().filter(|&c| c != '_').collect();
     if written.contains(['.', 'e', 'E']) {
         let value = digits.parse::<f32>().ok().filter(|value| value.is_finite());
