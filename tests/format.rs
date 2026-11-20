@@ -35,7 +35,7 @@ fn a_function_body_preserves_leading_and_trailing_comments() {
 #[test]
 fn a_comprehension_preserves_calls_indices_and_operator_binding() {
     let source = "a=for i in .. 0 .. n {\n    - f( x[ i ],i+1 ) ^2\n  }";
-    let expected = "a = for i in ..0..n {\n    -f(x[i], i + 1) ^ 2\n}";
+    let expected = "a = for i in ..0..n {\n    -f(x[i], i + 1)^2\n}";
     formats(source, expected);
     for text in [source, expected] {
         let document = ast::parse_document(text).unwrap();
@@ -77,7 +77,7 @@ fn a_comprehension_preserves_calls_indices_and_operator_binding() {
 fn leaves_strings_and_line_breaks_intact() {
     formats(
         "a=\"é  # \\t\"\nb=\"\"\"  a\n\t  b\n   \"\"\"\nc=f\" {{ { 1+ 2 } }} \"\nx=1\n\t+   2",
-        "a = \"é  # \\t\"\nb = \"\"\"  a\n\t  b\n   \"\"\"\nc = f\" {{ { 1+ 2 } }} \"\nx = 1\n\t+ 2",
+        "a = \"é  # \\t\"\nb = \"\"\"  a\n\t  b\n   \"\"\"\nc = f\" {{ { 1+ 2 } }} \"\nx = 1\n    + 2",
     );
     formats("  x=1\r\n\ty=2\r\n", "x = 1\r\ny = 2\r\n");
 }
@@ -130,5 +130,110 @@ fn braced_branches_and_arms_keep_their_lines() {
     formats(
         "y=match s{\n A (x){x}\nB{1},\n    else {0}\n}",
         "y = match s {\n    A(x) { x }\n    B { 1 },\n    else { 0 }\n}",
+    );
+}
+
+#[test]
+fn a_sum_written_one_term_to_a_line_lines_up_its_operators() {
+    // ragged input, the first term on its own line
+    formats(
+        "laplacian(u: Array<Real, 2>, i: Int, j: Int) =\n  u[i - 1, j + 0]\n     + u[i + 1, j + 0]\n + u[i + 0, j - 1]\n        + u[i + 0, j + 1]\n   - u[i + 0, j + 0] * 4\n",
+        "laplacian(u: Array<Real, 2>, i: Int, j: Int) =\n      u[i - 1, j + 0]\n    + u[i + 1, j + 0]\n    + u[i + 0, j - 1]\n    + u[i + 0, j + 1]\n    - u[i + 0, j + 0] * 4\n",
+    );
+    // a leading `+` on the first term
+    formats(
+        "laplacian(u: Array<Real, 2>, i: Int, j: Int) =\n+ u[i - 1, j + 0]\n  + u[i + 1, j + 0]\n- u[i + 0, j + 0] * 4\n",
+        "laplacian(u: Array<Real, 2>, i: Int, j: Int) =\n    + u[i - 1, j + 0]\n    + u[i + 1, j + 0]\n    - u[i + 0, j + 0] * 4\n",
+    );
+    // a bracket opened on a continued line, and comments at line ends
+    formats(
+        "s(a: Real, b: Real) =\n  f(a) # first\n  + g(\n  a,\n  b\n  )\n  - h(a) # last\n",
+        "s(a: Real, b: Real) =\n      f(a) # first\n    + g(\n        a,\n        b\n    )\n    - h(a) # last\n",
+    );
+    // an operator that ends its own line leaves its operand in the operand column
+    formats(
+        "s(a: Real, b: Real) =\n  a\n  +\n  # why\n  b\n  - a\n",
+        "s(a: Real, b: Real) =\n      a\n    +\n      # why\n      b\n    - a\n",
+    );
+}
+
+#[test]
+fn a_long_condition_is_a_local_one_operand_to_a_line() {
+    formats(
+        "f(a: Bool, b: Bool, c: Bool) = {\n  alive :=\n a\n or b\n  or c\n  alive\n}\n",
+        "f(a: Bool, b: Bool, c: Bool) = {\n    alive :=\n           a\n        or b\n        or c\n    alive\n}\n",
+    );
+    formats(
+        "f(a: Bool, b: Bool) = {\n  alive := a\n     and b\n  alive\n}\n",
+        "f(a: Bool, b: Bool) = {\n    alive := a\n        and b\n    alive\n}\n",
+    );
+}
+
+#[test]
+fn a_sign_against_its_operand_begins_an_item() {
+    formats("v = [1\n -2\n 3]\n", "v = [1\n    -2\n    3]\n");
+    formats(
+        "f(y: Real) = {\n  x := 1\n  -y\n}\n",
+        "f(y: Real) = {\n    x := 1\n    -y\n}\n",
+    );
+}
+
+#[test]
+fn a_line_continues_after_an_unfinished_one() {
+    formats(
+        "x =\n1\ny = {\n z :=\n 2\n z\n}\nstep {\n a <-\n  b\n}\nw = 1 +\n2\n",
+        "x =\n    1\ny = {\n    z :=\n        2\n    z\n}\nstep {\n    a <-\n        b\n}\nw = 1 +\n    2\n",
+    );
+}
+
+#[test]
+fn else_opening_a_line_stands_under_its_if() {
+    formats(
+        "x = if a { 1 }\n  else { 2 }\n",
+        "x = if a { 1 }\n    else { 2 }\n",
+    );
+    formats(
+        "f(x: Real) =\n  if x > 0 { x }\n      else if x < 0 { -x }\n  else { 0 }\n",
+        "f(x: Real) =\n    if x > 0 { x }\n    else if x < 0 { -x }\n    else { 0 }\n",
+    );
+    formats(
+        "y = match s {\n A(x) { x }\n else { 0 }\n}\nz = match s {\n A(x) { x },\n else { 0 }\n}\n",
+        "y = match s {\n    A(x) { x }\n    else { 0 }\n}\nz = match s {\n    A(x) { x },\n    else { 0 }\n}\n",
+    );
+}
+
+#[test]
+fn adjacent_declarations_line_up() {
+    // an annotation, a blank line or a comment ends a run; a lone declaration
+    // takes one space
+    formats(
+        "aa = 1\nb = 2\nc: Int = 3\nddd = 4\n\neeeee = 5\nf = 6\n# note\ngg = 7\nh    = 8\n",
+        "aa = 1\nb  = 2\nc: Int = 3\nddd = 4\n\neeeee = 5\nf     = 6\n# note\ngg = 7\nh  = 8\n",
+    );
+    // a destructuring local is no part of a run; a value that runs onto later
+    // lines joins by its first line; locals and bindings align apart
+    formats(
+        "f(u: Conserved) = {\n    Conserved(rho, mom, nrg) := u\n    vel := mom / rho\n    p := 1\n    faces := for j in 0..2 {\n        j\n    }\n    vel\n}\n",
+        "f(u: Conserved) = {\n    Conserved(rho, mom, nrg) := u\n    vel   := mom / rho\n    p     := 1\n    faces := for j in 0..2 {\n        j\n    }\n    vel\n}\n",
+    );
+    formats(
+        "param n = 1\nparam count = 2\n",
+        "param n     = 1\nparam count = 2\n",
+    );
+}
+
+#[test]
+fn types_and_powers_print_tight() {
+    formats(
+        "state u: Array < Real , 2 > | None = none\nx = a ^ 2\n",
+        "state u: Array<Real, 2>|None = none\nx = a^2\n",
+    );
+}
+
+#[test]
+fn a_continued_chain_keeps_crlf() {
+    formats(
+        "s(a: Real, b: Real) =\r\n  a\r\n   + b\r\n  - a\r\n",
+        "s(a: Real, b: Real) =\r\n      a\r\n    + b\r\n    - a\r\n",
     );
 }

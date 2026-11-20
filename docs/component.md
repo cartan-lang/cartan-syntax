@@ -126,13 +126,32 @@ generators do not provide a language server or semantic completion features.
 
 [`format::format_document`](../src/format.rs) returns formatted text for a
 document accepted by the source AST. It works from the concrete tree and
-changes whitespace between tokens. It keeps existing line breaks,
-including the final line break if present, and indents broken bracketed forms
-by four spaces per open delimiter. Literal contents, including interpolation
-text and holes, comments and whitespace inside continuation tokens are copied
-as written. Adjacent top-level function definitions have exactly one blank line
-between them, after any trailing comment and before the next leading comment or documentation string.
-Other blank-line placement and line wrapping remain as written.
+changes only whitespace between tokens: it adds and removes no token and no
+line break, keeping the final line break if present and CRLF line ends.
+Literal contents, including interpolation text and holes, and comments are
+copied as written. Adjacent top-level function definitions have exactly one
+blank line between them, after any trailing comment and before the next
+leading comment or documentation string. Other blank-line placement and line
+wrapping remain as written.
+
+A line is indented four spaces from the line that opened the bracket around
+it, and one level more when it continues an unfinished line. An operator that
+opens a line continues the expression above: the operators of one chain stand
+in one column, and a first operand on its own line stands in the operand
+column, so a sum written one term to a line is laid out
+
+```cartan
+laplacian(u: Array<Real, 2>, i: Int, j: Int) =
+      u[i - 1, j + 0]
+    + u[i + 1, j + 0]
+    - u[i + 0, j + 0] * 2
+```
+
+and a long `and`/`or` condition the same way. `else` opening a line stands
+under the `if` that begins its chain. The `=` or `:=` of declarations on
+adjacent lines at one indentation, of one kind, each naming one name without
+an annotation, line up in one column; a declaration whose value runs onto
+later lines joins by its first line, and any other line ends the run.
 
 A changed document is parsed again and returned only if every written token,
 comment, field and tree node still matches the original besides byte offsets
@@ -142,8 +161,8 @@ change that cannot be verified returns `FormatError::ChangedSyntax` with a
 span in the original text. The function takes borrowed source and never
 modifies it. Tests cover declarations, annotations, Tuples, function equations,
 update blocks, multiline bodies, calls, comprehensions, braced conditionals and
-`match` arms, along with idempotence, comment placement and exact literal
-spelling. A conditional or an arm keeps the lines it was written on: one line,
+`match` arms, operator chains one term to a line, declaration alignment and
+CRLF, along with idempotence, comment placement and exact literal spelling. A conditional or an arm keeps the lines it was written on: one line,
 `if c { a } else { b }`, stays one line, and a broken body is indented as any
 body is.
 
