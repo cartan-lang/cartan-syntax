@@ -585,23 +585,30 @@ actual typed local rather than applying type grammar to an entry's value.
 
 ## Literals for command lines
 
-`literal::parse_literal(text)` reads text as exactly one literal, spelled as in
-source, so every component's `--set NAME=VALUE` gives params values the same
-way. It returns `Literal::Int(i32)`, `Real(f32)`, `Bool`, `String` (the decoded
-text of a quoted or triple-quoted string) or `None`. A number containing `.`,
-`e` or `E` is a Real, any other an Int; `_` digit separators are allowed, and a
-leading `-` or `+` applies to a number. Errors are typed: `Syntax` with the
-ordinary parse errors (an incomplete value is flagged as in source), `NotLiteral`
-for any other expression, including tagged templates, and `IntRange` or
-`RealRange` for a number outside signed 32-bit Int or finite f32 Real, the
-current widths in the workspace integer and Real record.
+`literal::parse_literal(text, width)` reads text as exactly one literal,
+spelled as in source, so every component's `--set NAME=VALUE` gives params
+values the same way. It returns `Literal::Int(i32)`, `Real(Real)`, `Bool`,
+`String` (the decoded text of a quoted or triple-quoted string) or `None`. A
+number containing `.`, `e` or `E` is a Real, any other an Int; `_` digit
+separators are allowed, and a leading `-` or `+` applies to a number. A Real is
+converted once, directly from its decimal spelling, to the `RealWidth` the
+caller passes, `F32` or `F64`, and comes back tagged as `Real::F32(f32)` or
+`Real::F64(f64)`, so no binary64 value is recovered from a binary32 one and no
+binary32 value is rounded by way of binary64. The width names a conversion
+only; which width a run uses is the caller's policy. Errors are typed: `Syntax`
+with the ordinary parse errors (an incomplete value is flagged as in source),
+`NotLiteral` for any other expression, including tagged templates, and
+`IntRange` or `RealRange` for a number outside signed 32-bit Int or not finite
+at the width asked for.
 
-`literal::number(written)` is the one conversion of a number spelling, such as
-the text of an `ExprKind::Number`, to `Literal::Int` or `Literal::Real` by the
-same rules, failing with `NumberError::IntRange` or `RealRange`. The compiler converts
-source numbers through it, so source and `--set` values agree.
+`literal::number(written, width)` is the one conversion of a number spelling,
+such as the text of an `ExprKind::Number`, to `Literal::Int` or `Literal::Real`
+by the same rules, and `literal::signed_number(written, negative, width)` the
+same under a written sign, failing with `NumberError::IntRange` or `RealRange`.
+The compiler converts source numbers through them, so source and `--set` values
+agree at each width.
 
-`literal::parse_assignment(text)` splits `NAME=VALUE` at the first `=`. The name
+`literal::parse_assignment(text, width)` splits `NAME=VALUE` at the first `=`. The name
 must be a word that is not a reserved word. Errors are `MissingEquals`,
 `InvalidName` and `Value`, whose literal-error spans index the whole assignment
 text, so a consumer can show the value in place. Whether a value specializes code or
