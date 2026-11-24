@@ -65,11 +65,18 @@ node --check editors/tree-sitter-cartan/grammar.js
   emitted query to load against it (`tests/editors.rs`). These are
   dev-dependencies only. The result is cached under `target/tmp/` by the
   grammar's hash. The compile step is set up for macOS and Linux.
-- The same tests fail when a file under `editors/` differs from the printed
-  one; `CARTAN_SYNTAX_BLESS=1 cargo test --test editors` prints them again and
+- The same tests fail when a generator-owned file under `editors/` differs
+  from the printed one; `CARTAN_SYNTAX_BLESS=1 cargo test --test editors` prints them again and
   writes the ignored Zed development copy under `out/zed/`. Never edit
   `editors/` by hand. [editors/README.md](editors/README.md) states the Zed
-  revision pin and local installation.
+  revision pin and local installation. Regeneration preserves editor-managed
+  downloads, compiled grammars and other unowned files; remove obsolete
+  generated files explicitly.
+- Before publishing editor changes, run
+  `cargo test --offline --test editors zed_queries_read_against_the_pinned_parser -- --ignored --exact`.
+  It validates the shipped queries against the pinned parser using local Git
+  objects only. Missing history is a failed release check; ordinary tests
+  remain usable from source archives.
 - No editor runs here: highlighting and editing behavior in Zed, VS Code, Vim,
   Sublime Text and Emacs is untested unless the owner reports observing it.
 - Test syntax-tree structure and spans and malformed input; parser acceptance

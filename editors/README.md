@@ -1,15 +1,17 @@
 # Editor support for Cartan
 
-Every file under `editors/` is generated from the grammar value in
-`src/grammar.rs`; do not edit them. The parser under
-`tree-sitter-cartan/src/` is written by the `tree-sitter-generate` crate in
-the repository's tests, and `src/scanner.c` by treegram. A test fails when a
-committed file differs from the printed one. To print them again, from the
-repository root:
+The files generated under `editors/` come from the grammar value in
+`src/grammar.rs`. The repository's tests use `tree-sitter-generate` to write
+the parser under `tree-sitter-cartan/src/`, and treegram writes `src/scanner.c`.
+Regenerate these files from the repository root.
 
 ```sh
 CARTAN_SYNTAX_BLESS=1 cargo test --test editors
 ```
+
+The generator checks or updates its declared files and leaves files created
+by editors untouched, including Zed's downloaded checkout and compiled grammar.
+Remove obsolete generated files explicitly.
 
 The same command writes a local Zed development copy to `out/zed/`, which
 Git ignores. Its grammar comes from this checkout through a `file://` URL at
@@ -19,13 +21,23 @@ the commit `HEAD` names, so commit a changed parser before writing it.
 
 The committed `zed/extension.toml` fetches the grammar from
 https://github.com/cartan-lang/cartan-syntax at the revision its `rev` names, in
-`editors/tree-sitter-cartan`. The test keeps the `rev` already committed, since a file
-cannot name the commit that holds it. When the parser changes, commit it,
-then pin the revision and commit again:
+`editors/tree-sitter-cartan`. Regeneration keeps the existing `rev` by default. When
+the parser changes, commit it, then generate the revision pin separately.
 
 ```sh
 CARTAN_SYNTAX_ZED_REV=$(git rev-parse HEAD) CARTAN_SYNTAX_BLESS=1 cargo test --test editors
 ```
+
+Run the pinned-parser check before committing the updated manifest.
+
+```sh
+cargo test --offline --test editors zed_queries_read_against_the_pinned_parser -- --ignored --exact
+```
+
+This check compiles the parser from the manifest's revision and loads the
+shipped Zed queries against it. It reads only local Git objects and fails if
+the revision is unavailable. The ordinary editor tests use the current grammar
+and can also run from a source archive.
 
 To use the extension locally, write the development copy as above, then in
 Zed run `zed: install dev extension` and choose `out/zed`. Files ending in

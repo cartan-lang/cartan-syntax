@@ -85,43 +85,46 @@ fn tree() -> &'static Path {
 /// The generated parser, compiled as a shared library and loaded.
 fn language() -> &'static Language {
     static LANGUAGE: OnceLock<Language> = OnceLock::new();
-    LANGUAGE.get_or_init(|| {
-        let src = tree().join("src");
-        let library = tree().join(format!(
-            "{}tree-sitter-cartan{}",
-            std::env::consts::DLL_PREFIX,
-            std::env::consts::DLL_SUFFIX
-        ));
-        if !library.exists() {
-            let target = target();
-            let compiler = cc::Build::new()
-                .cargo_metadata(false)
-                .cargo_warnings(false)
-                .target(&target)
-                .host(&target)
-                .opt_level(0)
-                .out_dir(tree())
-                .std("c11")
-                .include(&src)
-                .get_compiler();
-            let mut command = compiler.to_command();
-            command
-                .args(["-shared", "-fPIC", "-o"])
-                .arg(&library)
-                .arg(src.join("parser.c"))
-                .arg(src.join("scanner.c"));
-            let status = command.status().unwrap();
-            assert!(status.success(), "{command:?}");
-        }
-        // SAFETY: the library is the generated parser, which runs no
-        // initializer, and it stays loaded for the life of the process.
-        unsafe {
-            let library = Box::leak(Box::new(libloading::Library::new(&library).unwrap()));
-            let symbol: libloading::Symbol<unsafe extern "C" fn() -> *const ()> =
-                library.get(b"tree_sitter_cartan").unwrap();
-            Language::new(tree_sitter_language::LanguageFn::from_raw(*symbol))
-        }
-    })
+    LANGUAGE.get_or_init(|| load_language(tree()))
+}
+
+/// Compile and load a parser from its source and scanner under `root/src`.
+fn load_language(root: &Path) -> Language {
+    let src = root.join("src");
+    let library = root.join(format!(
+        "{}tree-sitter-cartan{}",
+        std::env::consts::DLL_PREFIX,
+        std::env::consts::DLL_SUFFIX
+    ));
+    if !library.exists() {
+        let target = target();
+        let compiler = cc::Build::new()
+            .cargo_metadata(false)
+            .cargo_warnings(false)
+            .target(&target)
+            .host(&target)
+            .opt_level(0)
+            .out_dir(root)
+            .std("c11")
+            .include(&src)
+            .get_compiler();
+        let mut command = compiler.to_command();
+        command
+            .args(["-shared", "-fPIC", "-o"])
+            .arg(&library)
+            .arg(src.join("parser.c"))
+            .arg(src.join("scanner.c"));
+        let status = command.status().unwrap();
+        assert!(status.success(), "{command:?}");
+    }
+    // SAFETY: the library is the generated parser, which runs no
+    // initializer, and it stays loaded for the life of the process.
+    unsafe {
+        let library = Box::leak(Box::new(libloading::Library::new(&library).unwrap()));
+        let symbol: libloading::Symbol<unsafe extern "C" fn() -> *const ()> =
+            library.get(b"tree_sitter_cartan").unwrap();
+        Language::new(tree_sitter_language::LanguageFn::from_raw(*symbol))
+    }
 }
 
 /// The target triple this test runs on, by which `cc` configures its
@@ -261,8 +264,7 @@ fn published(rev: &str) -> ZedGrammar {
     }
 }
 
-/// Every file under `editors/`, by its path from the repository root:
-/// what the library prints and what the generator wrote.
+/// The owned editor files, by path from the repository root.
 fn printed(zed: &ZedGrammar) -> Vec<(String, String)> {
     let mut files = editors::files(zed);
     let src = tree().join("src");
@@ -291,28 +293,42 @@ fn committed_rev() -> Option<String> {
     )
 }
 
-/// Every file under a directory, by its path from the repository root.
-fn files_under(dir: &Path, out: &mut Vec<String>) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries {
-        let path = entry.unwrap().path();
-        if path.is_dir() {
-            files_under(&path, out);
-        } else {
-            let relative = path.strip_prefix(repository_root()).unwrap();
-            out.push(relative.to_string_lossy().replace('\\', "/"));
-        }
-    }
-}
-
 fn write(root: &Path, files: &[(String, String)]) {
     for (path, text) in files {
         let path = root.join(path);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(path, text).unwrap();
     }
+}
+
+fn check_or_write_editors(root: &Path, files: &[(String, String)], bless: bool) {
+    if bless {
+        write(root, files);
+        return;
+    }
+    let differing: Vec<_> = files
+        .iter()
+        .filter(|(path, text)| std::fs::read_to_string(root.join(path)).ok().as_ref() != Some(text))
+        .map(|(path, _)| path)
+        .collect();
+    assert!(
+        differing.is_empty(),
+        "editor files differ from their generated contents: {differing:?}. \
+         Regenerate with {BLESS}=1 cargo test --test editors"
+    );
+}
+
+fn scratch(name: &str) -> PathBuf {
+    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!(
+        "{name}-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir(&root).unwrap();
+    root
 }
 
 /// The Zed extension as a local development copy under `out/zed/`, which
@@ -355,35 +371,42 @@ fn the_committed_editor_files_are_the_printed_ones() {
         .or_else(committed_rev)
         .unwrap_or_else(|| UNPINNED.to_string());
     let files = printed(&published(&rev));
-    let mut present = Vec::new();
-    files_under(&repository_root().join("editors"), &mut present);
-    let unprinted: Vec<&String> = present
-        .iter()
-        .filter(|p| !files.iter().any(|(path, _)| path == *p))
-        .collect();
-    if std::env::var_os(BLESS).is_some() {
-        for path in unprinted {
-            std::fs::remove_file(repository_root().join(path)).unwrap();
-        }
-        write(repository_root(), &files);
+    let bless = std::env::var_os(BLESS).is_some();
+    check_or_write_editors(repository_root(), &files, bless);
+    if bless {
         write_zed_development_copy();
-        return;
     }
-    let differing: Vec<&String> = files
-        .iter()
-        .filter(|(path, text)| {
-            std::fs::read_to_string(repository_root().join(path))
-                .ok()
-                .as_ref()
-                != Some(text)
-        })
-        .map(|(path, _)| path)
-        .collect();
-    assert!(
-        differing.is_empty() && unprinted.is_empty(),
-        "editors/ differs from the printed files in {differing:?} and holds unprinted {unprinted:?}; \
-         print them with {BLESS}=1 cargo test --test editors"
-    );
+}
+
+#[test]
+fn regeneration_and_drift_preserve_zed_build_products() {
+    let root = scratch("editor-generation");
+    let manifest = root.join("editors/zed/extension.toml");
+    let grammars = root.join("editors/zed/grammars");
+    let unowned = [
+        (
+            grammars.join("cartan/.git/HEAD"),
+            b"ref: refs/heads/main\n".as_slice(),
+        ),
+        (
+            grammars.join("cartan/editors/tree-sitter-cartan/src/parser.c"),
+            b"/* fetched parser */\n".as_slice(),
+        ),
+        (grammars.join("cartan.wasm"), b"\0asm\x01\0\0\0".as_slice()),
+    ];
+    for (path, bytes) in &unowned {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, bytes).unwrap();
+    }
+    std::fs::write(&manifest, "stale manifest").unwrap();
+    let files = printed(&published(UNPINNED));
+    check_or_write_editors(&root, &files, true);
+    check_or_write_editors(&root, &files, false);
+    assert_ne!(std::fs::read(&manifest).unwrap(), b"stale manifest");
+    for (path, bytes) in unowned {
+        assert_eq!(std::fs::read(&path).unwrap(), bytes, "{}", path.display());
+    }
+    std::fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
@@ -401,4 +424,58 @@ fn every_query_reads_against_the_generated_language() {
         }
     }
     assert!(problems.is_empty(), "{}", problems.join("\n"));
+}
+
+#[test]
+#[ignore = "requires the pinned grammar revision in local Git history"]
+fn zed_queries_read_against_the_pinned_parser() {
+    let rev = committed_rev().expect("missing Zed grammar revision in extension.toml");
+    let root = scratch("pinned-zed-parser");
+    let inputs = [
+        "parser.c",
+        "scanner.c",
+        "tree_sitter/alloc.h",
+        "tree_sitter/array.h",
+        "tree_sitter/parser.h",
+    ];
+    for path in inputs {
+        let object = format!("{rev}:{GRAMMAR_PATH}/src/{path}");
+        let output = Command::new("git")
+            .args(["cat-file", "blob", &object])
+            .env("GIT_NO_LAZY_FETCH", "1")
+            .env("GIT_ALLOW_PROTOCOL", "")
+            .current_dir(repository_root())
+            .output()
+            .expect("run Git to read the pinned parser");
+        assert!(
+            output.status.success(),
+            "cannot read pinned parser input {object} from local Git: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let target = root.join("src").join(path);
+        std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+        std::fs::write(target, output.stdout).unwrap();
+    }
+
+    let language = load_language(&root);
+    let mut checked = 0;
+    let mut problems = Vec::new();
+    for (path, _) in editors::files(&published(&rev))
+        .into_iter()
+        .filter(|(path, _)| path.starts_with("editors/zed/") && path.ends_with(".scm"))
+    {
+        let text = std::fs::read_to_string(repository_root().join(&path)).unwrap();
+        checked += 1;
+        if let Err(error) = Query::new(&language, &text) {
+            problems.push(format!("{path}: {error}"));
+        }
+    }
+    std::fs::remove_dir_all(root).unwrap();
+    assert!(checked > 0, "no Zed queries checked");
+    assert!(
+        problems.is_empty(),
+        "Zed queries rejected by grammar revision {rev}:\n{}",
+        problems.join("\n")
+    );
+    println!("Checked {checked} Zed queries against grammar revision {rev}");
 }
