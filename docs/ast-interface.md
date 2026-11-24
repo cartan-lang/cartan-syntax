@@ -63,7 +63,7 @@ The source constructs are:
 | Area | Supported source representation |
 | --- | --- |
 | Items | Imports, ordinary and `param` bindings, `state` declarations and their lock clauses, fiber declarations, struct declarations, function equations, `step` update blocks and `require` statements; documentation strings on the document and on declarations. |
-| Functions | Name, ordered parameters with patterns and optional value or function-signature annotations, and expression body. |
+| Functions | Named equations and `fn` expressions share ordered parameters with patterns and optional value or function-signature annotations. |
 | Fibers | Name and ordered named components with annotations; field kinds determine algebra, in the compiler. |
 | Annotations | Local or qualified named types, generic applications, inline struct, product and sum types and fixed positional tuple annotations, preserving names and numeric arguments such as `Array<Primitive, 1>` without interpreting rank. |
 | Patterns | Name, wildcard, list, positional site pattern with its enclosing annotation retained, constructor, named components and brace entries, all nesting. |
@@ -291,6 +291,13 @@ portable List storage or execution on any backend.
 
 ## Function-signature parameters
 
+`scale(gain: Real) = fn(x: Real) { gain * x }` has a named equation with an
+`ExprKind::Function { parameters, body }` on its right. The reserved word
+`fn` opens the expression. The outer span covers the keyword through the
+closing brace. The body is an `ExprKind::Body` whose span includes both
+braces, even when it contains only one result. Calls retain their local or
+qualified name as the head, as in `apply(scale(gain), x)`.
+
 Function-signature parameters preserve written signatures. The compiler owns
 overload semantics under the [language scope](../../cartan/docs/records/language-scope.md);
 the [static-dispatch proposal](../../cartan/docs/work/static-multiple-dispatch.md)
@@ -308,10 +315,10 @@ formals. `span` covers what was written through the result,
 covers the whole `g: (…) -> R`. Unannotated and value-annotated parameters are
 unchanged.
 
-A signature describes a statically named function a parameter receives. It is not
-a function value. Syntax adds no overload marker, no result annotation on
-definitions, and no checks of whether a formal must be annotated; overload sets,
-matching, specificity, conformance and binding belong to the compiler.
+A signature describes the function a parameter accepts. Syntax adds no
+overload marker, no result annotation on definitions, and no checks of whether
+a formal must be annotated; overload sets, matching, specificity, conformance
+and binding belong to the compiler.
 
 A signature written anywhere else yields
 `FormDiagnosticKind::SignatureOutsideParameter { position, signature_span }` with

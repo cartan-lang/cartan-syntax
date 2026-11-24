@@ -666,8 +666,7 @@ module.exports = grammar({
 
     // `(Real, Real) -> Real` — the signature of a function a parameter
     // receives: its argument types in parens, any number of them, and
-    // its result type. It describes a function named at the call, not
-    // a function value.
+    // its result type.
     signature_type: ($) =>
       seq(
         "(",
@@ -691,6 +690,11 @@ module.exports = grammar({
 
     // `step { p <- e, … }` declares an unconditional update.
     step_block: ($) => seq("step", field("body", $.body)),
+
+    // `fn(x: Real) { gain * x }` — a function expression with the same
+    //                  parameters as a named equation and a braced value body.
+    function_expression: ($) =>
+      seq("fn", field("parameters", $.parameter_list), field("body", $.body)),
 
     // `texture(|p| color)` or `texture(|p| { local := value
     //  color })` — a
@@ -717,6 +721,7 @@ module.exports = grammar({
     _expression: ($) =>
       choice(
         $.configurable_expression,
+        $.function_expression,
         $.texture_expression,
         $.call_expression,
         $.qualified_identifier,
@@ -1070,6 +1075,7 @@ module.exports = grammar({
         1,
         choice(
           $.configurable_expression,
+          $.function_expression,
           $.texture_expression,
           $.call_expression,
           $.qualified_identifier,
@@ -1320,6 +1326,7 @@ module.exports = grammar({
         1,
         choice(
           $.configurable_expression,
+          $.function_expression,
           $.texture_expression,
           $.call_expression,
           $.qualified_identifier,

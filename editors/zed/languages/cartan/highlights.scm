@@ -7,6 +7,7 @@
   "each"
   "else"
   "fiber"
+  "fn"
   "fold"
   "for"
   "if"

@@ -217,7 +217,7 @@ pub struct Parameter {
 }
 
 /// A parameter's written type: an ordinary value type, or the signature of a
-/// statically named function the parameter receives.
+/// function the parameter receives.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum ParameterAnnotation {
@@ -431,6 +431,11 @@ pub enum ExprKind {
         value: Box<Expr>,
         /// The `?` alone.
         mark_span: Span,
+    },
+    /// `fn(x: Real) { gain * x }`. The body is a braced [`ExprKind::Body`].
+    Function {
+        parameters: Vec<Parameter>,
+        body: Box<Expr>,
     },
     Call {
         function: NameRef,

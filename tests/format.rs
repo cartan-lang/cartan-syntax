@@ -9,6 +9,14 @@ fn formats(source: &str, expected: &str) {
 }
 
 #[test]
+fn formats_a_function_expression_inside_an_equation() {
+    formats(
+        "scale(gain:Real)=fn (x :Real){gain*x}",
+        "scale(gain: Real) = fn(x: Real) { gain * x }",
+    );
+}
+
+#[test]
 fn declarations_annotations_and_tuples() {
     formats(
         "\tparam n : Int= 3  \nstate count :Int=0\npair :[ Int,Real ]=[n,1.0]\n",

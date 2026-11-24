@@ -2286,6 +2286,31 @@
         }
       ]
     },
+    "function_expression": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "fn"
+        },
+        {
+          "type": "FIELD",
+          "name": "parameters",
+          "content": {
+            "type": "SYMBOL",
+            "name": "parameter_list"
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "body",
+          "content": {
+            "type": "SYMBOL",
+            "name": "body"
+          }
+        }
+      ]
+    },
     "texture_expression": {
       "type": "SEQ",
       "members": [
@@ -2353,6 +2378,10 @@
         {
           "type": "SYMBOL",
           "name": "configurable_expression"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "function_expression"
         },
         {
           "type": "SYMBOL",
@@ -3529,6 +3558,10 @@
           },
           {
             "type": "SYMBOL",
+            "name": "function_expression"
+          },
+          {
+            "type": "SYMBOL",
             "name": "texture_expression"
           },
           {
@@ -4611,6 +4644,10 @@
           {
             "type": "SYMBOL",
             "name": "configurable_expression"
+          },
+          {
+            "type": "SYMBOL",
+            "name": "function_expression"
           },
           {
             "type": "SYMBOL",

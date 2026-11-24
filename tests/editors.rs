@@ -154,6 +154,10 @@ const FIXTURES: &[&str] = &[
     "fiber Shape = (Circle: Real | Square)",
     "struct P = {x: Real, y: Real | None}",
     "h(k: (Real, Real) -> Real) = k(1, 2)",
+    "scale(gain: Real) = fn(x: Real) { gain * x }",
+    "main = apply(fn(x) { y := x + 1\n y }, 3)",
+    "main = fn\n(f: Real -> Real, (a, b): Pair)\n{ f(a) }",
+    "fnx(x) = x",
     "\"\"\"A document.\"\"\"",
     "x = if a { 1 } else { 2 }",
     "x = if a { 1 } else if b { 2 } else { 3 }",
@@ -234,6 +238,19 @@ fn the_generated_parser_reads_each_construct_as_the_interpreter_does() {
         })
         .collect();
     assert!(departures.is_empty(), "{}", departures.join("\n"));
+}
+
+#[test]
+fn both_parsers_require_a_parameter_list_and_a_braced_function_body() {
+    for text in [
+        "scale = fn x { x }",
+        "scale = fn(x: ) { x }",
+        "scale = fn(x) x",
+        "scale = fn(x) { x",
+    ] {
+        assert!(parse_document(text).has_errors(), "{text}");
+        assert!(parse(text).root_node().has_error(), "{text}");
+    }
 }
 
 /// The Zed grammar source the committed manifest names.

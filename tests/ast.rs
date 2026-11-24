@@ -199,6 +199,12 @@ fn assert_expr_spans(source: &str, expr: &Expr) {
             assert_eq!(mark_span.end, expr.span.end);
             assert_expr_spans(source, value);
         }
+        ExprKind::Function { parameters, body } => {
+            for parameter in parameters {
+                assert_pattern_spans(source, &parameter.pattern);
+            }
+            assert_expr_spans(source, body);
+        }
         ExprKind::Call {
             function,
             arguments,
@@ -1544,6 +1550,57 @@ fn raw_templates_keep_backslashes_and_quotes_beside_holes_and_closers() {
     assert_eq!(&source[after.span.start..after.span.end], after.raw);
     // The quoted form keeps its backslash escapes, including before a brace.
     assert_eq!(text(&template("f\"a\\{\\\"\"").pieces[0]), "a{\"");
+}
+
+#[test]
+fn a_function_expression_retains_equation_parameters_and_its_braced_body() {
+    let source = "fn(x: Real, f: Real -> Real, _, [a, b]) { y := f(x)\n y * a }";
+    let expression = expression(source);
+    assert_eq!(
+        expression.span,
+        Span {
+            start: 0,
+            end: source.len()
+        }
+    );
+    let ExprKind::Function { parameters, body } = expression.kind else {
+        panic!("expected function expression");
+    };
+    // Equal-length heads keep every parameter's original span comparable.
+    let equation = function(&source.replacen("fn", "ff", 1).replacen(") {", ") = {", 1));
+    assert_eq!(parameters, equation.parameters);
+    assert_eq!(
+        &source[body.span.start..body.span.end],
+        "{ y := f(x)\n y * a }"
+    );
+    assert!(matches!(body.kind, ExprKind::Body(Body { items, .. })
+        if matches!(items.as_slice(), [BodyItem::Local(_), BodyItem::Result(_)])));
+}
+
+#[test]
+fn malformed_function_expressions_and_immediate_applications_are_refused() {
+    for source in [
+        "fn",
+        "fn(x:)",
+        "fn(x) x",
+        "fn(x) { x",
+        "fn(x) { x }(1)",
+        "scale(gain)(x)",
+    ] {
+        let errors = ast::parse_expression(source).unwrap_err();
+        assert!(
+            matches!(errors.as_slice(), [Error::Grammar(_), ..]),
+            "{source}: {errors:?}"
+        );
+    }
+    for (source, count) in [("fn() {}", 0), ("fn(x) { 1\n2 }", 2)] {
+        assert!(
+            matches!(ast::parse_expression(source).unwrap_err().as_slice(),
+            [Error::Form(FormDiagnostic { kind: FormDiagnosticKind::BodyResultCount { found }, .. })] if *found == count)
+        );
+    }
+    assert!(matches!(expression("fnx").kind, ExprKind::Name(_)));
+    assert!(ast::parse_document("fn = 1").is_err());
 }
 
 fn function(source: &str) -> Function {

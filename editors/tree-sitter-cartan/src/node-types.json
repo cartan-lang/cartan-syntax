@@ -68,6 +68,10 @@
             "named": true
           },
           {
+            "type": "function_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -243,6 +247,10 @@
           "named": true
         },
         {
+          "type": "function_expression",
+          "named": true
+        },
+        {
           "type": "identifier",
           "named": true
         },
@@ -403,6 +411,10 @@
           },
           {
             "type": "full_range",
+            "named": true
+          },
+          {
+            "type": "function_expression",
             "named": true
           },
           {
@@ -598,6 +610,10 @@
           },
           {
             "type": "full_range",
+            "named": true
+          },
+          {
+            "type": "function_expression",
             "named": true
           },
           {
@@ -833,6 +849,10 @@
             "named": true
           },
           {
+            "type": "function_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -1052,6 +1072,10 @@
             "named": true
           },
           {
+            "type": "function_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -1213,6 +1237,10 @@
         },
         {
           "type": "full_range",
+          "named": true
+        },
+        {
+          "type": "function_expression",
           "named": true
         },
         {
@@ -1400,6 +1428,10 @@
             "named": true
           },
           {
+            "type": "function_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -1555,6 +1587,10 @@
           },
           {
             "type": "full_range",
+            "named": true
+          },
+          {
+            "type": "function_expression",
             "named": true
           },
           {
@@ -1826,6 +1862,10 @@
             "named": true
           },
           {
+            "type": "function_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -2016,6 +2056,10 @@
           },
           {
             "type": "full_range",
+            "named": true
+          },
+          {
+            "type": "function_expression",
             "named": true
           },
           {
@@ -2226,6 +2270,10 @@
           },
           {
             "type": "full_range",
+            "named": true
+          },
+          {
+            "type": "function_expression",
             "named": true
           },
           {
@@ -2466,6 +2514,10 @@
           },
           {
             "type": "full_range",
+            "named": true
+          },
+          {
+            "type": "function_expression",
             "named": true
           },
           {
@@ -2737,6 +2789,10 @@
             "named": true
           },
           {
+            "type": "function_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -2888,6 +2944,10 @@
           },
           {
             "type": "full_range",
+            "named": true
+          },
+          {
+            "type": "function_expression",
             "named": true
           },
           {
@@ -3237,6 +3297,10 @@
             "named": true
           },
           {
+            "type": "function_expression",
+            "named": true
+          },
+          {
             "type": "header_open_range",
             "named": true
           },
@@ -3398,6 +3462,10 @@
           },
           {
             "type": "full_range",
+            "named": true
+          },
+          {
+            "type": "function_expression",
             "named": true
           },
           {
@@ -3575,6 +3643,10 @@
             "named": true
           },
           {
+            "type": "function_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -3745,6 +3817,10 @@
             "named": true
           },
           {
+            "type": "function_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -3896,6 +3972,10 @@
           },
           {
             "type": "full_range",
+            "named": true
+          },
+          {
+            "type": "function_expression",
             "named": true
           },
           {
@@ -4079,6 +4159,10 @@
             "named": true
           },
           {
+            "type": "function_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -4195,6 +4279,32 @@
     }
   },
   {
+    "type": "function_expression",
+    "named": true,
+    "fields": {
+      "body": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "body",
+            "named": true
+          }
+        ]
+      },
+      "parameters": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "parameter_list",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "header_open_range",
     "named": true,
     "fields": {
@@ -4256,6 +4366,10 @@
           },
           {
             "type": "full_range",
+            "named": true
+          },
+          {
+            "type": "function_expression",
             "named": true
           },
           {
@@ -4423,6 +4537,10 @@
             "named": true
           },
           {
+            "type": "function_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -4580,6 +4698,10 @@
           },
           {
             "type": "full_range",
+            "named": true
+          },
+          {
+            "type": "function_expression",
             "named": true
           },
           {
@@ -4784,6 +4906,10 @@
           },
           {
             "type": "full_range",
+            "named": true
+          },
+          {
+            "type": "function_expression",
             "named": true
           },
           {
@@ -4992,6 +5118,10 @@
             "named": true
           },
           {
+            "type": "function_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -5153,6 +5283,10 @@
         },
         {
           "type": "full_range",
+          "named": true
+        },
+        {
+          "type": "function_expression",
           "named": true
         },
         {
@@ -5398,6 +5532,10 @@
             "named": true
           },
           {
+            "type": "function_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -5559,6 +5697,10 @@
           },
           {
             "type": "full_range",
+            "named": true
+          },
+          {
+            "type": "function_expression",
             "named": true
           },
           {
@@ -5741,6 +5883,10 @@
             "named": true
           },
           {
+            "type": "function_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -5910,6 +6056,10 @@
           },
           {
             "type": "full_range",
+            "named": true
+          },
+          {
+            "type": "function_expression",
             "named": true
           },
           {
@@ -6189,6 +6339,10 @@
           },
           {
             "type": "full_range",
+            "named": true
+          },
+          {
+            "type": "function_expression",
             "named": true
           },
           {
@@ -6479,6 +6633,10 @@
             "named": true
           },
           {
+            "type": "function_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -6648,6 +6806,10 @@
           },
           {
             "type": "full_range",
+            "named": true
+          },
+          {
+            "type": "function_expression",
             "named": true
           },
           {
@@ -6876,6 +7038,10 @@
           "named": true
         },
         {
+          "type": "function_expression",
+          "named": true
+        },
+        {
           "type": "identifier",
           "named": true
         },
@@ -7061,6 +7227,10 @@
             "named": true
           },
           {
+            "type": "function_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -7239,6 +7409,10 @@
             "named": true
           },
           {
+            "type": "function_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -7400,6 +7574,10 @@
           },
           {
             "type": "full_range",
+            "named": true
+          },
+          {
+            "type": "function_expression",
             "named": true
           },
           {
@@ -7637,6 +7815,10 @@
             "named": true
           },
           {
+            "type": "function_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -7849,6 +8031,10 @@
             "named": true
           },
           {
+            "type": "function_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -8039,6 +8225,10 @@
             "named": true
           },
           {
+            "type": "function_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -8208,6 +8398,10 @@
           },
           {
             "type": "full_range",
+            "named": true
+          },
+          {
+            "type": "function_expression",
             "named": true
           },
           {
@@ -8389,6 +8583,10 @@
             "named": true
           },
           {
+            "type": "function_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -8550,6 +8748,10 @@
           },
           {
             "type": "full_range",
+            "named": true
+          },
+          {
+            "type": "function_expression",
             "named": true
           },
           {
@@ -8728,6 +8930,10 @@
           },
           {
             "type": "full_range",
+            "named": true
+          },
+          {
+            "type": "function_expression",
             "named": true
           },
           {
@@ -8910,6 +9116,10 @@
         },
         {
           "type": "full_range",
+          "named": true
+        },
+        {
+          "type": "function_expression",
           "named": true
         },
         {
@@ -9231,6 +9441,10 @@
             "named": true
           },
           {
+            "type": "function_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -9530,6 +9744,10 @@
             "named": true
           },
           {
+            "type": "function_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -9821,6 +10039,10 @@
             "named": true
           },
           {
+            "type": "function_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -10058,6 +10280,10 @@
           },
           {
             "type": "full_range",
+            "named": true
+          },
+          {
+            "type": "function_expression",
             "named": true
           },
           {
@@ -10335,6 +10561,10 @@
             "named": true
           },
           {
+            "type": "function_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -10529,6 +10759,10 @@
             "named": true
           },
           {
+            "type": "function_expression",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -10684,6 +10918,10 @@
           },
           {
             "type": "full_range",
+            "named": true
+          },
+          {
+            "type": "function_expression",
             "named": true
           },
           {
@@ -10858,6 +11096,10 @@
           },
           {
             "type": "full_range",
+            "named": true
+          },
+          {
+            "type": "function_expression",
             "named": true
           },
           {
@@ -11143,6 +11385,10 @@
   },
   {
     "type": "fiber",
+    "named": false
+  },
+  {
+    "type": "fn",
     "named": false
   },
   {

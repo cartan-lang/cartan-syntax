@@ -1343,8 +1343,7 @@ fn build() -> Grammar {
                 "signature_type",
                 "`(Real, Real) -> Real` — the signature of a function a parameter\n\
                  receives: its argument types in parens, any number of them, and\n\
-                 its result type. It describes a function named at the call, not\n\
-                 a function value.",
+                 its result type.",
                 seq(vec![
                     "(".into(),
                     items(field("argument", sym("type_annotation"))),
@@ -1363,6 +1362,18 @@ fn build() -> Grammar {
                 ]),
             ),
             // ---- expressions -------------------------------------------
+            def(
+                "function_expression",
+                "`fn(x: Real) { gain * x }` — a function expression with the same
+                 parameters as a named equation and a braced value body.",
+                seq(vec![
+                    "fn".into(),
+                    nl(),
+                    field("parameters", sym("parameter_list")),
+                    nl(),
+                    field("body", sym("body")),
+                ]),
+            ),
             def(
                 "texture_expression",
                 "`texture(|p| color)` or `texture(|p| { local := value\n color })` — a
@@ -1397,6 +1408,7 @@ fn build() -> Grammar {
                  operator with its precedence — tightest last",
                 choice(vec![
                     sym("configurable_expression"),
+                    sym("function_expression"),
                     sym("texture_expression"),
                     sym("call_expression"),
                     sym("qualified_identifier"),

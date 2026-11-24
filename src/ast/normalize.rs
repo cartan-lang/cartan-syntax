@@ -572,27 +572,9 @@ impl Reader<'_> {
             }
             "function_definition" => {
                 shape(node, &["name", "parameters", "body"], &[])?;
-                let parameters = field(node, "parameters")?;
-                shape(parameters, &[], &["parameter"])?;
-                let parameters = children(parameters)
-                    .map(|parameter| {
-                        shape(parameter, &["name", "type"], &[])?;
-                        Ok(Parameter {
-                            pattern: self.typed_pattern(
-                                field(parameter, "name")?,
-                                parameter.child("type"),
-                            )?,
-                            annotation: parameter
-                                .child("type")
-                                .map(|written| self.parameter_annotation(written))
-                                .transpose()?,
-                            span: span(parameter),
-                        })
-                    })
-                    .collect::<Result<_>>()?;
                 ItemKind::Function(Function {
                     name: self.name(field(node, "name")?)?,
-                    parameters,
+                    parameters: self.parameters(field(node, "parameters")?)?,
                     body: self.expr(field(node, "body")?)?,
                 })
             }
@@ -969,6 +951,23 @@ impl Reader<'_> {
         })
     }
 
+    fn parameters(&self, list: &Node) -> Result<Vec<Parameter>> {
+        shape(list, &[], &["parameter"])?;
+        children(list)
+            .map(|parameter| {
+                shape(parameter, &["name", "type"], &[])?;
+                let written_type = parameter.child("type");
+                Ok(Parameter {
+                    pattern: self.typed_pattern(field(parameter, "name")?, written_type)?,
+                    annotation: written_type
+                        .map(|written| self.parameter_annotation(written))
+                        .transpose()?,
+                    span: span(parameter),
+                })
+            })
+            .collect()
+    }
+
     /// A pattern with an optional stated type, which only a name, a discard or
     /// a positional tuple may carry.
     fn typed_pattern(&self, node: &Node, written_type: Option<&Node>) -> Result<Pattern> {
@@ -1104,6 +1103,13 @@ impl Reader<'_> {
             "qualified_identifier" => self.qualified_name(node).map(ExprKind::QualifiedName),
             "unary_expression" => self.unary(node),
             "conditional_expression" => self.conditional(node),
+            "function_expression" => {
+                shape(node, &["parameters", "body"], &[])?;
+                Ok(ExprKind::Function {
+                    parameters: self.parameters(field(node, "parameters")?)?,
+                    body: Box::new(self.expr(field(node, "body")?)?),
+                })
+            }
             "absent_expression" => self.lift(node),
             "call_expression"
                 if node.child("variants").is_some() || node.child("described").is_some() =>

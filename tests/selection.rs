@@ -2,6 +2,16 @@ use cartan_syntax::ast::{self, ItemKind};
 use cartan_syntax::selection::{select, SelectionError, Selector, SelectorError};
 
 #[test]
+fn a_factory_selects_its_named_equation() {
+    let source = "scale(gain) = fn(x) { gain * x }";
+    let document = ast::parse_document(source).unwrap();
+    let item = select(&document, &Selector::Binding("scale".into())).unwrap();
+    assert_eq!(&source[item.span.start..item.span.end], source);
+    assert!(matches!(select(&document, &Selector::Binding("x".into())),
+        Err(SelectionError::UnknownBinding { available, .. }) if available == ["scale"]));
+}
+
+#[test]
 fn selectors_parse_bindings_update_blocks_and_the_update_alias() {
     assert_eq!(Selector::parse("update"), Ok(Selector::Update(0)));
     assert_eq!(Selector::parse("update:12"), Ok(Selector::Update(12)));
