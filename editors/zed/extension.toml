@@ -1,7 +1,7 @@
 id = "cartan"
 name = "Cartan"
 description = "Cartan syntax highlighting, brackets, indentation and outline."
-version = "0.13.0"
+version = "0.14.0"
 schema_version = 1
 authors = ["Cartan contributors"]
 repository = "https://github.com/cartan-lang/cartan-syntax"

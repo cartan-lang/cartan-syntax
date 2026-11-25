@@ -2,7 +2,7 @@
   "name": "cartan",
   "displayName": "Cartan",
   "description": "Cartan syntax highlighting from its Tree-sitter grammar, printed by cartan-syntax.",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "publisher": "cartan-lang",
   "license": "MIT",
   "repository": {
