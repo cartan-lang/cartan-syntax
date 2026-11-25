@@ -73,14 +73,6 @@ pub fn files(zed: &ZedGrammar) -> Vec<(String, String)> {
         (format!("{ZED_LANGUAGE}/injections.scm"), INJECTIONS.into()),
         (format!("{ZED_LANGUAGE}/outline.scm"), OUTLINE.into()),
         ("editors/vscode/package.json".into(), vscode_package()),
-        (
-            "editors/vscode/language-configuration.json".into(),
-            vscode_language_configuration(),
-        ),
-        (
-            "editors/vscode/syntaxes/cartan.tmLanguage.json".into(),
-            grammar::print_textmate(),
-        ),
         ("editors/vim/syntax/cartan.vim".into(), grammar::print_vim()),
         (
             "editors/vim/ftdetect/cartan.vim".into(),
@@ -95,8 +87,32 @@ pub fn files(zed: &ZedGrammar) -> Vec<(String, String)> {
             grammar::print_emacs(&[]),
         ),
     ];
+    out.extend(
+        vscode_files()
+            .into_iter()
+            .map(|(path, text)| (format!("{VSCODE}/{path}"), text)),
+    );
     out.sort();
     out
+}
+
+/// The VS Code extension's directory.
+const VSCODE: &str = "editors/vscode";
+
+/// The files the VS Code package holds besides its manifest, by path from
+/// its directory. The manifest lists exactly these, so the packager
+/// includes nothing else.
+fn vscode_files() -> Vec<(&'static str, String)> {
+    vec![
+        // The registries read the licence inside the extension's own
+        // directory; the repository's licence is its only source.
+        ("LICENSE", include_str!("../LICENSE").into()),
+        (
+            "language-configuration.json",
+            vscode_language_configuration(),
+        ),
+        ("syntaxes/cartan.tmLanguage.json", grammar::print_textmate()),
+    ]
 }
 
 /// The version every editor package carries: the Cartan product release it
@@ -320,6 +336,15 @@ fn vscode_package() -> String {
             ]),
         ),
         ("engines", obj(vec![("vscode", Json::str("^1.75.0"))])),
+        (
+            "files",
+            Json::Arr(
+                vscode_files()
+                    .into_iter()
+                    .map(|(path, _)| Json::str(path))
+                    .collect(),
+            ),
+        ),
         ("categories", strs(&["Programming Languages"])),
         (
             "contributes",
@@ -420,9 +445,19 @@ server is registered.
 
 ## VS Code
 
-Copy or link `vscode/` into the extensions directory as an unpacked
-extension, for example to `~/.vscode/extensions/cartan-lang.cartan-{version}`,
-and restart VS Code.
+Package the extension from `vscode/`; no account is needed.
+
+```sh
+cd editors/vscode
+npx @vscode/vsce package --no-dependencies
+```
+
+This writes `cartan-{version}.vsix`, holding the manifest and the files its
+`files` list names. Install it with **Extensions: Install from VSIX** in the
+Command Palette, or `code --install-extension cartan-{version}.vsix`. VS Code
+does not update an extension installed this way. The grammar is a TextMate
+grammar printed from the grammar value: it colours lexical tokens and keywords,
+not the structural captures of the Zed highlights.
 
 ## Vim
 

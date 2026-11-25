@@ -46,9 +46,19 @@ server is registered.
 
 ## VS Code
 
-Copy or link `vscode/` into the extensions directory as an unpacked
-extension, for example to `~/.vscode/extensions/cartan-lang.cartan-0.13.0`,
-and restart VS Code.
+Package the extension from `vscode/`; no account is needed.
+
+```sh
+cd editors/vscode
+npx @vscode/vsce package --no-dependencies
+```
+
+This writes `cartan-0.13.0.vsix`, holding the manifest and the files its
+`files` list names. Install it with **Extensions: Install from VSIX** in the
+Command Palette, or `code --install-extension cartan-0.13.0.vsix`. VS Code
+does not update an extension installed this way. The grammar is a TextMate
+grammar printed from the grammar value: it colours lexical tokens and keywords,
+not the structural captures of the Zed highlights.
 
 ## Vim
 

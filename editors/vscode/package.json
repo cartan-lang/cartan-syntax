@@ -12,6 +12,11 @@
   "engines": {
     "vscode": "^1.75.0"
   },
+  "files": [
+    "LICENSE",
+    "language-configuration.json",
+    "syntaxes/cartan.tmLanguage.json"
+  ],
   "categories": [
     "Programming Languages"
   ],
