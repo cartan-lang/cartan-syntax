@@ -7,3 +7,7 @@ __pycache__/
 /.pytest_cache/
 /dist/
 /.agent-mail/
+/editors/vscode/node_modules/
+/editors/vscode/package-lock.json
+/editors/vscode/tree-sitter-cartan.wasm
+/editors/vscode/*.vsix

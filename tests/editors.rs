@@ -452,6 +452,21 @@ fn highlighted(text: &str, marker: &str, len: usize) -> Vec<String> {
 }
 
 #[test]
+fn the_vscode_parser_shares_the_tree_sitter_release_of_these_tests() {
+    let lock = std::fs::read_to_string(repository_root().join("Cargo.lock")).unwrap();
+    let locked = lock
+        .split("[[package]]")
+        .find(|entry| entry.contains("\nname = \"tree-sitter\"\n"))
+        .and_then(|entry| {
+            entry
+                .lines()
+                .find_map(|line| line.strip_prefix("version = "))
+        })
+        .expect("tree-sitter in Cargo.lock");
+    assert_eq!(locked, format!("\"{}\"", editors::TREE_SITTER));
+}
+
+#[test]
 fn a_constructor_pattern_names_its_fiber_as_a_type() {
     let text = "f(p: Pair) = {\n    Pair(a, b) := p\n    a\n}\n";
     assert_eq!(highlighted(text, "Pair(", 4), ["type"]);

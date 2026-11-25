@@ -1,7 +1,7 @@
 {
   "name": "cartan",
   "displayName": "Cartan",
-  "description": "Cartan syntax highlighting, printed by cartan-syntax.",
+  "description": "Cartan syntax highlighting from its Tree-sitter grammar, printed by cartan-syntax.",
   "version": "0.13.0",
   "publisher": "cartan-lang",
   "license": "MIT",
@@ -10,13 +10,27 @@
     "url": "https://github.com/cartan-lang/cartan-syntax"
   },
   "engines": {
-    "vscode": "^1.75.0"
+    "vscode": "^1.90.0"
   },
+  "main": "./extension.js",
   "files": [
     "LICENSE",
     "language-configuration.json",
-    "syntaxes/cartan.tmLanguage.json"
+    "syntaxes/cartan.tmLanguage.json",
+    "queries/highlights.scm",
+    "extension.js",
+    "tree-sitter-cartan.wasm",
+    "node_modules/web-tree-sitter/package.json",
+    "node_modules/web-tree-sitter/LICENSE",
+    "node_modules/web-tree-sitter/web-tree-sitter.cjs",
+    "node_modules/web-tree-sitter/web-tree-sitter.wasm"
   ],
+  "scripts": {
+    "vscode:prepublish": "npx --yes tree-sitter-cli@0.27.2 build --wasm ../tree-sitter-cartan -o tree-sitter-cartan.wasm && node check.js"
+  },
+  "dependencies": {
+    "web-tree-sitter": "0.27.2"
+  },
   "categories": [
     "Programming Languages"
   ],

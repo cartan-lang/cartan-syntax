@@ -119,7 +119,12 @@ syntax through this library. `grammar::grammar()` returns the shared grammar val
   highlight keyword, operator and punctuation lists and the bracket and indent
   queries are read off the grammar value; the structural highlights, outline
   and injections are kept in `src/queries/`. Zed fetches the grammar from the
-  repository and revision `zed` names.
+  repository and revision `zed` names. The VS Code extension's code is kept
+  in `src/vscode/`: it reads the same highlight query against the parser
+  built to WebAssembly at packaging, and turns its structural captures into
+  semantic tokens over the TextMate grammar's lexical colours.
+  `editors::TREE_SITTER` names the Tree-sitter release of both that build
+  and its runtime, the release of the crates these tests use.
 
 The generic `treegram` package interprets and prints this grammar. Tooling does
 not import a language builtin registry or require compiler execution. These

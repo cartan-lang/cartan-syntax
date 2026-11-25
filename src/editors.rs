@@ -90,7 +90,7 @@ pub fn files(zed: &ZedGrammar) -> Vec<(String, String)> {
     out.extend(
         vscode_files()
             .into_iter()
-            .map(|(path, text)| (format!("{VSCODE}/{path}"), text)),
+            .map(|(path, text, _)| (format!("{VSCODE}/{path}"), text)),
     );
     out.sort();
     out
@@ -99,19 +99,51 @@ pub fn files(zed: &ZedGrammar) -> Vec<(String, String)> {
 /// The VS Code extension's directory.
 const VSCODE: &str = "editors/vscode";
 
-/// The files the VS Code package holds besides its manifest, by path from
-/// its directory. The manifest lists exactly these, so the packager
-/// includes nothing else.
-fn vscode_files() -> Vec<(&'static str, String)> {
+/// The Tree-sitter release the VS Code package builds its parser with and
+/// runs it on: the release of the crates that generate and test the
+/// parser here, so the WebAssembly parser and its runtime share their ABI.
+pub const TREE_SITTER: &str = "0.27.2";
+
+/// The WebAssembly parser the packaging step builds in the VS Code
+/// extension's directory from the committed parser source.
+const VSCODE_PARSER: &str = "tree-sitter-cartan.wasm";
+
+/// The files of the Tree-sitter runtime the package holds, from the
+/// installed dependency: the packager takes only the files its manifest
+/// lists, dependencies included.
+const VSCODE_RUNTIME: [&str; 4] = [
+    "node_modules/web-tree-sitter/package.json",
+    "node_modules/web-tree-sitter/LICENSE",
+    "node_modules/web-tree-sitter/web-tree-sitter.cjs",
+    "node_modules/web-tree-sitter/web-tree-sitter.wasm",
+];
+
+/// The files printed into the VS Code extension's directory besides its
+/// manifest, by path from it, each with whether the package holds it.
+fn vscode_files() -> Vec<(&'static str, String, bool)> {
     vec![
         // The registries read the licence inside the extension's own
         // directory; the repository's licence is its only source.
-        ("LICENSE", include_str!("../LICENSE").into()),
+        ("LICENSE", include_str!("../LICENSE").into(), true),
         (
             "language-configuration.json",
             vscode_language_configuration(),
+            true,
         ),
-        ("syntaxes/cartan.tmLanguage.json", grammar::print_textmate()),
+        (
+            "syntaxes/cartan.tmLanguage.json",
+            grammar::print_textmate(),
+            true,
+        ),
+        // The extension reads the query Zed reads, against the same parser.
+        ("queries/highlights.scm", highlights(), true),
+        (
+            "extension.js",
+            include_str!("vscode/extension.js").into(),
+            true,
+        ),
+        // Run before packaging and not shipped.
+        ("check.js", include_str!("vscode/check.js").into(), false),
     ]
 }
 
@@ -323,7 +355,7 @@ fn vscode_package() -> String {
         ("displayName", Json::str("Cartan")),
         (
             "description",
-            Json::str("Cartan syntax highlighting, printed by cartan-syntax."),
+            Json::str("Cartan syntax highlighting from its Tree-sitter grammar, printed by cartan-syntax."),
         ),
         ("version", Json::str(version())),
         ("publisher", Json::str("cartan-lang")),
@@ -335,15 +367,33 @@ fn vscode_package() -> String {
                 ("url", Json::str(REPOSITORY)),
             ]),
         ),
-        ("engines", obj(vec![("vscode", Json::str("^1.75.0"))])),
+        ("engines", obj(vec![("vscode", Json::str("^1.90.0"))])),
+        ("main", Json::str("./extension.js")),
         (
             "files",
             Json::Arr(
                 vscode_files()
                     .into_iter()
-                    .map(|(path, _)| Json::str(path))
+                    .filter(|(_, _, packed)| *packed)
+                    .map(|(path, _, _)| Json::str(path))
+                    .chain([VSCODE_PARSER].into_iter().chain(VSCODE_RUNTIME).map(Json::str))
                     .collect(),
             ),
+        ),
+        (
+            "scripts",
+            obj(vec![(
+                "vscode:prepublish",
+                Json::str(&format!(
+                    "npx --yes tree-sitter-cli@{TREE_SITTER} build --wasm ../{grammar} \
+                     -o {VSCODE_PARSER} && node check.js",
+                    grammar = GRAMMAR_PATH.trim_start_matches("editors/"),
+                )),
+            )]),
+        ),
+        (
+            "dependencies",
+            obj(vec![("web-tree-sitter", Json::str(TREE_SITTER))]),
         ),
         ("categories", strs(&["Programming Languages"])),
         (
@@ -445,19 +495,31 @@ server is registered.
 
 ## VS Code
 
-Package the extension from `vscode/`; no account is needed.
+The extension colours lexical tokens with a TextMate grammar printed from
+the grammar value, and colours names by their role in the syntax tree with
+semantic tokens: `vscode/extension.js` runs the Tree-sitter parser, built
+to WebAssembly, with the highlight query Zed uses. Package it with Node; no
+account is needed.
 
 ```sh
 cd editors/vscode
-npx @vscode/vsce package --no-dependencies
+npm install --no-package-lock
+npx @vscode/vsce package
 ```
 
-This writes `cartan-{version}.vsix`, holding the manifest and the files its
-`files` list names. Install it with **Extensions: Install from VSIX** in the
-Command Palette, or `code --install-extension cartan-{version}.vsix`. VS Code
-does not update an extension installed this way. The grammar is a TextMate
-grammar printed from the grammar value: it colours lexical tokens and keywords,
-not the structural captures of the Zed highlights.
+Packaging first runs `vscode:prepublish`: the Tree-sitter CLI builds
+`tree-sitter-cartan.wasm` from `tree-sitter-cartan/`, fetching its compiler
+on first use, and `check.js` requires the expected semantic tokens from a
+short fixture. The package is `cartan-{version}.vsix`. Install it with
+**Extensions: Install from VSIX** in the Command Palette, or
+`code --install-extension cartan-{version}.vsix`. VS Code does not update
+an extension installed this way. The dependencies, the built parser and the
+package are ignored by Git.
+
+Before publishing a package, run the check inside it, so that a file the
+package lacks fails rather than being found in this directory: unzip the
+`.vsix` into an empty folder, copy `check.js` into its `extension/` folder,
+and run `node check.js` there.
 
 ## Vim
 

@@ -46,19 +46,31 @@ server is registered.
 
 ## VS Code
 
-Package the extension from `vscode/`; no account is needed.
+The extension colours lexical tokens with a TextMate grammar printed from
+the grammar value, and colours names by their role in the syntax tree with
+semantic tokens: `vscode/extension.js` runs the Tree-sitter parser, built
+to WebAssembly, with the highlight query Zed uses. Package it with Node; no
+account is needed.
 
 ```sh
 cd editors/vscode
-npx @vscode/vsce package --no-dependencies
+npm install --no-package-lock
+npx @vscode/vsce package
 ```
 
-This writes `cartan-0.13.0.vsix`, holding the manifest and the files its
-`files` list names. Install it with **Extensions: Install from VSIX** in the
-Command Palette, or `code --install-extension cartan-0.13.0.vsix`. VS Code
-does not update an extension installed this way. The grammar is a TextMate
-grammar printed from the grammar value: it colours lexical tokens and keywords,
-not the structural captures of the Zed highlights.
+Packaging first runs `vscode:prepublish`: the Tree-sitter CLI builds
+`tree-sitter-cartan.wasm` from `tree-sitter-cartan/`, fetching its compiler
+on first use, and `check.js` requires the expected semantic tokens from a
+short fixture. The package is `cartan-0.13.0.vsix`. Install it with
+**Extensions: Install from VSIX** in the Command Palette, or
+`code --install-extension cartan-0.13.0.vsix`. VS Code does not update
+an extension installed this way. The dependencies, the built parser and the
+package are ignored by Git.
+
+Before publishing a package, run the check inside it, so that a file the
+package lacks fails rather than being found in this directory: unzip the
+`.vsix` into an empty folder, copy `check.js` into its `extension/` folder,
+and run `node check.js` there.
 
 ## Vim
 
