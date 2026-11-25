@@ -37,6 +37,8 @@
 (fiber_type
   name: (qualified_identifier
     name: (identifier) @type))
+(constructor_pattern
+  head: (identifier) @type)
 (variant
   name: (identifier) @variant)
 (match_arm

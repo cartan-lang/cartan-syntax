@@ -10,7 +10,7 @@ use std::sync::OnceLock;
 
 use cartan_syntax::editors::{self, ZedGrammar, GRAMMAR_PATH, REPOSITORY};
 use cartan_syntax::{grammar, parse_document};
-use tree_sitter::{Language, Parser, Query};
+use tree_sitter::{Language, Parser, Query, QueryCursor, StreamingIterator};
 
 /// Set, the drift test writes the printed files instead of comparing them.
 const BLESS: &str = "CARTAN_SYNTAX_BLESS";
@@ -424,6 +424,37 @@ fn every_query_reads_against_the_generated_language() {
         }
     }
     assert!(problems.is_empty(), "{}", problems.join("\n"));
+}
+
+/// The captures the printed highlights give the `len` bytes of `text` that
+/// begin where `marker` first occurs.
+fn highlighted(text: &str, marker: &str, len: usize) -> Vec<String> {
+    let files = editors::files(&published(UNPINNED));
+    let (_, highlights) = files
+        .iter()
+        .find(|(path, _)| path.ends_with("/highlights.scm"))
+        .expect("a highlights query");
+    let query = Query::new(language(), highlights).unwrap();
+    let tree = parse(text);
+    let start = text.find(marker).unwrap();
+    let name = &text[start..start + len];
+    let mut cursor = QueryCursor::new();
+    let mut captures = cursor.captures(&query, tree.root_node(), text.as_bytes());
+    let mut names = Vec::new();
+    while let Some((found, index)) = captures.next() {
+        let capture = found.captures()[*index];
+        let range = capture.node.byte_range();
+        if range == (start..start + name.len()) {
+            names.push(query.capture_names()[capture.index as usize].to_string());
+        }
+    }
+    names
+}
+
+#[test]
+fn a_constructor_pattern_names_its_fiber_as_a_type() {
+    let text = "f(p: Pair) = {\n    Pair(a, b) := p\n    a\n}\n";
+    assert_eq!(highlighted(text, "Pair(", 4), ["type"]);
 }
 
 #[test]
