@@ -1207,6 +1207,14 @@ impl Reader<'_> {
                     end: operator.end,
                 },
             },
+            "|" => ExprKind::Merge {
+                left: Box::new(self.expr(left)?),
+                right: Box::new(self.expr(field(node, "right")?)?),
+                operator_span: Span {
+                    start: operator.end - 1,
+                    end: operator.end,
+                },
+            },
             written => ExprKind::Binary {
                 operator: binary_operator(written).ok_or_else(|| unsupported(operator))?,
                 left: Box::new(self.expr(left)?),

@@ -781,6 +781,10 @@
           {
             "type": "or",
             "named": false
+          },
+          {
+            "type": "|",
+            "named": false
           }
         ]
       },

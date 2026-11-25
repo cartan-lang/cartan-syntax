@@ -303,6 +303,15 @@ fn assert_expr_spans(source: &str, expr: &Expr) {
             assert_expr_spans(source, left);
             assert_expr_spans(source, right);
         }
+        ExprKind::Merge {
+            left,
+            right,
+            operator_span,
+        } => {
+            assert_eq!(&source[operator_span.start..operator_span.end], "|");
+            assert_expr_spans(source, left);
+            assert_expr_spans(source, right);
+        }
         ExprKind::Configurable { settings, body } => {
             for atom in settings {
                 assert_eq!(
@@ -1112,6 +1121,177 @@ fn map_join_keeps_operand_order_additive_precedence_and_token_spans() {
         panic!()
     };
     assert_eq!(operator_span.start, source.find("<>").unwrap());
+}
+
+/// The two operands of a merge, which the expression must be.
+fn merge(expr: Expr) -> (Expr, Expr) {
+    let ExprKind::Merge { left, right, .. } = expr.kind else {
+        panic!("{expr:?}")
+    };
+    (*left, *right)
+}
+
+fn is_name(expr: &Expr, expected: &str) -> bool {
+    matches!(&expr.kind, ExprKind::Name(Name { text, .. }) if text == expected)
+}
+
+#[test]
+fn merge_is_the_loosest_operator_and_groups_left() {
+    let (left, right) = merge(expression("a | b | c"));
+    assert!(is_name(&right, "c"));
+    let (first, second) = merge(left);
+    assert!(is_name(&first, "a") && is_name(&second, "b"));
+
+    // every other operator binds its operands first
+    let (left, right) = merge(expression("u | e but (x: 1.0)"));
+    assert!(is_name(&left, "u"));
+    assert!(matches!(right.kind, ExprKind::Update { .. }));
+    let (left, right) = merge(expression("a ?? b | c"));
+    assert!(matches!(left.kind, ExprKind::Default { .. }));
+    assert!(is_name(&right, "c"));
+    let (left, right) = merge(expression("a <> b | c + d"));
+    assert!(matches!(left.kind, ExprKind::MapJoin { .. }));
+    assert!(matches!(
+        right.kind,
+        ExprKind::Binary {
+            operator: BinaryOperator::Add,
+            ..
+        }
+    ));
+    let (left, right) = merge(expression("p or q | r and s"));
+    assert!(matches!(
+        left.kind,
+        ExprKind::Binary {
+            operator: BinaryOperator::Or,
+            ..
+        }
+    ));
+    assert!(matches!(
+        right.kind,
+        ExprKind::Binary {
+            operator: BinaryOperator::And,
+            ..
+        }
+    ));
+    let (left, right) = merge(expression("0..n | m..k"));
+    assert!(matches!(left.kind, ExprKind::Range { .. }));
+    assert!(matches!(right.kind, ExprKind::Range { .. }));
+    let (left, right) = merge(expression("..0..n | x"));
+    assert!(matches!(left.kind, ExprKind::Periodic(_)));
+    assert!(is_name(&right, "x"));
+    let (left, right) = merge(expression("not a | -b"));
+    assert!(matches!(
+        left.kind,
+        ExprKind::Unary {
+            operator: UnaryOperator::Not,
+            ..
+        }
+    ));
+    assert!(matches!(
+        right.kind,
+        ExprKind::Unary {
+            operator: UnaryOperator::Negate,
+            ..
+        }
+    ));
+    let (_, right) = merge(expression("a | fn(x) { x }"));
+    assert!(matches!(right.kind, ExprKind::Function { .. }));
+    let (left, _) = merge(expression("if c { a } else { b } | m"));
+    assert!(matches!(left.kind, ExprKind::If { .. }));
+}
+
+#[test]
+fn merge_continues_a_line_and_keeps_its_token_span() {
+    for source in ["a\n  | b", "a |\n  b", "a\n\n  |\n  b"] {
+        let ExprKind::Merge {
+            left,
+            right,
+            operator_span,
+        } = expression(source).kind
+        else {
+            panic!("{source:?}")
+        };
+        assert!(is_name(&left, "a") && is_name(&right, "b"));
+        assert_eq!(operator_span.start, source.find('|').unwrap());
+        assert_eq!(operator_span.end, operator_span.start + 1);
+    }
+
+    // an item, a local and an entry each continue onto a line a bar opens
+    let document = ast::parse_document("m = a\n  | b\nn = {\n  u := c\n    | d\n  u\n}\n").unwrap();
+    let [first, second] = document.items.as_slice() else {
+        panic!("{:?}", document.items)
+    };
+    let (ItemKind::Binding(first), ItemKind::Binding(second)) = (&first.kind, &second.kind) else {
+        panic!("{:?}", document.items)
+    };
+    assert!(matches!(first.value.kind, ExprKind::Merge { .. }));
+    let ExprKind::Body(body) = &second.value.kind else {
+        panic!("{:?}", second.value)
+    };
+    let [BodyItem::Local(local), BodyItem::Result(_)] = body.items.as_slice() else {
+        panic!("{:?}", body.items)
+    };
+    assert!(matches!(local.value.kind, ExprKind::Merge { .. }));
+}
+
+#[test]
+fn merge_stands_wherever_an_expression_does() {
+    // grouping parens, and a product's component in either position
+    let (left, right) = merge(expression("(a | b) | c"));
+    assert!(matches!(left.kind, ExprKind::Merge { .. }) && is_name(&right, "c"));
+    for (source, merged) in [("(x: a | b, y: c)", 0), ("(x: a, y: b | c)", 1)] {
+        let ExprKind::Product(entries) = expression(source).kind else {
+            panic!("{source:?}")
+        };
+        assert_eq!(entries.len(), 2, "{source}");
+        for (index, entry) in entries.iter().enumerate() {
+            assert_eq!(
+                matches!(entry.value.kind, ExprKind::Merge { .. }),
+                index == merged,
+                "{source}"
+            );
+        }
+    }
+    let ExprKind::Product(entries) = expression("(x: a | b)").kind else {
+        panic!()
+    };
+    assert!(matches!(entries[0].value.kind, ExprKind::Merge { .. }));
+
+    // a brace entry, an argument, a List item and a header
+    let ExprKind::Map(entries) = expression("{ a: m | n | o, b: 2 }").kind else {
+        panic!()
+    };
+    assert!(matches!(entries[0].value.kind, ExprKind::Merge { .. }));
+    let ExprKind::Call { arguments, .. } = expression("f(a | b, c)").kind else {
+        panic!()
+    };
+    assert!(matches!(arguments[0].kind, ExprKind::Merge { .. }));
+    let ExprKind::List(items) = expression("[a | b, c]").kind else {
+        panic!()
+    };
+    assert!(matches!(items[0].kind, ExprKind::Merge { .. }));
+    let ExprKind::For(comprehension) = expression("for i in a | b { i }").kind else {
+        panic!()
+    };
+    assert!(matches!(
+        comprehension.collection.kind,
+        ExprKind::Merge { .. }
+    ));
+
+    // the operands the collections record writes
+    let (left, right) = merge(expression("prim | (tracer: 0.0)"));
+    assert!(is_name(&left, "prim"));
+    assert!(matches!(right.kind, ExprKind::Product(_)));
+    let (left, right) = merge(expression("{a: 1} | each k in ks { {k => 2.5} }"));
+    assert!(matches!(left.kind, ExprKind::Map(_)));
+    assert!(matches!(right.kind, ExprKind::Each(_)));
+}
+
+#[test]
+fn a_bar_without_two_operands_is_refused() {
+    for source in ["| a", "a |", "a || b", "a | | b"] {
+        assert!(ast::parse_expression(source).is_err(), "{source}");
+    }
 }
 
 #[test]

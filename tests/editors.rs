@@ -223,6 +223,48 @@ const FIXTURES: &[&str] = &[
     "x = f(a,\n  b)",
     "x = {\n  a: 1\n  b: 2\n}",
     "x = 0..\ny = 1",
+    // the merge: the loosest operator, and a bar opening a line continues
+    // the line above
+    "x = a | b | c",
+    "x = u | e but (x: 1.0)",
+    "x = a ?? b | c + d",
+    "x = 0..n | m..k",
+    "x = ..0..n | y",
+    "x = prim | (tracer: 0.0)",
+    "x = {a: 1} | each k in ks { {k => 2.5} }",
+    "x = f(a | b, c)",
+    "x = [a | b, c]",
+    "y = for i in a | b { i }",
+    "y = each x in xs | ys { x }",
+    "y = fold s := a | b for i in 0..n { s }",
+    "x = a\n    | b\n    | c",
+    "x = a |\n    b",
+    "x = a\n| b\ny = 2",
+    "x = { u := a\n   | b\n u }",
+    // a paren holds a description or a value until a later token decides,
+    // and the bar stands in both
+    "x = (a | b)",
+    "x = (a | b) | c",
+    "x = (A | B)(B)",
+    "x = (A: Real | B)(A: 1.0)",
+    "x = (k: a | b)",
+    "x = (k: a | b, l: c)",
+    "x = (k: a, l: b | c)",
+    "x = (\n    a\n    | b\n)",
+    "x = (\n    A\n    | B\n)(B)",
+    "x = (k: a\n    | b,\n    l: c)",
+    "fiber Shape = (\n    Circle: Real\n    | Square\n)",
+    "fiber Shape = (Circle: Real\n    | Square)",
+    // a brace holds an entry or an annotated local, and an annotation's
+    // absence alternative stands beside a merge
+    "x = {a: m | n, b: 2}",
+    "x = { c: Real|None := a | b\n c }",
+    "x = { c: Map<Int> := a | b\n c }",
+    "x: Real|None = a | b",
+    "f(x: Real|None) = x | y",
+    "x = texture(|p| color)",
+    "x = texture(|p| a | b)",
+    "x = texture(\n  |p|\n  color\n)",
 ];
 
 #[test]

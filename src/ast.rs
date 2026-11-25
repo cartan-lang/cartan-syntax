@@ -478,6 +478,13 @@ pub enum ExprKind {
         right: Box<Expr>,
         operator_span: Span,
     },
+    /// `left | right`, the keyed overlay in which the right operand wins.
+    Merge {
+        left: Box<Expr>,
+        right: Box<Expr>,
+        /// The `|` alone.
+        operator_span: Span,
+    },
     Configurable {
         /// Nonempty, in source order; every atom has its own introducing colon.
         settings: Vec<SettingsAtom>,

@@ -244,6 +244,28 @@ fn types_and_powers_print_tight() {
 }
 
 #[test]
+fn a_merge_prints_spaced_and_a_bar_opening_a_line_lines_up() {
+    formats("m=a|b|c\n", "m = a | b | c\n");
+    formats("p = (x: a|b, y: c)\n", "p = (x: a | b, y: c)\n");
+    // an annotation's alternative stays tight beside a spaced merge
+    formats("x:Real | None = a|b\n", "x: Real|None = a | b\n");
+    // a bar opening a line stands in the operator column, as a sum's sign does
+    formats(
+        "m = settings\n  |{tolerance:1.0e-6}\n      | overrides but (x:1.0)\n",
+        "m = settings\n    | { tolerance: 1.0e-6 }\n    | overrides but (x: 1.0)\n",
+    );
+    formats(
+        "m =\n  settings\n  | defaults\n     | {a: 1}\n",
+        "m =\n      settings\n    | defaults\n    | { a: 1 }\n",
+    );
+    // a sum's variants written one to a line
+    formats(
+        "fiber Shape = (\n  Circle: Real\n  | Square\n)\n",
+        "fiber Shape = (\n    Circle: Real\n    | Square\n)\n",
+    );
+}
+
+#[test]
 fn a_continued_chain_keeps_crlf() {
     formats(
         "s(a: Real, b: Real) =\r\n  a\r\n   + b\r\n  - a\r\n",

@@ -105,6 +105,86 @@ fn statements_continue_across_lines_where_the_grammar_says() {
 }
 
 #[test]
+fn a_paren_holds_a_merge_unless_arguments_follow_it() {
+    for (source, kind) in [
+        ("x = (a | b)", "parenthesized_expression"),
+        ("x = (\n    a\n    | b\n)", "parenthesized_expression"),
+        ("x = (k: a | b)", "product"),
+        ("x = (k: a | b, l: c)", "product"),
+        ("x = (k: a, l: b | c)", "product"),
+        ("x = (A | B)(B)", "call_expression"),
+        ("x = (A: Real | B)(A: 1.0)", "call_expression"),
+        ("x = (\n    A\n    | B\n)(B)", "call_expression"),
+    ] {
+        let document = valid_document(source);
+        let value = value(&document).child("value").unwrap();
+        assert_eq!(value.kind, kind, "{source:?}: {}", document.root.sexp());
+        let merges = nodes(value, "binary_expression").len();
+        let heads = nodes(value, "described_head").len();
+        assert_eq!(
+            (merges, heads),
+            if kind == "call_expression" {
+                (0, 1)
+            } else {
+                (1, 0)
+            },
+            "{source:?}"
+        );
+    }
+}
+
+#[test]
+fn a_description_spans_lines_and_refuses_mixed_separators_where_a_type_stands() {
+    for source in [
+        "fiber Shape = (\n    Circle: Real\n    | Square\n)",
+        "fiber Shape = (Circle: Real\n    | Square)",
+        "f(x: (\n    Circle: Real\n    | Square\n)) = x",
+        "f(x: (\n    a: Real\n    b: Real\n)) = x",
+    ] {
+        let document = valid_document(source);
+        let variants = nodes(&document.root, "variant").len();
+        let components = nodes(&document.root, "component").len();
+        assert_eq!(variants + components, 2, "{source:?}");
+    }
+    for (source, found) in [
+        ("fiber F = (A: Real, B: Real | C: Real)", "|"),
+        ("f(x: (A: Real | B: Real, C: Real)) = x", ","),
+        ("x = { c: (A: Real | B: Real, C: Real) := v\n c }", ","),
+    ] {
+        let tree = parse_document(source);
+        let [diagnostic] = tree.diagnostics.as_slice() else {
+            panic!("{source:?}: {:?}", tree.diagnostics);
+        };
+        assert!(
+            matches!(
+                diagnostic.kind,
+                DiagnosticKind::Stated {
+                    rule: Rule::MixedSeparators,
+                    refused: true,
+                    ..
+                }
+            ),
+            "{source:?}: {diagnostic:?}"
+        );
+        assert_eq!(diagnostic.found.as_deref(), Some(found), "{source:?}");
+        assert_spans(&tree);
+    }
+    // where a value can stand, the comma is a product value's, and the
+    // arguments after the paren are what is refused
+    let tree = parse_document("x = (A: Real | B: Real, C: Real)(A: 1.0)");
+    let [diagnostic] = tree.diagnostics.as_slice() else {
+        panic!("{:?}", tree.diagnostics);
+    };
+    assert!(matches!(
+        diagnostic.kind,
+        DiagnosticKind::Stated {
+            rule: Rule::ItemEnd,
+            ..
+        }
+    ));
+}
+
+#[test]
 fn preserves_power_unary_projection_and_range_precedence() {
     let tree = expression("-2^2");
     let unary = value(&tree);

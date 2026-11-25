@@ -129,28 +129,31 @@ pub fn print_emacs(builtin_names: &[&str]) -> String {
 
 // ---- the precedence table ----------------------------------------------
 
-const RANGE: i32 = 1;
-const OR: i32 = 2;
-const AND: i32 = 3;
-const NOT: i32 = 4;
-const COMPARE: i32 = 5;
+/// `a | b` — the merge: the loosest operator, below the range, so each
+/// operand is a whole value.
+const MERGE: i32 = 1;
+const RANGE: i32 = 2;
+const OR: i32 = 3;
+const AND: i32 = 4;
+const NOT: i32 = 5;
+const COMPARE: i32 = 6;
 /// `x ?? y` — the presence default: tighter than the
 /// comparisons and the Boolean words, looser than arithmetic.
-const DEFAULT: i32 = 6;
-const ADD: i32 = 7;
-const MUL: i32 = 8;
-const NEG: i32 = 9;
-const POWER: i32 = 10;
+const DEFAULT: i32 = 7;
+const ADD: i32 = 8;
+const MUL: i32 = 9;
+const NEG: i32 = 10;
+const POWER: i32 = 11;
 /// `with` and `but`: attachment, below the four zones.
-const ATTACH: i32 = 11;
+const ATTACH: i32 = 12;
 /// `key of value` — the component read,
 /// above attachment and every arithmetic operator, so its operand is
 /// the postfix zone's own: `0 of f(x)` reads the call's component and
 /// `0 of v + 1` adds one to the component.
-const OF: i32 = 12;
+const OF: i32 = 13;
 /// The postfix zones — call, subscript, configuration, payload, the
 /// argument mark — chaining left.
-const POSTFIX: i32 = 13;
+const POSTFIX: i32 = 14;
 
 // ---- helpers ------------------------------------------------------------
 
@@ -214,6 +217,17 @@ fn cont_word(op: &str) -> Rule {
         p::class(" \t\r\n", &[]),
     ]));
     choice(vec![op.into(), alias(token(tok), op)])
+}
+
+/// The bar, wherever one stands: between a sum's variants, before an
+/// annotation's absence alternative, around a texture's binder and as the
+/// merge operator. It is the token that carries its leading newlines, so
+/// a line that opens with a bar continues the line above. **Every bar is
+/// this one token**, for the reason [`colon`] gives: tree-sitter's lexer
+/// reads one token where two match the same text, and a paren or a brace
+/// holds a description and a value at once until a later token decides.
+fn bar() -> Rule {
+    cont("|")
 }
 
 fn expr() -> Rule {
@@ -341,7 +355,7 @@ fn comprehension_body() -> Rule {
 fn described_ahead() -> Rule {
     choice(vec![
         seq(vec![sym("identifier"), ":".into()]),
-        seq(vec![sym("identifier"), "|".into()]),
+        seq(vec![sym("identifier"), bar()]),
     ])
 }
 
@@ -355,35 +369,57 @@ fn described_ahead() -> Rule {
 /// three-way paren reading needs and which tree-sitter, being GLR,
 /// prints without. `least_one` states whether the product form takes
 /// an empty pair of parens, which the declaration's own sentence then
-/// refuses.
-fn descriptions(guard: Option<Rule>, least_one: bool) -> Vec<Rule> {
-    let ahead_colon = || match &guard {
-        Some(g) => vec![ahead(g.clone())],
-        None => Vec::new(),
+/// refuses. `refuse` states whether a separator of the other form is
+/// refused in its own sentence. That holds where only a description can
+/// stand. Where a value can stand too, a comma after a bar is a product
+/// value's next component, `(x: a | b, y: c)`, so the description fails
+/// quietly and the value is read.
+///
+/// **Both forms open and close with the separator runs a parenthesized
+/// value takes**, so every reading of a paren shares one prefix and
+/// tree-sitter defers the choice to the token that decides it. A
+/// description may therefore open on the line after its paren and close
+/// on a line of its own, and the lookahead stands after the opening run.
+fn descriptions(guard: Option<Rule>, least_one: bool, refuse: bool) -> Vec<Rule> {
+    let open = || {
+        let mut rs = vec!["(".into(), repeat(sep())];
+        if let Some(g) = &guard {
+            rs.push(ahead(g.clone()));
+        }
+        rs
     };
     let sum = {
-        let mut rs = vec!["(".into()];
-        rs.extend(ahead_colon());
+        let mut rs = open();
         rs.push(field("variant", sym("variant")));
         rs.push(repeat1(seq(vec![
             nl(),
-            "|".into(),
+            bar(),
             nl(),
             field("variant", sym("variant")),
         ])));
-        rs.push(refusing(",", Stated::MixedSeparators.label()));
+        if refuse {
+            rs.push(refusing(",", Stated::MixedSeparators.label()));
+        }
+        rs.push(repeat(sep()));
         rs.push(")".into());
         seq(rs)
     };
     let product = {
-        let comps = match least_one {
-            true => items1(field("component", sym("component"))),
-            false => items(field("component", sym("component"))),
-        };
-        let mut rs = vec!["(".into()];
-        rs.extend(ahead_colon());
-        rs.push(comps);
-        rs.push(refusing("|", Stated::MixedSeparators.label()));
+        let component = || field("component", sym("component"));
+        // `items` and `items1`, their opening run stated above
+        let comps = seq(vec![
+            component(),
+            repeat(seq(vec![repeat1(sep()), component()])),
+            repeat(sep()),
+        ]);
+        let mut rs = open();
+        rs.push(match least_one {
+            true => comps,
+            false => optional(comps),
+        });
+        if refuse {
+            rs.push(refusing(bar(), Stated::MixedSeparators.label()));
+        }
         rs.push(")".into());
         seq(rs)
     };
@@ -640,6 +676,10 @@ fn build() -> Grammar {
             // a name in an annotation's parens is a payload-free variant
             // and a fiber alike, and the `|` after it decides
             vec!["variant".into(), "fiber_type".into()],
+            // a name and a bar in a value's parens open a sum's variants
+            // and a merge alike, `(A | B)(B)` and `(a | b)`, and whether
+            // arguments follow the closing paren decides
+            vec!["variant".into(), "_expression".into()],
         ],
         brackets: vec![
             ("(".into(), ")".into()),
@@ -982,7 +1022,7 @@ fn build() -> Grammar {
                     field("name", sym("identifier")),
                     optional(seq(vec!["<".into(), field("param", sym("identifier")), ">".into()])),
                     expecting("=", Stated::FiberDeclares.label()),
-                    expecting(choice(descriptions(None, false)), Stated::FiberDeclares.label()),
+                    expecting(choice(descriptions(None, false, true)), Stated::FiberDeclares.label()),
                 ]),
             ),
             def(
@@ -1034,9 +1074,9 @@ fn build() -> Grammar {
                     expecting(":", Stated::StructEntryType.label()),
                     field("type", sym("fiber_type")),
                     optional(seq(vec![
-                        "|".into(),
+                        bar(),
                         field("alternative", sym("fiber_type")),
-                        refusing("|", Stated::AnnotationAlternative.label()),
+                        refusing(bar(), Stated::AnnotationAlternative.label()),
                     ])),
                 ]),
             ),
@@ -1079,7 +1119,7 @@ fn build() -> Grammar {
                  waits until the colon says the reading is this one.",
                 choice({
                     let guard = choice(vec![described_ahead(), ")".into()]);
-                    let mut rs = descriptions(Some(guard), false);
+                    let mut rs = descriptions(Some(guard), false, true);
                     // the brace form reaches every place a type stands,
                     // so a struct written where a fiber is required
                     // refuses in one sentence at a later analysis stage rather
@@ -1325,12 +1365,9 @@ fn build() -> Grammar {
                     seq(vec![
                         sym("fiber_type"),
                         optional(seq(vec![
-                            "|".into(),
+                            bar(),
                             field("alternative", sym("fiber_type")),
-                            refusing(
-                                "|",
-                                Stated::AnnotationAlternative.label(),
-                            ),
+                            refusing(bar(), Stated::AnnotationAlternative.label()),
                         ])),
                         optional(seq(vec![
                             field("arrow", "->"),
@@ -1385,11 +1422,11 @@ fn build() -> Grammar {
                     "texture".into(),
                     immediate("("),
                     nl(),
-                    "|".into(),
+                    bar(),
                     nl(),
                     field("parameter", sym("identifier")),
                     nl(),
-                    "|".into(),
+                    bar(),
                     nl(),
                     field(
                         "body",
@@ -1435,6 +1472,8 @@ fn build() -> Grammar {
                     sym("full_range"),
                 ]),
                 vec![
+                    infix("binary_expression", MERGE, Assoc::Left, "left", seq(vec![field("operator", bar()), nl()]), "right")
+                        .doc("`a | b` — the merge: the keyed overlay of two values, the right\noperand winning at each key. It is the loosest operator, below the\nrange, `??` and `but`, so `u | e but (x: 1.0)` is `u | (e but (x: 1.0))`\nand `a ?? b | c` is `(a ?? b) | c`. It groups left, and it is a\ncontinuation operator, so a line opening with `|` attaches to the line\nabove it. Where a type stands, the bar separates a sum's variants and\nintroduces an annotation's absence alternative instead. A value's\nparens hold a merge, `(a | b)` and `(x: a | b, y: c)`, unless arguments\nfollow the closing paren, which makes them a described constructor's\nhead, `(A | B)(B)`."),
                     prefix("unary_expression", NOT, seq(vec![field("operator", "not"), nl()]), "operand")
                         .doc("`not`, above the comparisons and below `and`"),
                     prefix("unary_expression", NEG, seq(vec![field("operator", "-"), nl()]), "operand"),
@@ -1446,7 +1485,7 @@ fn build() -> Grammar {
                     prefix("range_to", RANGE, seq(vec![field("operator", range_op.clone()), not_ahead("{")]), "end")
                         .doc("`..e` / `..=e` — a range with no start, an ordinary value as any\nrange is: `r = ..e`, `f(..=e)`. Its end reads at the range's own\nprecedence, so `..n - 1` is `..(n - 1)`. Where a bounded range follows\nthe `..`, the whole is the periodic axis `..a..b` instead."),
                     infix("range_expression", RANGE, Assoc::Left, "left", seq(vec![field("operator", range_op.clone()), not_ahead("{")]), "right")
-                        .doc("`a..b` / `a..=b` — the loosest operator there is, Rust's own\nprecedence, so `0..n - 1` reads `0..(n - 1)`. It groups left here,\nand a later analysis stage refuses `a..b..c`: a range states two endpoints.\nAn end reads no brace, which is a header's body after `for i in 3..`.\nThe end stands on the operator's line: `0..` is complete as the open\nrange, so a newline after the operator ends it."),
+                        .doc("`a..b` / `a..=b` — looser than every operator but the merge, Rust's\nown precedence, so `0..n - 1` reads `0..(n - 1)`. It groups left here,\nand a later analysis stage refuses `a..b..c`: a range states two endpoints.\nAn end reads no brace, which is a header's body after `for i in 3..`.\nThe end stands on the operator's line: `0..` is complete as the open\nrange, so a newline after the operator ends it."),
                     postfix("range_from", RANGE, "start", seq(vec![field("operator", range_op.clone()), lookahead(NO_OPERAND)]))
                         .doc("`s..` — a range with no end, where no end follows the operator\n: the range above takes one where it can. A newline after the\noperator ends it, so `r = 0..` is complete."),
                     postfix("periodic_expression", RANGE, "axis", PERIODIC)
@@ -1460,7 +1499,7 @@ fn build() -> Grammar {
                     infix("binary_expression", ADD, Assoc::Left, "left", seq(vec![field("operator", cont_word("+")), nl()]), "right")
                         .doc("`+` and `-` open a line as word operators do: followed by whitespace\nthey continue the line above, so a sum may be written one term to a\nline; written against its operand, a sign begins a fresh item, so\n`[1\\n -2\\n 3]` keeps its three items"),
                     infix("binary_expression", ADD, Assoc::Left, "left", seq(vec![field("operator", cont("<>")), nl()]), "right")
-                        .doc("`a <> b` — the join: the string two strings make, the list two\nlists make end to end, the union two Maps make. It stands at `+`'s\nprecedence and groups left, and it is a continuation operator, so a\nline opening with `<>` attaches to the line above it. The lexer's\nlongest match takes it over `<` followed by `>`, which is no legal\nsequence."),
+                        .doc("`a <> b` — the join: the string two strings make and the list two\nlists make end to end. Keyed values combine with `|`. It stands at `+`'s\nprecedence and groups left, and it is a continuation operator, so a\nline opening with `<>` attaches to the line above it. The lexer's\nlongest match takes it over `<` followed by `>`, which is no legal\nsequence."),
                     infix("binary_expression", ADD, Assoc::Left, "left", seq(vec![field("operator", cont_word("-")), nl()]), "right"),
                     infix("binary_expression", MUL, Assoc::Left, "left", seq(vec![field("operator", choice(vec![cont("*"), cont("//"), cont("/"), cont("@")])), nl()]), "right")
                         .doc("`@` is the action operator: infix at the\nmultiplicative level, left-associative, so `g @ a @ b` is the scalar\nand `(R1 * R2) @ v` composes then acts"),
@@ -1599,7 +1638,7 @@ fn build() -> Grammar {
                  readings of; tree-sitter, which is GLR, prints without it. A\n\
                  sum's variants stand here too, `(A: Real | B: Real)(A: 1.0)`\n\
                 .",
-                choice(descriptions(Some(described_ahead()), true)),
+                choice(descriptions(Some(described_ahead()), true, false)),
             ),
             def(
                 "variant_arguments",

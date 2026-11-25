@@ -61,6 +61,7 @@ module.exports = grammar({
     [$._expression, $.map_entry],
     [$.fiber_type, $.signature_type],
     [$.variant, $.fiber_type],
+    [$.variant, $._expression],
   ],
 
   rules: {
@@ -319,8 +320,10 @@ module.exports = grammar({
         choice(
           seq(
             "(",
+            repeat(choice(",", $._newline)),
             field("variant", $.variant),
-            repeat1(seq("|", field("variant", $.variant))),
+            repeat1(seq(alias(token(/\|/), "|"), field("variant", $.variant))),
+            repeat(choice(",", $._newline)),
             ")",
           ),
           seq(
@@ -401,7 +404,9 @@ module.exports = grammar({
         field("name", $.identifier),
         ":",
         field("type", $.fiber_type),
-        optional(seq("|", field("alternative", $.fiber_type))),
+        optional(
+          seq(alias(token(/\|/), "|"), field("alternative", $.fiber_type)),
+        ),
       ),
 
     component: ($) =>
@@ -436,8 +441,10 @@ module.exports = grammar({
       choice(
         seq(
           "(",
+          repeat(choice(",", $._newline)),
           field("variant", $.variant),
-          repeat1(seq("|", field("variant", $.variant))),
+          repeat1(seq(alias(token(/\|/), "|"), field("variant", $.variant))),
+          repeat(choice(",", $._newline)),
           ")",
         ),
         seq(
@@ -657,7 +664,9 @@ module.exports = grammar({
         $.signature_type,
         seq(
           $.fiber_type,
-          optional(seq("|", field("alternative", $.fiber_type))),
+          optional(
+            seq(alias(token(/\|/), "|"), field("alternative", $.fiber_type)),
+          ),
           optional(
             seq(field("arrow", "->"), field("result", $.type_annotation)),
           ),
@@ -706,9 +715,9 @@ module.exports = grammar({
       seq(
         "texture",
         token.immediate("("),
-        "|",
+        alias(token(/\|/), "|"),
         field("parameter", $.identifier),
-        "|",
+        alias(token(/\|/), "|"),
         field(
           "body",
           choice(prec.dynamic(2, $.body), prec.dynamic(1, $._expression)),
@@ -744,13 +753,13 @@ module.exports = grammar({
         $.conditional_expression,
         $.match_expression,
         $.full_range,
+        $.binary_expression,
         $.unary_expression,
         $.periodic_range,
         $.range_to,
         $.range_expression,
         $.range_from,
         $.periodic_expression,
-        $.binary_expression,
         $.with_expression,
         $.but_expression,
         $.absent_expression,
@@ -761,85 +770,16 @@ module.exports = grammar({
         $.payload_expression,
       ),
 
-    // `not`, above the comparisons and below `and`
-    // unary `+`, standing wherever unary `-` does, so `+0.5` and `-0.5`
-    // read alike. A line opening with `+` and whitespace continues the line
-    // above, the continuation token taking it as the binary operator; `+x`
-    // written against its operand at a line start is this sign.
-    unary_expression: ($) =>
-      choice(
-        prec.right(
-          4,
-          seq(field("operator", "not"), field("operand", $._expression)),
-        ),
-        prec.right(
-          9,
-          seq(field("operator", "-"), field("operand", $._expression)),
-        ),
-        prec.right(
-          9,
-          seq(field("operator", "+"), field("operand", $._expression)),
-        ),
-      ),
-
-    // `..a..b` — a periodic axis. The bounded range after the leading
-    // `..` takes the expression context's precedence and exclusions. For
-    // example, `..0..n + 1` wraps `0..(n + 1)` and `for i in ..0..n { i }`
-    // leaves the brace for the comprehension body. `a..b periodic` is
-    // the equivalent postfix spelling.
-    periodic_range: ($) =>
-      prec.right(
-        2,
-        seq(field("operator", ".."), field("axis", $.range_expression)),
-      ),
-
-    // `..e` / `..=e` — a range with no start, an ordinary value as any
-    // range is: `r = ..e`, `f(..=e)`. Its end reads at the range's own
-    // precedence, so `..n - 1` is `..(n - 1)`. Where a bounded range follows
-    // the `..`, the whole is the periodic axis `..a..b` instead.
-    range_to: ($) =>
-      prec.right(
-        1,
-        seq(field("operator", choice("..=", "..")), field("end", $._expression)),
-      ),
-
-    // `a..b` / `a..=b` — the loosest operator there is, Rust's own
-    // precedence, so `0..n - 1` reads `0..(n - 1)`. It groups left here,
-    // and a later analysis stage refuses `a..b..c`: a range states two endpoints.
-    // An end reads no brace, which is a header's body after `for i in 3..`.
-    // The end stands on the operator's line: `0..` is complete as the open
-    // range, so a newline after the operator ends it.
-    range_expression: ($) =>
-      prec.left(
-        1,
-        seq(
-          field("left", $._expression),
-          field("operator", choice("..=", "..")),
-          field("right", $._expression),
-        ),
-      ),
-
-    // `s..` — a range with no end, where no end follows the operator
-    // : the range above takes one where it can. A newline after the
-    // operator ends it, so `r = 0..` is complete.
-    range_from: ($) =>
-      prec.left(
-        1,
-        seq(
-          field("start", $._expression),
-          field("operator", choice("..=", "..")),
-          $._no_operand,
-        ),
-      ),
-
-    // `0..n periodic` — the other spelling of the periodic axis `..0..n`,
-    // still accepted. It stands on a range and nowhere else, so it reads at
-    // the range's own precedence and a later analysis stage refuses it on
-    // anything but a range: the word states an axis of a box, and a box's
-    // axis is a range.
-    periodic_expression: ($) =>
-      prec.left(1, seq(field("axis", $._expression), "periodic")),
-
+    // `a | b` — the merge: the keyed overlay of two values, the right
+    // operand winning at each key. It is the loosest operator, below the
+    // range, `??` and `but`, so `u | e but (x: 1.0)` is `u | (e but (x: 1.0))`
+    // and `a ?? b | c` is `(a ?? b) | c`. It groups left, and it is a
+    // continuation operator, so a line opening with `|` attaches to the line
+    // above it. Where a type stands, the bar separates a sum's variants and
+    // introduces an annotation's absence alternative instead. A value's
+    // parens hold a merge, `(a | b)` and `(x: a | b, y: c)`, unless arguments
+    // follow the closing paren, which makes them a described constructor's
+    // head, `(A | B)(B)`.
     // the comparisons group left here, and a later analysis stage refuses a chain
     // — `a < b < c` is two comparisons and says so
     // `x ?? y` — the presence default: `x` where it is
@@ -851,8 +791,8 @@ module.exports = grammar({
     // they continue the line above, so a sum may be written one term to a
     // line; written against its operand, a sign begins a fresh item, so
     // `[1\n -2\n 3]` keeps its three items
-    // `a <> b` — the join: the string two strings make, the list two
-    // lists make end to end, the union two Maps make. It stands at `+`'s
+    // `a <> b` — the join: the string two strings make and the list two
+    // lists make end to end. Keyed values combine with `|`. It stands at `+`'s
     // precedence and groups left, and it is a continuation operator, so a
     // line opening with `<>` attaches to the line above it. The lexer's
     // longest match takes it over `<` followed by `>`, which is no legal
@@ -863,10 +803,10 @@ module.exports = grammar({
     binary_expression: ($) =>
       choice(
         prec.left(
-          2,
+          1,
           seq(
             field("left", $._expression),
-            field("operator", "or"),
+            field("operator", alias(token(/\|/), "|")),
             field("right", $._expression),
           ),
         ),
@@ -874,12 +814,20 @@ module.exports = grammar({
           3,
           seq(
             field("left", $._expression),
+            field("operator", "or"),
+            field("right", $._expression),
+          ),
+        ),
+        prec.left(
+          4,
+          seq(
+            field("left", $._expression),
             field("operator", "and"),
             field("right", $._expression),
           ),
         ),
         prec.left(
-          5,
+          6,
           seq(
             field("left", $._expression),
             field(
@@ -897,7 +845,7 @@ module.exports = grammar({
           ),
         ),
         prec.right(
-          6,
+          7,
           seq(
             field("left", $._expression),
             field("operator", alias(token(/\?\?/), "??")),
@@ -905,7 +853,7 @@ module.exports = grammar({
           ),
         ),
         prec.left(
-          7,
+          8,
           seq(
             field("left", $._expression),
             field("operator", "+"),
@@ -913,7 +861,7 @@ module.exports = grammar({
           ),
         ),
         prec.left(
-          7,
+          8,
           seq(
             field("left", $._expression),
             field("operator", alias(token(/<>/), "<>")),
@@ -921,7 +869,7 @@ module.exports = grammar({
           ),
         ),
         prec.left(
-          7,
+          8,
           seq(
             field("left", $._expression),
             field("operator", "-"),
@@ -929,7 +877,7 @@ module.exports = grammar({
           ),
         ),
         prec.left(
-          8,
+          9,
           seq(
             field("left", $._expression),
             field(
@@ -945,7 +893,7 @@ module.exports = grammar({
           ),
         ),
         prec.right(
-          10,
+          11,
           seq(
             field("left", $._expression),
             field("operator", alias(token(/\^/), "^")),
@@ -954,12 +902,91 @@ module.exports = grammar({
         ),
       ),
 
+    // `not`, above the comparisons and below `and`
+    // unary `+`, standing wherever unary `-` does, so `+0.5` and `-0.5`
+    // read alike. A line opening with `+` and whitespace continues the line
+    // above, the continuation token taking it as the binary operator; `+x`
+    // written against its operand at a line start is this sign.
+    unary_expression: ($) =>
+      choice(
+        prec.right(
+          5,
+          seq(field("operator", "not"), field("operand", $._expression)),
+        ),
+        prec.right(
+          10,
+          seq(field("operator", "-"), field("operand", $._expression)),
+        ),
+        prec.right(
+          10,
+          seq(field("operator", "+"), field("operand", $._expression)),
+        ),
+      ),
+
+    // `..a..b` — a periodic axis. The bounded range after the leading
+    // `..` takes the expression context's precedence and exclusions. For
+    // example, `..0..n + 1` wraps `0..(n + 1)` and `for i in ..0..n { i }`
+    // leaves the brace for the comprehension body. `a..b periodic` is
+    // the equivalent postfix spelling.
+    periodic_range: ($) =>
+      prec.right(
+        3,
+        seq(field("operator", ".."), field("axis", $.range_expression)),
+      ),
+
+    // `..e` / `..=e` — a range with no start, an ordinary value as any
+    // range is: `r = ..e`, `f(..=e)`. Its end reads at the range's own
+    // precedence, so `..n - 1` is `..(n - 1)`. Where a bounded range follows
+    // the `..`, the whole is the periodic axis `..a..b` instead.
+    range_to: ($) =>
+      prec.right(
+        2,
+        seq(field("operator", choice("..=", "..")), field("end", $._expression)),
+      ),
+
+    // `a..b` / `a..=b` — looser than every operator but the merge, Rust's
+    // own precedence, so `0..n - 1` reads `0..(n - 1)`. It groups left here,
+    // and a later analysis stage refuses `a..b..c`: a range states two endpoints.
+    // An end reads no brace, which is a header's body after `for i in 3..`.
+    // The end stands on the operator's line: `0..` is complete as the open
+    // range, so a newline after the operator ends it.
+    range_expression: ($) =>
+      prec.left(
+        2,
+        seq(
+          field("left", $._expression),
+          field("operator", choice("..=", "..")),
+          field("right", $._expression),
+        ),
+      ),
+
+    // `s..` — a range with no end, where no end follows the operator
+    // : the range above takes one where it can. A newline after the
+    // operator ends it, so `r = 0..` is complete.
+    range_from: ($) =>
+      prec.left(
+        2,
+        seq(
+          field("start", $._expression),
+          field("operator", choice("..=", "..")),
+          $._no_operand,
+        ),
+      ),
+
+    // `0..n periodic` — the other spelling of the periodic axis `..0..n`,
+    // still accepted. It stands on a range and nowhere else, so it reads at
+    // the range's own precedence and a later analysis stage refuses it on
+    // anything but a range: the word states an axis of a box, and a box's
+    // axis is a range.
+    periodic_expression: ($) =>
+      prec.left(2, seq(field("axis", $._expression), "periodic")),
+
     // `view with control` — attachment, chainable, never a child. The
     // control takes the postfix zones of its own — `with scrub(g) : cfg { … }`
     // — and not a further `with`, so the chain stays flat.
     with_expression: ($) =>
       prec.left(
-        11,
+        12,
         seq(
           field("target", $._expression),
           "with",
@@ -972,7 +999,7 @@ module.exports = grammar({
     // override names replaced, at `with`'s precedence and grouping left.
     but_expression: ($) =>
       prec.left(
-        11,
+        12,
         seq(
           field("target", $._expression),
           "but",
@@ -984,11 +1011,11 @@ module.exports = grammar({
     // the slot it stands on licenses absence. It rides the postfix chain,
     // so a call result marks too — `points(vec(x, y)?)`.
     absent_expression: ($) =>
-      prec.left(13, seq(field("value", $._expression), "?")),
+      prec.left(14, seq(field("value", $._expression), "?")),
 
     index_expression: ($) =>
       prec.left(
-        13,
+        14,
         seq(field("target", $._expression), field("index", $.subscript)),
       ),
 
@@ -1001,7 +1028,7 @@ module.exports = grammar({
     // component and then that value's.
     component_expression: ($) =>
       prec.right(
-        12,
+        13,
         seq(field("key", $.component_key), "of", field("value", $._expression)),
       ),
 
@@ -1014,7 +1041,7 @@ module.exports = grammar({
         prec.dynamic(
           1,
           prec.left(
-            13,
+            14,
             seq(
               field("target", choice($.config_expression)),
               field("operator", alias(token(/:/), ":")),
@@ -1023,7 +1050,7 @@ module.exports = grammar({
           ),
         ),
         prec.left(
-          13,
+          14,
           seq(
             field("target", $._expression),
             field("operator", alias(token(/:/), ":")),
@@ -1035,7 +1062,7 @@ module.exports = grammar({
     // `value.{key: expression}` — literal settings closing; links chain left
     configure_dot_expression: ($) =>
       prec.left(
-        13,
+        14,
         seq(
           field("target", $._expression),
           field("operator", alias(token(/\./), ".")),
@@ -1054,11 +1081,11 @@ module.exports = grammar({
     payload_expression: ($) =>
       choice(
         prec.left(
-          13,
+          14,
           seq(field("target", $._expression), field("body", $.body)),
         ),
         prec.left(
-          13,
+          14,
           seq(field("target", $._expression), field("body", $.list)),
         ),
       ),
@@ -1098,13 +1125,13 @@ module.exports = grammar({
           $.conditional_expression,
           $.match_expression,
           $.full_range,
+          alias($.binary_expression_header, $.binary_expression),
           alias($.unary_expression_header, $.unary_expression),
           alias($.periodic_range_header, $.periodic_range),
           alias($.range_to_header, $.range_to),
           alias($.range_expression_header, $.range_expression),
           alias($.range_from_header, $.range_from),
           alias($.periodic_expression_header, $.periodic_expression),
-          alias($.binary_expression_header, $.binary_expression),
           alias($.with_expression_header, $.with_expression),
           alias($.but_expression_header, $.but_expression),
           alias($.absent_expression_header, $.absent_expression),
@@ -1114,70 +1141,13 @@ module.exports = grammar({
         ),
       ),
 
-    unary_expression_header: ($) =>
-      choice(
-        prec.right(
-          9,
-          seq(field("operator", "not"), field("operand", $._expression_header)),
-        ),
-        prec.right(
-          19,
-          seq(field("operator", "-"), field("operand", $._expression_header)),
-        ),
-        prec.right(
-          19,
-          seq(field("operator", "+"), field("operand", $._expression_header)),
-        ),
-      ),
-
-    periodic_range_header: ($) =>
-      prec.right(
-        5,
-        seq(
-          field("operator", ".."),
-          field("axis", alias($.range_expression_header, $.range_expression)),
-        ),
-      ),
-
-    range_to_header: ($) =>
-      prec.right(
-        3,
-        seq(
-          field("operator", choice("..=", "..")),
-          field("end", $._expression_header),
-        ),
-      ),
-
-    range_expression_header: ($) =>
-      prec.left(
-        3,
-        seq(
-          field("left", $._expression_header),
-          field("operator", choice("..=", "..")),
-          field("right", $._expression_header),
-        ),
-      ),
-
-    range_from_header: ($) =>
-      prec.left(
-        3,
-        seq(
-          field("start", $._expression_header),
-          field("operator", choice("..=", "..")),
-          $._no_operand,
-        ),
-      ),
-
-    periodic_expression_header: ($) =>
-      prec.left(3, seq(field("axis", $._expression_header), "periodic")),
-
     binary_expression_header: ($) =>
       choice(
         prec.left(
-          5,
+          3,
           seq(
             field("left", $._expression_header),
-            field("operator", "or"),
+            field("operator", alias(token(/\|/), "|")),
             field("right", $._expression_header),
           ),
         ),
@@ -1185,12 +1155,20 @@ module.exports = grammar({
           7,
           seq(
             field("left", $._expression_header),
+            field("operator", "or"),
+            field("right", $._expression_header),
+          ),
+        ),
+        prec.left(
+          9,
+          seq(
+            field("left", $._expression_header),
             field("operator", "and"),
             field("right", $._expression_header),
           ),
         ),
         prec.left(
-          11,
+          13,
           seq(
             field("left", $._expression_header),
             field(
@@ -1208,7 +1186,7 @@ module.exports = grammar({
           ),
         ),
         prec.right(
-          13,
+          15,
           seq(
             field("left", $._expression_header),
             field("operator", alias(token(/\?\?/), "??")),
@@ -1216,7 +1194,7 @@ module.exports = grammar({
           ),
         ),
         prec.left(
-          15,
+          17,
           seq(
             field("left", $._expression_header),
             field("operator", "+"),
@@ -1224,7 +1202,7 @@ module.exports = grammar({
           ),
         ),
         prec.left(
-          15,
+          17,
           seq(
             field("left", $._expression_header),
             field("operator", alias(token(/<>/), "<>")),
@@ -1232,7 +1210,7 @@ module.exports = grammar({
           ),
         ),
         prec.left(
-          15,
+          17,
           seq(
             field("left", $._expression_header),
             field("operator", "-"),
@@ -1240,7 +1218,7 @@ module.exports = grammar({
           ),
         ),
         prec.left(
-          17,
+          19,
           seq(
             field("left", $._expression_header),
             field(
@@ -1256,7 +1234,7 @@ module.exports = grammar({
           ),
         ),
         prec.right(
-          21,
+          23,
           seq(
             field("left", $._expression_header),
             field("operator", alias(token(/\^/), "^")),
@@ -1265,9 +1243,66 @@ module.exports = grammar({
         ),
       ),
 
+    unary_expression_header: ($) =>
+      choice(
+        prec.right(
+          11,
+          seq(field("operator", "not"), field("operand", $._expression_header)),
+        ),
+        prec.right(
+          21,
+          seq(field("operator", "-"), field("operand", $._expression_header)),
+        ),
+        prec.right(
+          21,
+          seq(field("operator", "+"), field("operand", $._expression_header)),
+        ),
+      ),
+
+    periodic_range_header: ($) =>
+      prec.right(
+        7,
+        seq(
+          field("operator", ".."),
+          field("axis", alias($.range_expression_header, $.range_expression)),
+        ),
+      ),
+
+    range_to_header: ($) =>
+      prec.right(
+        5,
+        seq(
+          field("operator", choice("..=", "..")),
+          field("end", $._expression_header),
+        ),
+      ),
+
+    range_expression_header: ($) =>
+      prec.left(
+        5,
+        seq(
+          field("left", $._expression_header),
+          field("operator", choice("..=", "..")),
+          field("right", $._expression_header),
+        ),
+      ),
+
+    range_from_header: ($) =>
+      prec.left(
+        5,
+        seq(
+          field("start", $._expression_header),
+          field("operator", choice("..=", "..")),
+          $._no_operand,
+        ),
+      ),
+
+    periodic_expression_header: ($) =>
+      prec.left(5, seq(field("axis", $._expression_header), "periodic")),
+
     with_expression_header: ($) =>
       prec.left(
-        23,
+        25,
         seq(
           field("target", $._expression_header),
           "with",
@@ -1277,7 +1312,7 @@ module.exports = grammar({
 
     but_expression_header: ($) =>
       prec.left(
-        23,
+        25,
         seq(
           field("target", $._expression_header),
           "but",
@@ -1286,17 +1321,17 @@ module.exports = grammar({
       ),
 
     absent_expression_header: ($) =>
-      prec.left(27, seq(field("value", $._expression_header), "?")),
+      prec.left(29, seq(field("value", $._expression_header), "?")),
 
     index_expression_header: ($) =>
       prec.left(
-        27,
+        29,
         seq(field("target", $._expression_header), field("index", $.subscript)),
       ),
 
     component_expression_header: ($) =>
       prec.right(
-        25,
+        27,
         seq(
           field("key", $.component_key),
           "of",
@@ -1306,7 +1341,7 @@ module.exports = grammar({
 
     configure_dot_expression_header: ($) =>
       prec.left(
-        27,
+        29,
         seq(
           field("target", $._expression_header),
           field("operator", alias(token(/\./), ".")),
@@ -1349,13 +1384,13 @@ module.exports = grammar({
           $.conditional_expression,
           $.match_expression,
           $.full_range,
+          alias($.binary_expression_hole, $.binary_expression),
           alias($.unary_expression_hole, $.unary_expression),
           alias($.periodic_range_hole, $.periodic_range),
           alias($.range_to_hole, $.range_to),
           alias($.range_expression_hole, $.range_expression),
           alias($.range_from_hole, $.range_from),
           alias($.periodic_expression_hole, $.periodic_expression),
-          alias($.binary_expression_hole, $.binary_expression),
           alias($.with_expression_hole, $.with_expression),
           alias($.but_expression_hole, $.but_expression),
           alias($.absent_expression_hole, $.absent_expression),
@@ -1366,70 +1401,13 @@ module.exports = grammar({
         ),
       ),
 
-    unary_expression_hole: ($) =>
-      choice(
-        prec.right(
-          9,
-          seq(field("operator", "not"), field("operand", $._expression_hole)),
-        ),
-        prec.right(
-          19,
-          seq(field("operator", "-"), field("operand", $._expression_hole)),
-        ),
-        prec.right(
-          19,
-          seq(field("operator", "+"), field("operand", $._expression_hole)),
-        ),
-      ),
-
-    periodic_range_hole: ($) =>
-      prec.right(
-        5,
-        seq(
-          field("operator", ".."),
-          field("axis", alias($.range_expression_hole, $.range_expression)),
-        ),
-      ),
-
-    range_to_hole: ($) =>
-      prec.right(
-        3,
-        seq(
-          field("operator", choice("..=", "..")),
-          field("end", $._expression_hole),
-        ),
-      ),
-
-    range_expression_hole: ($) =>
-      prec.left(
-        3,
-        seq(
-          field("left", $._expression_hole),
-          field("operator", choice("..=", "..")),
-          field("right", $._expression_hole),
-        ),
-      ),
-
-    range_from_hole: ($) =>
-      prec.left(
-        3,
-        seq(
-          field("start", $._expression_hole),
-          field("operator", choice("..=", "..")),
-          $._no_operand,
-        ),
-      ),
-
-    periodic_expression_hole: ($) =>
-      prec.left(3, seq(field("axis", $._expression_hole), "periodic")),
-
     binary_expression_hole: ($) =>
       choice(
         prec.left(
-          5,
+          3,
           seq(
             field("left", $._expression_hole),
-            field("operator", "or"),
+            field("operator", alias(token(/\|/), "|")),
             field("right", $._expression_hole),
           ),
         ),
@@ -1437,12 +1415,20 @@ module.exports = grammar({
           7,
           seq(
             field("left", $._expression_hole),
+            field("operator", "or"),
+            field("right", $._expression_hole),
+          ),
+        ),
+        prec.left(
+          9,
+          seq(
+            field("left", $._expression_hole),
             field("operator", "and"),
             field("right", $._expression_hole),
           ),
         ),
         prec.left(
-          11,
+          13,
           seq(
             field("left", $._expression_hole),
             field(
@@ -1460,7 +1446,7 @@ module.exports = grammar({
           ),
         ),
         prec.right(
-          13,
+          15,
           seq(
             field("left", $._expression_hole),
             field("operator", alias(token(/\?\?/), "??")),
@@ -1468,7 +1454,7 @@ module.exports = grammar({
           ),
         ),
         prec.left(
-          15,
+          17,
           seq(
             field("left", $._expression_hole),
             field("operator", "+"),
@@ -1476,7 +1462,7 @@ module.exports = grammar({
           ),
         ),
         prec.left(
-          15,
+          17,
           seq(
             field("left", $._expression_hole),
             field("operator", alias(token(/<>/), "<>")),
@@ -1484,7 +1470,7 @@ module.exports = grammar({
           ),
         ),
         prec.left(
-          15,
+          17,
           seq(
             field("left", $._expression_hole),
             field("operator", "-"),
@@ -1492,7 +1478,7 @@ module.exports = grammar({
           ),
         ),
         prec.left(
-          17,
+          19,
           seq(
             field("left", $._expression_hole),
             field(
@@ -1508,7 +1494,7 @@ module.exports = grammar({
           ),
         ),
         prec.right(
-          21,
+          23,
           seq(
             field("left", $._expression_hole),
             field("operator", alias(token(/\^/), "^")),
@@ -1517,9 +1503,66 @@ module.exports = grammar({
         ),
       ),
 
+    unary_expression_hole: ($) =>
+      choice(
+        prec.right(
+          11,
+          seq(field("operator", "not"), field("operand", $._expression_hole)),
+        ),
+        prec.right(
+          21,
+          seq(field("operator", "-"), field("operand", $._expression_hole)),
+        ),
+        prec.right(
+          21,
+          seq(field("operator", "+"), field("operand", $._expression_hole)),
+        ),
+      ),
+
+    periodic_range_hole: ($) =>
+      prec.right(
+        7,
+        seq(
+          field("operator", ".."),
+          field("axis", alias($.range_expression_hole, $.range_expression)),
+        ),
+      ),
+
+    range_to_hole: ($) =>
+      prec.right(
+        5,
+        seq(
+          field("operator", choice("..=", "..")),
+          field("end", $._expression_hole),
+        ),
+      ),
+
+    range_expression_hole: ($) =>
+      prec.left(
+        5,
+        seq(
+          field("left", $._expression_hole),
+          field("operator", choice("..=", "..")),
+          field("right", $._expression_hole),
+        ),
+      ),
+
+    range_from_hole: ($) =>
+      prec.left(
+        5,
+        seq(
+          field("start", $._expression_hole),
+          field("operator", choice("..=", "..")),
+          $._no_operand,
+        ),
+      ),
+
+    periodic_expression_hole: ($) =>
+      prec.left(5, seq(field("axis", $._expression_hole), "periodic")),
+
     with_expression_hole: ($) =>
       prec.left(
-        23,
+        25,
         seq(
           field("target", $._expression_hole),
           "with",
@@ -1529,7 +1572,7 @@ module.exports = grammar({
 
     but_expression_hole: ($) =>
       prec.left(
-        23,
+        25,
         seq(
           field("target", $._expression_hole),
           "but",
@@ -1538,17 +1581,17 @@ module.exports = grammar({
       ),
 
     absent_expression_hole: ($) =>
-      prec.left(27, seq(field("value", $._expression_hole), "?")),
+      prec.left(29, seq(field("value", $._expression_hole), "?")),
 
     index_expression_hole: ($) =>
       prec.left(
-        27,
+        29,
         seq(field("target", $._expression_hole), field("index", $.subscript)),
       ),
 
     component_expression_hole: ($) =>
       prec.right(
-        25,
+        27,
         seq(
           field("key", $.component_key),
           "of",
@@ -1558,7 +1601,7 @@ module.exports = grammar({
 
     configure_dot_expression_hole: ($) =>
       prec.left(
-        27,
+        29,
         seq(
           field("target", $._expression_hole),
           field("operator", alias(token(/\./), ".")),
@@ -1569,11 +1612,11 @@ module.exports = grammar({
     payload_expression_hole: ($) =>
       choice(
         prec.left(
-          27,
+          29,
           seq(field("target", $._expression_hole), field("body", $.body)),
         ),
         prec.left(
-          27,
+          29,
           seq(field("target", $._expression_hole), field("body", $.list)),
         ),
       ),
@@ -1649,8 +1692,10 @@ module.exports = grammar({
       choice(
         seq(
           "(",
+          repeat(choice(",", $._newline)),
           field("variant", $.variant),
-          repeat1(seq("|", field("variant", $.variant))),
+          repeat1(seq(alias(token(/\|/), "|"), field("variant", $.variant))),
+          repeat(choice(",", $._newline)),
           ")",
         ),
         seq(
@@ -1759,7 +1804,7 @@ module.exports = grammar({
         prec.dynamic(
           1,
           prec.right(
-            1,
+            2,
             seq(
               field("operator", choice("..=", "..")),
               choice(field("end", $._expression), $._no_operand),
@@ -1785,7 +1830,7 @@ module.exports = grammar({
         prec.dynamic(
           1,
           prec.right(
-            3,
+            5,
             seq(
               field("operator", choice("..=", "..")),
               choice(field("end", $._expression_header), $._no_operand),
@@ -1793,7 +1838,7 @@ module.exports = grammar({
           ),
         ),
         prec(
-          3,
+          5,
           seq(
             field("start", $._expression_header),
             field("operator", choice("..=", "..")),
@@ -2199,7 +2244,7 @@ module.exports = grammar({
     // `m but ((0, 1): 1.0)` one entry of a `Mat`; a key is never a site.
     product_component: ($) =>
       prec(
-        14,
+        15,
         seq(
           field("name", choice($.identifier, $.number, $.position_pair)),
           ":",

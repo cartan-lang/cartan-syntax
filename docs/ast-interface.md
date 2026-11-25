@@ -67,7 +67,7 @@ The source constructs are:
 | Fibers | Name and ordered named components with annotations; field kinds determine algebra, in the compiler. |
 | Annotations | Local or qualified named types, generic applications, inline struct, product and sum types and fixed positional tuple annotations, preserving names and numeric arguments such as `Array<Primitive, 1>` without interpreting rank. |
 | Patterns | Name, wildcard, list, positional site pattern with its enclosing annotation retained, constructor, named components and brace entries, all nesting. |
-| Expressions | Literal number/boolean/string, tagged template, local/qualified name, unary/binary operation, conditional, local/qualified call, indexing, `of` component read, product value, `but` update, `none`, presence default `??`, absence mark `?`, list, named map, map join, configurable constructor/application, range, `periodic`, body, `for` and value-producing `each` comprehensions, and `reduce`. |
+| Expressions | Literal number/boolean/string, tagged template, local/qualified name, unary/binary operation, conditional, local/qualified call, indexing, `of` component read, product value, `but` update, `none`, presence default `??`, absence mark `?`, list, named map, map join, merge, configurable constructor/application, range, `periodic`, body, `for` and value-producing `each` comprehensions, and `reduce`. |
 | Body | Ordered `BodyItem::Local`, `BodyItem::Require` and `BodyItem::Result` entries, with exactly one result. A result need not be last. |
 | Update block | `ItemKind::Step` for `step { ... }` with the braced body span and ordered writes, preserving target names, values and spans. |
 
@@ -408,8 +408,10 @@ remains `ItemKind::Fiber`. Each `Variant { name, payload, span }` keeps declared
 order and duplicate names, and a unit variant has `payload: None`. An inline
 roster wherever a fiber type stands, including struct entries, fiber components,
 type arguments and before `|None`, is `AnnotationKind::Sum(Vec<Variant>)` with
-its span covering the parentheses. The grammar refuses a one-variant roster and
-mixed `,`/`|` separators.
+its span covering the parentheses. The grammar refuses a one-variant roster
+and, where a type stands, mixed `,`/`|` separators. A roster or a product
+description may open on the line after its parenthesis and close on a line of
+its own, so variants may be written one to a line behind leading bars.
 
 A constructor whose parentheses hold a tight `Name: value` argument is
 `ExprKind::Construct { head, variant, payload: Some(_) }`. `head` is
@@ -485,6 +487,23 @@ Tree-sitter parser generation/execution remains unverified.
 existing additive precedence and left associativity: `a <> b <> c` means
 `(a <> b) <> c`, and `a <> b + c` means `(a <> b) + c`. Syntax does not validate
 operand types or implement strict joins, key compatibility or right bias.
+
+`a | b` uses `ExprKind::Merge { left, right, operator_span }`, the keyed overlay
+the workspace [collections](../../cartan/docs/records/collections.md) record
+defines. It is the loosest operator, below the range, `??` and `but`, and groups
+left: `a | b | c` means `(a | b) | c`, `u | e but (x: 1.0)` means
+`u | (e but (x: 1.0))`, `a ?? b | c` means `(a ?? b) | c` and `0..n | m..k`
+merges two ranges. A line beginning with `|` continues the previous expression,
+and `operator_span` covers the bar alone. Syntax does not validate operand kinds
+or implement the overlay.
+
+The bar has two readings where a type stands: it separates a sum roster's
+variants and introduces an annotation's `|None` alternative. A value's
+parentheses hold a merge, as in `(a | b)` and `(x: a | b, y: c)`, unless
+arguments follow the closing parenthesis, which makes them an inline constructor
+head, `(A | B)(B)`. A roster with mixed separators in that position is therefore
+read as a product value, and the arguments after it are what the grammar
+refuses.
 
 `:base :over {body}` uses `ExprKind::Configurable { settings, body }`.
 The nonempty ordered `Vec<SettingsAtom>` retains each atom's `value: Expr` and

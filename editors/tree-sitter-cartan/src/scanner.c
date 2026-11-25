@@ -314,6 +314,8 @@ static int continuation_at(TSLexer *lexer) {
     }
   }
   switch (literal(lexer)) {
+    case 36:
+      return CONTINUATION;
     case 25:
       return CONTINUATION;
     case 1:
@@ -437,6 +439,7 @@ static bool continues_expression(Next next) {
     case 32:
     case 34:
     case 35:
+    case 36:
       if (true) return true;
   }
   return false;
