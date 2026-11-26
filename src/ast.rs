@@ -248,6 +248,25 @@ pub struct Signature {
     pub span: Span,
 }
 
+/// The role of an annotation when deciding where a function signature may stand.
+/// The same policy applies after a name is resolved to an annotation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SignatureContext {
+    Value,
+    Parameter,
+    ProtocolDefinition,
+    StructTypeEntry,
+}
+
+impl SignatureContext {
+    pub const fn allows_signature(self) -> bool {
+        match self {
+            Self::Value => false,
+            Self::Parameter | Self::ProtocolDefinition | Self::StructTypeEntry => true,
+        }
+    }
+}
+
 /// Where a function signature was written outside a parameter annotation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]

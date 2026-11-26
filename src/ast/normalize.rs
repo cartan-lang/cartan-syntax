@@ -575,7 +575,11 @@ impl Reader<'_> {
                 shape(node, &["name", "type"], &[])?;
                 ItemKind::Protocol(Protocol {
                     name: self.name(field(node, "name")?)?,
-                    annotation: self.protocol_annotation(field(node, "type")?)?,
+                    annotation: self.annotation_at(
+                        field(node, "type")?,
+                        SignatureContext::ProtocolDefinition,
+                        None,
+                    )?,
                 })
             }
             "function_definition" => {
@@ -674,12 +678,25 @@ impl Reader<'_> {
 
     /// A value type, refusing a signature written at `position`.
     fn annotation(&self, node: &Node, position: SignaturePosition) -> Result<Annotation> {
+        self.annotation_at(node, SignatureContext::Value, Some(position))
+    }
+
+    fn annotation_at(
+        &self,
+        node: &Node,
+        context: SignatureContext,
+        position: Option<SignaturePosition>,
+    ) -> Result<Annotation> {
         match self.written_type(node)? {
             Written::Value(written) => self.value_type(written),
+            Written::Signature(written) if context.allows_signature() => Ok(Annotation {
+                kind: AnnotationKind::Signature(Box::new(self.signature(written)?)),
+                span: span(written),
+            }),
             Written::Signature(written) => Err(form_at(
                 self.arrow_span(field(written, "arrow")?),
                 FormDiagnosticKind::SignatureOutsideParameter {
-                    position,
+                    position: position.expect("a value annotation's written position"),
                     signature_span: span(written),
                 },
             )),
@@ -687,24 +704,11 @@ impl Reader<'_> {
     }
 
     fn parameter_annotation(&self, node: &Node) -> Result<ParameterAnnotation> {
-        match self.written_type(node)? {
-            Written::Value(written) => self.value_type(written).map(ParameterAnnotation::Value),
-            Written::Signature(written) => {
-                self.signature(written).map(ParameterAnnotation::Signature)
-            }
-        }
-    }
-
-    /// An annotation where a signature may stand as one: an entry of a struct
-    /// type, or what a `protocol` names.
-    fn protocol_annotation(&self, node: &Node) -> Result<Annotation> {
-        match self.written_type(node)? {
-            Written::Value(written) => self.value_type(written),
-            Written::Signature(written) => Ok(Annotation {
-                kind: AnnotationKind::Signature(Box::new(self.signature(written)?)),
-                span: span(written),
-            }),
-        }
+        let annotation = self.annotation_at(node, SignatureContext::Parameter, None)?;
+        Ok(match annotation.kind {
+            AnnotationKind::Signature(signature) => ParameterAnnotation::Signature(*signature),
+            _ => ParameterAnnotation::Value(annotation),
+        })
     }
 
     /// `(T1, …, Tn) -> R`, or `T -> R` for one argument.
@@ -865,7 +869,7 @@ impl Reader<'_> {
                 shape(entry, &["name", "type"], &[])?;
                 let written = field(entry, "type")?;
                 let annotation = if protocol {
-                    self.protocol_annotation(written)?
+                    self.annotation_at(written, SignatureContext::StructTypeEntry, None)?
                 } else {
                     self.annotation(written, SignaturePosition::StructDeclaration)?
                 };
