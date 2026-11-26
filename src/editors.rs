@@ -150,7 +150,7 @@ fn vscode_files() -> Vec<(&'static str, String, bool)> {
 /// The version every editor package carries: the Cartan product release it
 /// ships with, which the library's own crate version does not track.
 fn version() -> &'static str {
-    "0.14.0"
+    "0.15.0"
 }
 
 fn json(value: Json) -> String {

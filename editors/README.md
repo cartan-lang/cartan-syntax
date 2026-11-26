@@ -61,9 +61,9 @@ npx @vscode/vsce package
 Packaging first runs `vscode:prepublish`: the Tree-sitter CLI builds
 `tree-sitter-cartan.wasm` from `tree-sitter-cartan/`, fetching its compiler
 on first use, and `check.js` requires the expected semantic tokens from a
-short fixture. The package is `cartan-0.14.0.vsix`. Install it with
+short fixture. The package is `cartan-0.15.0.vsix`. Install it with
 **Extensions: Install from VSIX** in the Command Palette, or
-`code --install-extension cartan-0.14.0.vsix`. VS Code does not update
+`code --install-extension cartan-0.15.0.vsix`. VS Code does not update
 an extension installed this way. The dependencies, the built parser and the
 package are ignored by Git.
 
