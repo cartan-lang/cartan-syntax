@@ -441,6 +441,13 @@ pub enum ExprKind {
         function: NameRef,
         arguments: Vec<Expr>,
     },
+    /// `(if c { f } else { g })(x)`: a parenthesized expression applied to
+    /// arguments. `function` is the expression inside the parentheses.
+    /// Whether it gives a function belongs to analysis.
+    Apply {
+        function: Box<Expr>,
+        arguments: Vec<Expr>,
+    },
     /// A sum constructor naming its variant, `Shape(A: 1.0)` or
     /// `(A: Real | B)(B)`. A unit variant has no payload. A named head applied
     /// to a bare name, `Mode(Binary)`, stays a [`ExprKind::Call`], since only

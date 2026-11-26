@@ -1460,6 +1460,7 @@ fn build() -> Grammar {
                     sym("string"),
                     sym("list"),
                     sym("product"),
+                    sym("apply_expression"),
                     sym("parenthesized_expression"),
                     sym("map"),
                     sym("body"),
@@ -1549,8 +1550,9 @@ fn build() -> Grammar {
             ),
             def(
                 "call_expression",
-                "only named functions can be called, and a used document's name is\n\
-                 reached through its namespace. Primes ride the head —\n\
+                "a call's head is a function's name, and a used document's name is\n\
+                 reached through its namespace; a parenthesized expression that\n\
+                 gives a function is applied by `apply_expression`. Primes ride the head —\n\
                  `f'(x)`, the univariate derivative at the prime count's order\n\
                  — and a primed head is a call, so the parens\n\
                  follow it. **The paren follows the head immediately**, as the\n\
@@ -1621,6 +1623,22 @@ fn build() -> Grammar {
                                 field("arguments", sym("argument_list")),
                             ]),
                         ),
+                    ]),
+                ),
+            ),
+            def(
+                "apply_expression",
+                "`(if c { f } else { g })(x)` — a parenthesized expression that\n\
+                 gives a function, applied. The parens make the head one unit, so\n\
+                 the argument paren follows it immediately, as it follows a name\n\
+                 in a call. It stands after the call and the product among the\n\
+                 primary forms, so a description in the same place stays a\n\
+                 constructor, `(A | B)(B)`, and a product value is read as one.",
+                prec(
+                    2,
+                    seq(vec![
+                        field("head", sym("parenthesized_expression")),
+                        field("arguments", sym("argument_list")),
                     ]),
                 ),
             ),

@@ -266,6 +266,15 @@ fn a_merge_prints_spaced_and_a_bar_opening_a_line_lines_up() {
 }
 
 #[test]
+fn an_applied_expression_keeps_its_argument_paren_against_the_head() {
+    formats(
+        "y=( if n>0 {f} else {g} )( x,2.0 )\n",
+        "y = (if n > 0 { f } else { g })(x, 2.0)\n",
+    );
+    formats("y = (f)(x)[0]+1.0\n", "y = (f)(x)[0] + 1.0\n");
+}
+
+#[test]
 fn a_continued_chain_keeps_crlf() {
     formats(
         "s(a: Real, b: Real) =\r\n  a\r\n   + b\r\n  - a\r\n",

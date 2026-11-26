@@ -67,7 +67,7 @@ The source constructs are:
 | Fibers | Name and ordered named components with annotations; field kinds determine algebra, in the compiler. |
 | Annotations | Local or qualified named types, generic applications, inline struct, product and sum types and fixed positional tuple annotations, preserving names and numeric arguments such as `Array<Primitive, 1>` without interpreting rank. |
 | Patterns | Name, wildcard, list, positional site pattern with its enclosing annotation retained, constructor, named components and brace entries, all nesting. |
-| Expressions | Literal number/boolean/string, tagged template, local/qualified name, unary/binary operation, conditional, local/qualified call, indexing, `of` component read, product value, `but` update, `none`, presence default `??`, absence mark `?`, list, named map, map join, merge, configurable constructor/application, range, `periodic`, body, `for` and value-producing `each` comprehensions, and `reduce`. |
+| Expressions | Literal number/boolean/string, tagged template, local/qualified name, unary/binary operation, conditional, local/qualified call, indexing, `of` component read, product value, `but` update, `none`, presence default `??`, absence mark `?`, list, named map, map join, merge, applied expression, configurable constructor/application, range, `periodic`, body, `for` and value-producing `each` comprehensions, and `reduce`. |
 | Body | Ordered `BodyItem::Local`, `BodyItem::Require` and `BodyItem::Result` entries, with exactly one result. A result need not be last. |
 | Update block | `ItemKind::Step` for `step { ... }` with the braced body span and ordered writes, preserving target names, values and spans. |
 
@@ -487,6 +487,15 @@ Tree-sitter parser generation/execution remains unverified.
 existing additive precedence and left associativity: `a <> b <> c` means
 `(a <> b) <> c`, and `a <> b + c` means `(a <> b) + c`. Syntax does not validate
 operand types or implement strict joins, key compatibility or right bias.
+
+`(if c { f } else { g })(x)` uses `ExprKind::Apply { function, arguments }`: a
+parenthesized expression applied to arguments. `function` is the expression
+inside the parentheses and the span covers the whole application. The argument
+parenthesis is immediate, as a named call's is, so `(f) (x)` is two values. A
+named call stays `ExprKind::Call`, and a roster in head position stays a
+constructor, `(A | B)(B)`. Whether the head gives a function, and what applying
+it means, belong to the compiler. The CST node is `apply_expression` with the
+fields `head` and `arguments`.
 
 `a | b` uses `ExprKind::Merge { left, right, operator_span }`, the keyed overlay
 the workspace [collections](../../cartan/docs/records/collections.md) record

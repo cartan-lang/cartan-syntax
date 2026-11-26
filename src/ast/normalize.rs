@@ -1116,6 +1116,13 @@ impl Reader<'_> {
             {
                 self.construct(node)
             }
+            "apply_expression" => {
+                shape(node, &["head", "arguments"], &[])?;
+                Ok(ExprKind::Apply {
+                    function: Box::new(self.expr(field(node, "head")?)?),
+                    arguments: self.exprs(field(node, "arguments")?)?,
+                })
+            }
             "call_expression" => self.call(node),
             "index_expression" => self.index(node),
             "component_expression" => self.projection(node),

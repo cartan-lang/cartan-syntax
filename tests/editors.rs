@@ -265,6 +265,15 @@ const FIXTURES: &[&str] = &[
     "x = texture(|p| color)",
     "x = texture(|p| a | b)",
     "x = texture(\n  |p|\n  color\n)",
+    // a parenthesized expression applied: the argument paren is immediate
+    "y = (if n > 0 { f } else { g })(x)",
+    "y = (f)(x, 2.0)",
+    "y = (f)()",
+    "y = (if c { f } else { g })(x) + 1.0",
+    "y = (f)(x)[0]",
+    "y = (\n    if c { f }\n    else { g }\n)(x)",
+    "y = g((if c { f } else { h })(x), 2.0)",
+    "y = for i in 0..n { (if i > 2 { f } else { g })(u[i]) }",
 ];
 
 #[test]

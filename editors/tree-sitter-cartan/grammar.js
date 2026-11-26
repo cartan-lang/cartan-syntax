@@ -743,6 +743,7 @@ module.exports = grammar({
         $.string,
         $.list,
         $.product,
+        $.apply_expression,
         $.parenthesized_expression,
         $.map,
         $.body,
@@ -1115,6 +1116,7 @@ module.exports = grammar({
           $.string,
           $.list,
           $.product,
+          $.apply_expression,
           $.parenthesized_expression,
           $.map,
           $.body,
@@ -1374,6 +1376,7 @@ module.exports = grammar({
           $.string,
           $.list,
           $.product,
+          $.apply_expression,
           $.parenthesized_expression,
           $.map,
           $.body,
@@ -1621,8 +1624,9 @@ module.exports = grammar({
         ),
       ),
 
-    // only named functions can be called, and a used document's name is
-    // reached through its namespace. Primes ride the head —
+    // a call's head is a function's name, and a used document's name is
+    // reached through its namespace; a parenthesized expression that
+    // gives a function is applied by `apply_expression`. Primes ride the head —
     // `f'(x)`, the univariate derivative at the prime count's order
     // — and a primed head is a call, so the parens
     // follow it. **The paren follows the head immediately**, as the
@@ -1673,6 +1677,21 @@ module.exports = grammar({
               field("arguments", $.argument_list),
             ),
           ),
+        ),
+      ),
+
+    // `(if c { f } else { g })(x)` — a parenthesized expression that
+    // gives a function, applied. The parens make the head one unit, so
+    // the argument paren follows it immediately, as it follows a name
+    // in a call. It stands after the call and the product among the
+    // primary forms, so a description in the same place stays a
+    // constructor, `(A | B)(B)`, and a product value is read as one.
+    apply_expression: ($) =>
+      prec(
+        2,
+        seq(
+          field("head", $.parenthesized_expression),
+          field("arguments", $.argument_list),
         ),
       ),
 

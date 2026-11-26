@@ -217,6 +217,15 @@ fn assert_expr_spans(source: &str, expr: &Expr) {
                 assert_expr_spans(source, expr);
             }
         }
+        ExprKind::Apply {
+            function,
+            arguments,
+        } => {
+            assert_expr_spans(source, function);
+            for expr in arguments {
+                assert_expr_spans(source, expr);
+            }
+        }
         ExprKind::Construct {
             head,
             variant,
@@ -1285,6 +1294,76 @@ fn merge_stands_wherever_an_expression_does() {
     let (left, right) = merge(expression("{a: 1} | each k in ks { {k => 2.5} }"));
     assert!(matches!(left.kind, ExprKind::Map(_)));
     assert!(matches!(right.kind, ExprKind::Each(_)));
+}
+
+#[test]
+fn a_parenthesized_expression_is_applied_when_arguments_follow_it_at_once() {
+    // the owner's example: a choice between two functions, applied
+    let source = "(if n > 0 { f } else { g })(x)";
+    let expr = expression(source);
+    assert_eq!(expr.span.end, source.len());
+    let ExprKind::Apply {
+        function,
+        arguments,
+    } = expr.kind
+    else {
+        panic!("{expr:?}")
+    };
+    let ExprKind::If {
+        consequence,
+        alternative,
+        ..
+    } = &function.kind
+    else {
+        panic!("{function:?}")
+    };
+    assert!(is_name(consequence, "f"));
+    assert!(is_name(alternative.as_deref().unwrap(), "g"));
+    let [argument] = arguments.as_slice() else {
+        panic!()
+    };
+    assert!(is_name(argument, "x"));
+
+    // a name in parentheses, several arguments and none
+    for (source, count) in [("(f)(x)", 1), ("(f)(x, y, 2.0)", 3), ("(f)()", 0)] {
+        let ExprKind::Apply {
+            function,
+            arguments,
+        } = expression(source).kind
+        else {
+            panic!("{source}")
+        };
+        assert!(is_name(&function, "f"), "{source}");
+        assert_eq!(arguments.len(), count, "{source}");
+    }
+
+    // the result is an ordinary operand, and the head may span lines
+    let ExprKind::Binary { left, .. } = expression("(if c { f } else { g })(x) + 1.0").kind else {
+        panic!()
+    };
+    assert!(matches!(left.kind, ExprKind::Apply { .. }));
+    let ExprKind::Index { target, .. } = expression("(f)(x)[0]").kind else {
+        panic!()
+    };
+    assert!(matches!(target.kind, ExprKind::Apply { .. }));
+    assert!(matches!(
+        expression("(\n    if c { f }\n    else { g }\n)(x)").kind,
+        ExprKind::Apply { .. }
+    ));
+
+    // a named call stays a call, and a description in head position stays
+    // a constructor
+    assert!(matches!(expression("f(x)").kind, ExprKind::Call { .. }));
+    assert!(matches!(
+        expression("(A | B)(B)").kind,
+        ExprKind::Construct { .. }
+    ));
+
+    // the argument paren is immediate: with a space these are two values,
+    // which nothing joins
+    assert!(ast::parse_document("y = (f) (x)\n").is_err());
+    // parentheses alone are still grouping
+    assert!(is_name(&expression("(f)"), "f"));
 }
 
 #[test]
