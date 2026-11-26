@@ -190,6 +190,14 @@
         "required": true,
         "types": [
           {
+            "type": "apply_expression",
+            "named": true
+          },
+          {
+            "type": "call_expression",
+            "named": true
+          },
+          {
             "type": "parenthesized_expression",
             "named": true
           }

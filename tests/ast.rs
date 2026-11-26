@@ -1351,6 +1351,39 @@ fn a_parenthesized_expression_is_applied_when_arguments_follow_it_at_once() {
         ExprKind::Apply { .. }
     ));
 
+    // a call applied, which is how a factory's result is used at once, and
+    // applications chained to the left
+    let ExprKind::Apply {
+        function,
+        arguments,
+    } = expression("scale(2.0)(x)").kind
+    else {
+        panic!()
+    };
+    assert!(matches!(function.kind, ExprKind::Call { .. }));
+    assert!(is_name(&arguments[0], "x"));
+    let ExprKind::Apply { function, .. } = expression("make(a)(b)(c)").kind else {
+        panic!()
+    };
+    let ExprKind::Apply {
+        function: inner, ..
+    } = function.kind
+    else {
+        panic!()
+    };
+    assert!(matches!(inner.kind, ExprKind::Call { .. }));
+    assert!(matches!(
+        expression("(if c { f } else { g })(a)(b)").kind,
+        ExprKind::Apply { .. }
+    ));
+    assert!(matches!(
+        expression("lib::scale(2.0)(x)").kind,
+        ExprKind::Apply { .. }
+    ));
+    // an indexed value and a product are not applied
+    assert!(ast::parse_document("y = u[0](x)\n").is_err());
+    assert!(ast::parse_document("y = (a: 1.0)(x)\n").is_err());
+
     // a named call stays a call, and a description in head position stays
     // a constructor
     assert!(matches!(expression("f(x)").kind, ExprKind::Call { .. }));
@@ -1837,15 +1870,9 @@ fn a_function_expression_retains_equation_parameters_and_its_braced_body() {
 }
 
 #[test]
-fn malformed_function_expressions_and_immediate_applications_are_refused() {
-    for source in [
-        "fn",
-        "fn(x:)",
-        "fn(x) x",
-        "fn(x) { x",
-        "fn(x) { x }(1)",
-        "scale(gain)(x)",
-    ] {
+fn malformed_function_expressions_are_refused() {
+    // a literal is applied only in parentheses, `(fn(x) { x })(1)`
+    for source in ["fn", "fn(x:)", "fn(x) x", "fn(x) { x", "fn(x) { x }(1)"] {
         let errors = ast::parse_expression(source).unwrap_err();
         assert!(
             matches!(errors.as_slice(), [Error::Grammar(_), ..]),

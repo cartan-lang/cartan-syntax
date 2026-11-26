@@ -272,6 +272,7 @@ fn an_applied_expression_keeps_its_argument_paren_against_the_head() {
         "y = (if n > 0 { f } else { g })(x, 2.0)\n",
     );
     formats("y = (f)(x)[0]+1.0\n", "y = (f)(x)[0] + 1.0\n");
+    formats("y=scale( 2.0 )( x )\n", "y = scale(2.0)(x)\n");
 }
 
 #[test]

@@ -441,9 +441,10 @@ pub enum ExprKind {
         function: NameRef,
         arguments: Vec<Expr>,
     },
-    /// `(if c { f } else { g })(x)`: a parenthesized expression applied to
-    /// arguments. `function` is the expression inside the parentheses.
-    /// Whether it gives a function belongs to analysis.
+    /// `scale(2.0)(x)` and `(if c { f } else { g })(x)`: an expression applied
+    /// to arguments. `function` is a call, another application or the
+    /// expression inside parentheses. Whether it gives a function belongs to
+    /// analysis.
     Apply {
         function: Box<Expr>,
         arguments: Vec<Expr>,

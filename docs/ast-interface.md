@@ -488,14 +488,17 @@ existing additive precedence and left associativity: `a <> b <> c` means
 `(a <> b) <> c`, and `a <> b + c` means `(a <> b) + c`. Syntax does not validate
 operand types or implement strict joins, key compatibility or right bias.
 
-`(if c { f } else { g })(x)` uses `ExprKind::Apply { function, arguments }`: a
-parenthesized expression applied to arguments. `function` is the expression
-inside the parentheses and the span covers the whole application. The argument
+`scale(2.0)(x)` and `(if c { f } else { g })(x)` use
+`ExprKind::Apply { function, arguments }`: an expression applied to arguments.
+`function` is a call, another application, or the expression inside
+parentheses, and the span covers the whole application. Applications chain to
+the left, so `make(a)(b)(c)` applies the result of `make(a)(b)`. The argument
 parenthesis is immediate, as a named call's is, so `(f) (x)` is two values. A
-named call stays `ExprKind::Call`, and a roster in head position stays a
-constructor, `(A | B)(B)`. Whether the head gives a function, and what applying
-it means, belong to the compiler. The CST node is `apply_expression` with the
-fields `head` and `arguments`.
+named call stays `ExprKind::Call`, a roster in head position stays a
+constructor, `(A | B)(B)`, and an indexed value or a product value is not
+applied. Whether the head gives a function, and what applying it means, belong
+to the compiler. The CST node is `apply_expression` with the fields `head` and
+`arguments`.
 
 `a | b` uses `ExprKind::Merge { left, right, operator_span }`, the keyed overlay
 the workspace [collections](../../cartan/docs/records/collections.md) record

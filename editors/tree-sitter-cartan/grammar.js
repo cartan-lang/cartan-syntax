@@ -743,7 +743,6 @@ module.exports = grammar({
         $.string,
         $.list,
         $.product,
-        $.apply_expression,
         $.parenthesized_expression,
         $.map,
         $.body,
@@ -765,6 +764,7 @@ module.exports = grammar({
         $.but_expression,
         $.absent_expression,
         $.index_expression,
+        $.apply_expression,
         $.component_expression,
         $.config_expression,
         $.configure_dot_expression,
@@ -1020,6 +1020,28 @@ module.exports = grammar({
         seq(field("target", $._expression), field("index", $.subscript)),
       ),
 
+    // `scale(2.0)(x)` and `(if c { f } else { g })(x)` — an expression that
+    // gives a function, applied. It stands on a call, on a parenthesized
+    // expression and on another application, so applications chain left. The
+    // argument paren is immediate, as a named call's is, so `(f) (x)` stays two
+    // values. A description in head position is still a constructor,
+    // `(A | B)(B)`, and a product value is not applied.
+    apply_expression: ($) =>
+      prec.left(
+        14,
+        seq(
+          field(
+            "head",
+            choice(
+              $.call_expression,
+              $.parenthesized_expression,
+              $.apply_expression,
+            ),
+          ),
+          field("arguments", $.argument_list),
+        ),
+      ),
+
     // `S of u`, `0 of v`, `a of c`, `(i, j) of m` — the component read
     // . It stands above every arithmetic and
     // comparison operator and above unary minus, so `0 of v + 1` adds one
@@ -1116,7 +1138,6 @@ module.exports = grammar({
           $.string,
           $.list,
           $.product,
-          $.apply_expression,
           $.parenthesized_expression,
           $.map,
           $.body,
@@ -1138,6 +1159,7 @@ module.exports = grammar({
           alias($.but_expression_header, $.but_expression),
           alias($.absent_expression_header, $.absent_expression),
           alias($.index_expression_header, $.index_expression),
+          alias($.apply_expression_header, $.apply_expression),
           alias($.component_expression_header, $.component_expression),
           alias($.configure_dot_expression_header, $.configure_dot_expression),
         ),
@@ -1331,6 +1353,22 @@ module.exports = grammar({
         seq(field("target", $._expression_header), field("index", $.subscript)),
       ),
 
+    apply_expression_header: ($) =>
+      prec.left(
+        29,
+        seq(
+          field(
+            "head",
+            choice(
+              $.call_expression,
+              $.parenthesized_expression,
+              alias($.apply_expression_header, $.apply_expression),
+            ),
+          ),
+          field("arguments", $.argument_list),
+        ),
+      ),
+
     component_expression_header: ($) =>
       prec.right(
         27,
@@ -1376,7 +1414,6 @@ module.exports = grammar({
           $.string,
           $.list,
           $.product,
-          $.apply_expression,
           $.parenthesized_expression,
           $.map,
           $.body,
@@ -1398,6 +1435,7 @@ module.exports = grammar({
           alias($.but_expression_hole, $.but_expression),
           alias($.absent_expression_hole, $.absent_expression),
           alias($.index_expression_hole, $.index_expression),
+          alias($.apply_expression_hole, $.apply_expression),
           alias($.component_expression_hole, $.component_expression),
           alias($.configure_dot_expression_hole, $.configure_dot_expression),
           alias($.payload_expression_hole, $.payload_expression),
@@ -1592,6 +1630,22 @@ module.exports = grammar({
         seq(field("target", $._expression_hole), field("index", $.subscript)),
       ),
 
+    apply_expression_hole: ($) =>
+      prec.left(
+        29,
+        seq(
+          field(
+            "head",
+            choice(
+              $.call_expression,
+              $.parenthesized_expression,
+              alias($.apply_expression_hole, $.apply_expression),
+            ),
+          ),
+          field("arguments", $.argument_list),
+        ),
+      ),
+
     component_expression_hole: ($) =>
       prec.right(
         27,
@@ -1625,8 +1679,8 @@ module.exports = grammar({
       ),
 
     // a call's head is a function's name, and a used document's name is
-    // reached through its namespace; a parenthesized expression that
-    // gives a function is applied by `apply_expression`. Primes ride the head —
+    // reached through its namespace; any other expression that gives a
+    // function is applied by `apply_expression`. Primes ride the head —
     // `f'(x)`, the univariate derivative at the prime count's order
     // — and a primed head is a call, so the parens
     // follow it. **The paren follows the head immediately**, as the
@@ -1677,21 +1731,6 @@ module.exports = grammar({
               field("arguments", $.argument_list),
             ),
           ),
-        ),
-      ),
-
-    // `(if c { f } else { g })(x)` — a parenthesized expression that
-    // gives a function, applied. The parens make the head one unit, so
-    // the argument paren follows it immediately, as it follows a name
-    // in a call. It stands after the call and the product among the
-    // primary forms, so a description in the same place stays a
-    // constructor, `(A | B)(B)`, and a product value is read as one.
-    apply_expression: ($) =>
-      prec(
-        2,
-        seq(
-          field("head", $.parenthesized_expression),
-          field("arguments", $.argument_list),
         ),
       ),
 

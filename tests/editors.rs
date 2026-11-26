@@ -274,6 +274,11 @@ const FIXTURES: &[&str] = &[
     "y = (\n    if c { f }\n    else { g }\n)(x)",
     "y = g((if c { f } else { h })(x), 2.0)",
     "y = for i in 0..n { (if i > 2 { f } else { g })(u[i]) }",
+    "y = scale(2.0)(x)",
+    "y = make(a)(b)(c)",
+    "y = (if c { f } else { g })(a)(b)",
+    "y = lib::scale(2.0)(x) + scale(3.0)(x)",
+    "y = apply(scale(2.0), x)",
 ];
 
 #[test]

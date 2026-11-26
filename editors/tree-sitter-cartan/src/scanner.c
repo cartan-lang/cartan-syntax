@@ -418,6 +418,7 @@ static bool continues_expression(Next next) {
   }
   switch (next.literal) {
     case 1:
+    case 4:
     case 6:
     case 7:
     case 9:

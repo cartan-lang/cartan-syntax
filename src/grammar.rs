@@ -1460,7 +1460,6 @@ fn build() -> Grammar {
                     sym("string"),
                     sym("list"),
                     sym("product"),
-                    sym("apply_expression"),
                     sym("parenthesized_expression"),
                     sym("map"),
                     sym("body"),
@@ -1512,6 +1511,9 @@ fn build() -> Grammar {
                     postfix("absent_expression", POSTFIX, "value", "?")
                         .doc("`f(x?, y)` — the argument mark: a postfix `?` says\nthe slot it stands on licenses absence. It rides the postfix chain,\nso a call result marks too — `points(vec(x, y)?)`."),
                     postfix("index_expression", POSTFIX, "target", field("index", sym("subscript"))),
+                    postfix("apply_expression", POSTFIX, "head", field("arguments", sym("argument_list")))
+                        .targets(&["call_expression", "parenthesized_expression", "apply_expression"])
+                        .doc("`scale(2.0)(x)` and `(if c { f } else { g })(x)` — an expression that\ngives a function, applied. It stands on a call, on a parenthesized\nexpression and on another application, so applications chain left. The\nargument paren is immediate, as a named call's is, so `(f) (x)` stays two\nvalues. A description in head position is still a constructor,\n`(A | B)(B)`, and a product value is not applied."),
                     prefix(
                         "component_expression",
                         OF,
@@ -1551,8 +1553,8 @@ fn build() -> Grammar {
             def(
                 "call_expression",
                 "a call's head is a function's name, and a used document's name is\n\
-                 reached through its namespace; a parenthesized expression that\n\
-                 gives a function is applied by `apply_expression`. Primes ride the head —\n\
+                 reached through its namespace; any other expression that gives a\n\
+                 function is applied by `apply_expression`. Primes ride the head —\n\
                  `f'(x)`, the univariate derivative at the prime count's order\n\
                  — and a primed head is a call, so the parens\n\
                  follow it. **The paren follows the head immediately**, as the\n\
@@ -1623,22 +1625,6 @@ fn build() -> Grammar {
                                 field("arguments", sym("argument_list")),
                             ]),
                         ),
-                    ]),
-                ),
-            ),
-            def(
-                "apply_expression",
-                "`(if c { f } else { g })(x)` — a parenthesized expression that\n\
-                 gives a function, applied. The parens make the head one unit, so\n\
-                 the argument paren follows it immediately, as it follows a name\n\
-                 in a call. It stands after the call and the product among the\n\
-                 primary forms, so a description in the same place stays a\n\
-                 constructor, `(A | B)(B)`, and a product value is read as one.",
-                prec(
-                    2,
-                    seq(vec![
-                        field("head", sym("parenthesized_expression")),
-                        field("arguments", sym("argument_list")),
                     ]),
                 ),
             ),
