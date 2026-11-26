@@ -282,3 +282,19 @@ fn a_continued_chain_keeps_crlf() {
         "s(a: Real, b: Real) =\r\n      a\r\n    + b\r\n    - a\r\n",
     );
 }
+
+#[test]
+fn formats_a_protocol_declaration_and_a_literal_protocol_annotation() {
+    formats(
+        "protocol   K=Real->Real\nprotocol R=( Cons,Cons )->Cons\n",
+        "protocol K = Real -> Real\nprotocol R = (Cons, Cons) -> Cons\n",
+    );
+    formats(
+        "protocol Physics = {\n  pressure: Cons -> Real,\n  flux: (Cons, Cons, Real, Real) -> Flux,\n}\n",
+        "protocol Physics = {\n    pressure: Cons -> Real,\n    flux: (Cons, Cons, Real, Real) -> Flux,\n}\n",
+    );
+    formats(
+        "face(p:{pressure:Cons->Real,gamma:Real}, l:Cons) = p::pressure(l)\n",
+        "face(p: { pressure: Cons -> Real, gamma: Real }, l: Cons) = p::pressure(l)\n",
+    );
+}

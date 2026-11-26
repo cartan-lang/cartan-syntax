@@ -732,6 +732,7 @@ fn build() -> Grammar {
                     sym("port_declaration"),
                     sym("fiber_declaration"),
                     sym("struct_declaration"),
+                    sym("protocol_declaration"),
                     sym("step_block"),
                     // the bare expression stands above the three items
                     // whose heads it shares because each of those states
@@ -1066,18 +1067,33 @@ fn build() -> Grammar {
                 "`iter: Int` — one entry of a struct: the key, and the kind the\n\
                  entry holds, which may take the absence alternative,\n\
                  `name: Real|None`: the entry is always there and its value may be\n\
-                 absent. That a struct states at least one entry, and no key\n\
+                 absent. An entry may state a function signature in place of a\n\
+                 kind, `pressure: (Real, Real) -> Real`, which makes the struct\n\
+                 type a protocol: what is required of a struct that holds\n\
+                 functions. That a struct states at least one entry, and no key\n\
                  twice, and that the alternative is `None`, a later analysis stage\n\
                  states.",
                 seq(vec![
                     field("name", sym("identifier")),
                     expecting(":", Stated::StructEntryType.label()),
-                    field("type", sym("fiber_type")),
-                    optional(seq(vec![
-                        bar(),
-                        field("alternative", sym("fiber_type")),
-                        refusing(bar(), Stated::AnnotationAlternative.label()),
-                    ])),
+                    field("type", sym("type_annotation")),
+                ]),
+            ),
+            def(
+                "protocol_declaration",
+                "`protocol Physics = { pressure: Cons -> Real, flux: (Cons, Cons) -> Flux }`\n\
+                 and `protocol Riemann = (Cons, Cons) -> Cons` — a name for what\n\
+                 a parameter requires of a function, or of a struct that holds\n\
+                 functions.\n\
+                 \n\
+                 **It is an alias, as a named fiber is.** Wherever the name\n\
+                 stands, what it names may be written in its place, and the name\n\
+                 carries no identity of its own.",
+                seq(vec![
+                    "protocol".into(),
+                    field("name", sym("identifier")),
+                    "=".into(),
+                    field("type", sym("type_annotation")),
                 ]),
             ),
             def(

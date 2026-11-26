@@ -32,6 +32,8 @@
   name: (identifier) @type)
 (struct_declaration
   name: (identifier) @type)
+(protocol_declaration
+  name: (identifier) @type)
 (fiber_type
   name: (identifier) @type)
 (fiber_type

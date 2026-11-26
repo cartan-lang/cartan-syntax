@@ -244,6 +244,21 @@ value remains `ExprKind::Map`. A struct declaration is a structural alias, not a
 nominal constructor or type identity; the compiler interprets an annotated brace value
 structurally through the alias, never from AST spelling alone.
 
+`ItemKind::Protocol(Protocol { name, annotation })` covers
+`protocol K = (T1, …, Tn) -> R` and `protocol P = {k: T -> R, …}`: a name for
+what a parameter requires of a function, or of a struct that holds functions.
+It is an alias, as a named fiber is: the annotation may be written wherever
+the name stands, and an annotation naming one is `AnnotationKind::Named`. What
+it names is an ordinary `Annotation`, so a name for a kind,
+`protocol Scalar = Real`, is one too. A signature that stands as an annotation
+of its own, as what a protocol names or as an entry of a struct type, is
+`AnnotationKind::Signature(Box<Signature>)`, with the same `Signature` a
+parameter's own annotation carries. A struct type with such an entry is a
+protocol wherever it is written; a `struct` declaration names data and refuses
+one as `SignatureOutsideParameter` at `SignaturePosition::StructDeclaration`.
+Whether a protocol is admitted where it stands, and what satisfies it, belongs
+to the compiler.
+
 An inline struct type `{a: Real, b: Int}` written where an annotation stands is
 `AnnotationKind::Struct(Vec<StructEntry>)`, using the same entries as a
 declaration: source order, duplicate keys and an empty `{}` are preserved, and

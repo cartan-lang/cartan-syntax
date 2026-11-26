@@ -8329,6 +8329,32 @@
     }
   },
   {
+    "type": "protocol_declaration",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "type": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "type_annotation",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "qualified_identifier",
     "named": true,
     "fields": {
@@ -9556,6 +9582,10 @@
           "named": true
         },
         {
+          "type": "protocol_declaration",
+          "named": true
+        },
+        {
           "type": "require_statement",
           "named": true
         },
@@ -9842,16 +9872,6 @@
     "type": "struct_entry",
     "named": true,
     "fields": {
-      "alternative": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "fiber_type",
-            "named": true
-          }
-        ]
-      },
       "name": {
         "multiple": false,
         "required": true,
@@ -9867,7 +9887,7 @@
         "required": true,
         "types": [
           {
-            "type": "fiber_type",
+            "type": "type_annotation",
             "named": true
           }
         ]
@@ -11716,6 +11736,10 @@
   {
     "type": "primes",
     "named": true
+  },
+  {
+    "type": "protocol",
+    "named": false
   },
   {
     "type": "raw_chunk",

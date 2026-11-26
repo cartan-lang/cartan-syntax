@@ -83,6 +83,7 @@ module.exports = grammar({
         $.port_declaration,
         $.fiber_declaration,
         $.struct_declaration,
+        $.protocol_declaration,
         $.step_block,
         $.require_statement,
         $.bare_expression,
@@ -396,17 +397,29 @@ module.exports = grammar({
     // `iter: Int` — one entry of a struct: the key, and the kind the
     // entry holds, which may take the absence alternative,
     // `name: Real|None`: the entry is always there and its value may be
-    // absent. That a struct states at least one entry, and no key
+    // absent. An entry may state a function signature in place of a
+    // kind, `pressure: (Real, Real) -> Real`, which makes the struct
+    // type a protocol: what is required of a struct that holds
+    // functions. That a struct states at least one entry, and no key
     // twice, and that the alternative is `None`, a later analysis stage
     // states.
     struct_entry: ($) =>
+      seq(field("name", $.identifier), ":", field("type", $.type_annotation)),
+
+    // `protocol Physics = { pressure: Cons -> Real, flux: (Cons, Cons) -> Flux }`
+    // and `protocol Riemann = (Cons, Cons) -> Cons` — a name for what
+    // a parameter requires of a function, or of a struct that holds
+    // functions.
+    //
+    // **It is an alias, as a named fiber is.** Wherever the name
+    // stands, what it names may be written in its place, and the name
+    // carries no identity of its own.
+    protocol_declaration: ($) =>
       seq(
+        "protocol",
         field("name", $.identifier),
-        ":",
-        field("type", $.fiber_type),
-        optional(
-          seq(alias(token(/\|/), "|"), field("alternative", $.fiber_type)),
-        ),
+        "=",
+        field("type", $.type_annotation),
       ),
 
     component: ($) =>

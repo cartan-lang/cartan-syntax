@@ -16,6 +16,10 @@
   "struct" @context
   name: (identifier) @name) @item
 
+(protocol_declaration
+  "protocol" @context
+  name: (identifier) @name) @item
+
 (namespace_definition
   "namespace" @context
   name: (identifier) @name) @item

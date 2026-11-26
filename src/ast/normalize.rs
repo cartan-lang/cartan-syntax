@@ -57,7 +57,8 @@ pub(super) fn document(
                         | ItemKind::Function(_)
                         | ItemKind::Fiber(_)
                         | ItemKind::Sum(_)
-                        | ItemKind::Struct(_) => item.prose = Some(written),
+                        | ItemKind::Struct(_)
+                        | ItemKind::Protocol(_) => item.prose = Some(written),
                         ItemKind::Use(_) | ItemKind::Step(_) | ItemKind::Require(_) => {
                             errors.push(misplaced(written, Some(item.span)))
                         }
@@ -564,10 +565,17 @@ impl Reader<'_> {
             }
             "struct_declaration" => {
                 shape(node, &["name", "entries"], &[])?;
-                let entries = self.struct_entries(field(node, "entries")?)?;
+                let entries = self.struct_entries(field(node, "entries")?, false)?;
                 ItemKind::Struct(Struct {
                     name: self.name(field(node, "name")?)?,
                     entries,
+                })
+            }
+            "protocol_declaration" => {
+                shape(node, &["name", "type"], &[])?;
+                ItemKind::Protocol(Protocol {
+                    name: self.name(field(node, "name")?)?,
+                    annotation: self.protocol_annotation(field(node, "type")?)?,
                 })
             }
             "function_definition" => {
@@ -679,12 +687,28 @@ impl Reader<'_> {
     }
 
     fn parameter_annotation(&self, node: &Node) -> Result<ParameterAnnotation> {
-        let written = match self.written_type(node)? {
-            Written::Value(written) => {
-                return self.value_type(written).map(ParameterAnnotation::Value)
+        match self.written_type(node)? {
+            Written::Value(written) => self.value_type(written).map(ParameterAnnotation::Value),
+            Written::Signature(written) => {
+                self.signature(written).map(ParameterAnnotation::Signature)
             }
-            Written::Signature(written) => written,
-        };
+        }
+    }
+
+    /// An annotation where a signature may stand as one: an entry of a struct
+    /// type, or what a `protocol` names.
+    fn protocol_annotation(&self, node: &Node) -> Result<Annotation> {
+        match self.written_type(node)? {
+            Written::Value(written) => self.value_type(written),
+            Written::Signature(written) => Ok(Annotation {
+                kind: AnnotationKind::Signature(Box::new(self.signature(written)?)),
+                span: span(written),
+            }),
+        }
+    }
+
+    /// `(T1, …, Tn) -> R`, or `T -> R` for one argument.
+    fn signature(&self, written: &Node) -> Result<Signature> {
         let arguments = if written.kind == "signature_type" {
             shape(written, &["argument", "arrow", "result"], &[])?;
             written
@@ -719,7 +743,7 @@ impl Reader<'_> {
                 None => self.value_type(argument)?,
             }]
         };
-        Ok(ParameterAnnotation::Signature(Signature {
+        Ok(Signature {
             arguments,
             result: self.annotation(
                 field(written, "result")?,
@@ -727,7 +751,7 @@ impl Reader<'_> {
             )?,
             arrow_span: self.arrow_span(field(written, "arrow")?),
             span: span(written),
-        }))
+        })
     }
 
     /// `T|None`; any other alternative is refused, since this is the only union.
@@ -832,22 +856,18 @@ impl Reader<'_> {
     }
 
     /// Struct entries in source order, keeping duplicates and an empty list.
-    fn struct_entries(&self, node: &Node) -> Result<Vec<StructEntry>> {
+    /// An entry of a struct type may be a signature, which makes the type a
+    /// protocol; a `struct` declaration names data and refuses one.
+    fn struct_entries(&self, node: &Node, protocol: bool) -> Result<Vec<StructEntry>> {
         shape(node, &["entry"], &[])?;
         node.children_named("entry")
             .map(|entry| {
-                shape(entry, &["name", "type", "alternative"], &[])?;
+                shape(entry, &["name", "type"], &[])?;
                 let written = field(entry, "type")?;
-                let annotation = match entry.child("alternative") {
-                    Some(alternative) => self.optional_type(
-                        written,
-                        alternative,
-                        Span {
-                            start: written.start,
-                            end: alternative.end,
-                        },
-                    )?,
-                    None => self.value_type(written)?,
+                let annotation = if protocol {
+                    self.protocol_annotation(written)?
+                } else {
+                    self.annotation(written, SignaturePosition::StructDeclaration)?
                 };
                 Ok(StructEntry {
                     name: self.name(field(entry, "name")?)?,
@@ -891,7 +911,7 @@ impl Reader<'_> {
             // An inline struct; its span covers the braces.
             shape(node, &["entries"], &[])?;
             return Ok(Annotation {
-                kind: AnnotationKind::Struct(self.struct_entries(entries)?),
+                kind: AnnotationKind::Struct(self.struct_entries(entries, true)?),
                 span: span(node),
             });
         }

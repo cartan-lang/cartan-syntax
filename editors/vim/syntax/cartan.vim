@@ -11,7 +11,7 @@ if exists("b:current_syntax")
   finish
 endif
 
-syn keyword cartanKeyword and as but each else fiber fn fold for if in locked match namespace not of or param periodic reduce require state step struct tap texture use when while with
+syn keyword cartanKeyword and as but each else fiber fn fold for if in locked match namespace not of or param periodic protocol reduce require state step struct tap texture use when while with
 syn keyword cartanConstant false none true
 
 syn match cartanOperator ,\v\.\.\=|\!\=|\-\>|\.\.|\/\/|\:\:|\:\=|\<\-|\<\=|\<\>|\=\=|\=\>|\>\=|\?\?|\#|\*|\+|\-|\.|\/|\:|\;|\<|\=|\>|\?|\@|\^|\|,

@@ -52,6 +52,7 @@ static const char *const KEYWORDS[] = {
   "or",
   "param",
   "periodic",
+  "protocol",
   "reduce",
   "require",
   "state",
@@ -303,7 +304,7 @@ static int continuation_at(TSLexer *lexer) {
         return lexer->lookahead == 32 || lexer->lookahead == 9 || lexer->lookahead == 13 || lexer->lookahead == 10 ? CONTINUATION : NO_CONTINUATION;
       case 1:
         return lexer->lookahead == 32 || lexer->lookahead == 9 || lexer->lookahead == 13 || lexer->lookahead == 10 ? CONTINUATION : NO_CONTINUATION;
-      case 33:
+      case 34:
         return lexer->lookahead == 32 || lexer->lookahead == 9 || lexer->lookahead == 13 || lexer->lookahead == 10 ? CONTINUATION : NO_CONTINUATION;
       case 3:
         return lexer->lookahead == 32 || lexer->lookahead == 9 || lexer->lookahead == 13 || lexer->lookahead == 10 ? CONTINUATION : NO_CONTINUATION;
@@ -370,10 +371,10 @@ static bool begins_expression(Next next) {
     case 16:
     case 17:
     case 21:
-    case 22:
-    case 27:
+    case 23:
     case 28:
     case 29:
+    case 30:
       return true;
     case 0:
       return true;
@@ -408,7 +409,7 @@ static bool continues_expression(Next next) {
     case 3:
     case 19:
     case 21:
-    case 33:
+    case 34:
       return true;
     case 0:
       return false;

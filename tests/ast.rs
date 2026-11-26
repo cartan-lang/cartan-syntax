@@ -2043,20 +2043,33 @@ fn signatures_outside_parameters_are_typed_by_position_at_the_arrow() {
         assert_eq!(&source[span.start..span.end], "->");
         assert!(source[signature_span.start..signature_span.end].ends_with("Real"));
     }
-    // Struct entries and fiber components take a bare fiber type, so an arrow
-    // there stays a structured grammar error.
+    // A `struct` declaration names data, so a signature in its entry is
+    // refused at the arrow, in either spelling; a `protocol` names one.
     for source in [
         "struct S = {p: (Real) -> Real}",
-        "fiber F = (p: (Real) -> Real)",
+        "struct S = {a: Int, p: Real -> Real}",
     ] {
         let errors = ast::parse_document(source).unwrap_err();
-        assert!(
-            errors
-                .iter()
-                .all(|error| matches!(error, Error::Grammar(_))),
-            "{source}: {errors:?}"
-        );
+        let [Error::Form(FormDiagnostic {
+            kind: FormDiagnosticKind::SignatureOutsideParameter { position, .. },
+            span,
+        })] = errors.as_slice()
+        else {
+            panic!("{source}: {errors:?}");
+        };
+        assert_eq!(*position, SignaturePosition::StructDeclaration, "{source}");
+        assert_eq!(&source[span.start..span.end], "->");
     }
+    // A fiber's component takes a bare fiber type, so an arrow there stays a
+    // structured grammar error.
+    let source = "fiber F = (p: (Real) -> Real)";
+    let errors = ast::parse_document(source).unwrap_err();
+    assert!(
+        errors
+            .iter()
+            .all(|error| matches!(error, Error::Grammar(_))),
+        "{source}: {errors:?}"
+    );
     // Namespace holes remain unsupported.
     let source = "namespace a() { f(g: (Real) -> Real) = 1 }";
     let errors = ast::parse_document(source).unwrap_err();
@@ -2676,6 +2689,7 @@ fn roster(variants: &[Variant]) -> Vec<(&str, Option<&str>)> {
                     ..
                 } => "::",
                 AnnotationKind::Struct(_) => "{}",
+                AnnotationKind::Signature(_) => "->",
                 AnnotationKind::Tuple(_) | AnnotationKind::TupleRepeat { .. } => "[]",
                 AnnotationKind::Sum(_) => "|",
                 AnnotationKind::Product(_) => "()",
@@ -4053,5 +4067,121 @@ fn a_partly_bad_document_reports_every_error_in_source_order() {
             ("form", source.find('a').unwrap()),
             ("grammar", source.len()),
         ]
+    );
+}
+
+#[test]
+fn a_protocol_names_a_signature_or_a_struct_of_them_and_is_written_literally_too() {
+    fn item(source: &str) -> ItemKind {
+        let document = ast::parse_document(source).unwrap_or_else(|e| panic!("{source}: {e:?}"));
+        document.items.into_iter().next().unwrap().kind
+    }
+    // a signature, in both spellings
+    for (source, arguments) in [
+        ("protocol K = Real -> Real", 1),
+        ("protocol R = (Cons, Cons) -> Cons", 2),
+        ("protocol Z = () -> Real", 0),
+    ] {
+        let ItemKind::Protocol(protocol) = item(source) else {
+            panic!("{source}")
+        };
+        let AnnotationKind::Signature(signature) = &protocol.annotation.kind else {
+            panic!("{source}: {:?}", protocol.annotation.kind)
+        };
+        assert_eq!(signature.arguments.len(), arguments, "{source}");
+        assert_eq!(
+            &source[protocol.annotation.span.start..protocol.annotation.span.end],
+            source.split_once("= ").unwrap().1,
+            "{source}"
+        );
+    }
+    // a struct whose entries are signatures and kinds, in the order written
+    let source = "protocol Physics = {gamma: Real, pressure: (Real, Real) -> Real, \
+                  sound: Cons -> Real, far: Real | None}";
+    let ItemKind::Protocol(protocol) = item(source) else {
+        panic!("{source}")
+    };
+    assert_eq!(protocol.name.text, "Physics");
+    let AnnotationKind::Struct(entries) = &protocol.annotation.kind else {
+        panic!("{:?}", protocol.annotation.kind)
+    };
+    let shapes: Vec<_> = entries
+        .iter()
+        .map(|entry| {
+            let shape = match &entry.annotation.kind {
+                AnnotationKind::Signature(signature) => signature.arguments.len().to_string(),
+                AnnotationKind::Optional { .. } => "optional".into(),
+                AnnotationKind::Named(_) => "named".into(),
+                other => panic!("{other:?}"),
+            };
+            (entry.name.text.as_str(), shape)
+        })
+        .collect();
+    assert_eq!(
+        shapes,
+        [
+            ("gamma", "named".to_string()),
+            ("pressure", "2".to_string()),
+            ("sound", "1".to_string()),
+            ("far", "optional".to_string()),
+        ]
+    );
+    let AnnotationKind::Signature(pressure) = &entries[1].annotation.kind else {
+        unreachable!()
+    };
+    assert_eq!(
+        &source[pressure.span.start..pressure.span.end],
+        "(Real, Real) -> Real"
+    );
+    // a name for a kind is a protocol too
+    let ItemKind::Protocol(point) = item("protocol Scalar = Real") else {
+        panic!()
+    };
+    assert!(matches!(point.annotation.kind, AnnotationKind::Named(_)));
+    // the literal stands wherever the name does: a parameter's annotation
+    for (source, literal) in [
+        ("face(p: Physics, l: Cons) = 1", false),
+        (
+            "face(p: {pressure: Cons -> Real, gamma: Real}, l: Cons) = 1",
+            true,
+        ),
+    ] {
+        let ItemKind::Function(function) = item(source) else {
+            panic!("{source}")
+        };
+        let Some(ParameterAnnotation::Value(annotation)) = &function.parameters[0].annotation
+        else {
+            panic!("{source}")
+        };
+        match &annotation.kind {
+            AnnotationKind::Named(_) => assert!(!literal, "{source}"),
+            AnnotationKind::Struct(entries) => {
+                assert!(literal, "{source}");
+                assert!(matches!(
+                    entries[0].annotation.kind,
+                    AnnotationKind::Signature(_)
+                ));
+                assert!(matches!(
+                    entries[1].annotation.kind,
+                    AnnotationKind::Named(_)
+                ));
+            }
+            other => panic!("{source}: {other:?}"),
+        }
+    }
+    // a signature still nests no signature
+    let errors = ast::parse_document("protocol H = (Real -> Real) -> Real").unwrap_err();
+    assert!(
+        matches!(
+            errors.as_slice(),
+            [Error::Form(FormDiagnostic {
+                kind: FormDiagnosticKind::SignatureOutsideParameter {
+                    position: SignaturePosition::SignatureArgument,
+                    ..
+                },
+                ..
+            })]
+        ),
+        "{errors:?}"
     );
 }

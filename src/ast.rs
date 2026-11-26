@@ -59,6 +59,7 @@ pub enum ItemKind {
     Fiber(Fiber),
     Sum(Sum),
     Struct(Struct),
+    Protocol(Protocol),
     Function(Function),
     Step(Step),
     Require(Require),
@@ -192,6 +193,17 @@ pub struct Struct {
     pub entries: Vec<StructEntry>,
 }
 
+/// `protocol Physics = { pressure: Cons -> Real }` or
+/// `protocol Riemann = (Cons, Cons) -> Cons`: a name for what a parameter
+/// requires. It is an alias: the annotation may be written wherever the
+/// name stands.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+pub struct Protocol {
+    pub name: Name,
+    pub annotation: Annotation,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct StructEntry {
@@ -250,6 +262,9 @@ pub enum SignaturePosition {
     SignatureArgument,
     /// The result slot of another signature.
     SignatureResult,
+    /// An entry of a `struct` declaration, which names data. A `protocol`
+    /// declaration names a struct type whose entries are signatures.
+    StructDeclaration,
 }
 
 /// `step { ... }`, an unconditional update block with writes in source order.
@@ -299,8 +314,13 @@ pub enum AnnotationKind {
         arguments: Vec<TypeArgument>,
     },
     /// An inline struct type `{a: Real, b: Int}`, possibly empty; the
-    /// annotation span covers the braces.
+    /// annotation span covers the braces. An entry may be a signature, which
+    /// makes the struct type a protocol for a struct that holds functions.
     Struct(Vec<StructEntry>),
+    /// A function signature where it stands as an annotation of its own: an
+    /// entry of a struct type, or what a `protocol` names. A parameter's own
+    /// signature is `ParameterAnnotation::Signature`.
+    Signature(Box<Signature>),
     /// Fixed positional annotations, `[Int, Real]`, in source order.
     Tuple(Vec<Annotation>),
     /// `[T; width]`, preserving the width without expanding the entries.
